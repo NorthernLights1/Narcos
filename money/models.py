@@ -118,3 +118,13 @@ class PaymentAllocation(models.Model):
     target = models.ForeignKey("docs.Document", on_delete=models.PROTECT,
                                related_name="allocations_received")
     amount = models.DecimalField(max_digits=14, decimal_places=2)
+
+    def save(self, *args, **kwargs):
+        if self.payment.status != "DRAFT":
+            raise ValueError("Allocations of a posted payment are immutable (I1).")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        if self.payment.status != "DRAFT":
+            raise ValueError("Allocations of a posted payment are immutable (I1).")
+        super().delete(*args, **kwargs)
