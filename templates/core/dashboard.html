@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% translate "Dashboard" %} — Narcos{% endblock %}
+{% block content %}
+<h1>{% translate "Dashboard" %}</h1>
+<p class="today">{{ today }} · {{ today_ethiopian }}</p>
+<div class="cards">
+  {# Alert cards land here per spec §8 (P9): low stock, expiry, consignments due. #}
+  <div class="card"><h2>{% translate "Low stock" %}</h2><p class="placeholder">{% translate "Coming in a later phase." %}</p></div>
+  <div class="card"><h2>{% translate "Expiry" %}</h2><p class="placeholder">{% translate "Coming in a later phase." %}</p></div>
+  <div class="card"><h2>{% translate "Consignments due" %}</h2><p class="placeholder">{% translate "Coming in a later phase." %}</p></div>
+</div>
+{% endblock %}

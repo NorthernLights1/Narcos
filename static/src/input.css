@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body { @apply bg-paper text-ink font-sans min-h-screen; }
+  h1 { @apply text-2xl font-semibold mb-4; }
+  h2 { @apply text-base font-semibold mb-2; }
+  label { @apply block text-sm font-medium mb-1; }
+  input, select, textarea {
+    @apply w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm
+      focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent;
+  }
+  input[type="checkbox"] { @apply w-4 h-4 align-middle; }
+}
+
+@layer components {
+  .topbar { @apply flex items-center gap-6 bg-ink text-white px-6 py-3; }
+  .brand { @apply font-bold tracking-wide text-lg; }
+  .nav { @apply flex gap-4 text-sm; }
+  .nav a { @apply text-slate-200 hover:text-white; }
+  .logout { @apply ml-auto flex items-center gap-3 text-sm; }
+  .who { @apply text-slate-300; }
+  .page { @apply max-w-5xl mx-auto px-6 py-8; }
+  .card { @apply bg-white rounded-lg shadow-sm border border-slate-200 p-6; }
+  .card-narrow { @apply max-w-sm mx-auto mt-16; }
+  .cards { @apply grid gap-4 sm:grid-cols-2 lg:grid-cols-3 mt-6; }
+  .btn { @apply inline-block rounded px-4 py-2 text-sm font-medium cursor-pointer; }
+  .btn-primary { @apply bg-accent text-white hover:bg-accent-dark; }
+  .btn-quiet { @apply bg-transparent text-slate-300 hover:text-white; }
+  .field { @apply mb-4; }
+  .field-error { @apply text-danger text-xs mt-1; }
+  .form-grid { @apply grid gap-x-6 sm:grid-cols-2; }
+  .messages { @apply mb-4 space-y-2; }
+  .msg { @apply rounded px-4 py-2 text-sm; }
+  .msg-success { @apply bg-emerald-50 text-emerald-900 border border-emerald-200; }
+  .msg-error { @apply bg-red-50 text-red-900 border border-red-200; }
+  .today { @apply text-slate-500; }
+  .placeholder { @apply text-slate-400 text-sm; }
+}
