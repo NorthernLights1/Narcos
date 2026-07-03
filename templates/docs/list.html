@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% translate "Documents" %} — Narcos{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{% translate "Documents" %}</h1>
+  <div class="actions">
+    {% if user.is_owner %}
+      <a class="btn" href="{% url 'csv_import' 'opening-stock' %}">{% translate "Import opening stock" %}</a>
+      <a class="btn" href="{% url 'csv_import' 'opening-ar' %}">{% translate "Import opening AR" %}</a>
+      <a class="btn" href="{% url 'csv_import' 'opening-ap' %}">{% translate "Import opening AP" %}</a>
+      <a class="btn" href="{% url 'csv_import' 'opening-cash' %}">{% translate "Import opening cash" %}</a>
+    {% endif %}
+    {% for value, label in doc_types %}
+      <a class="btn" href="{% url 'document_create' value %}">{{ label }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+<form method="get" class="card form-grid">
+  <div class="field">
+    <label for="id_type">{% translate "Type" %}</label>
+    <select name="type" id="id_type">
+      <option value="">{% translate "All" %}</option>
+      {% for value, label in doc_types %}
+        <option value="{{ value }}"{% if selected_type == value %} selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="field">
+    <label for="id_status">{% translate "Status" %}</label>
+    <select name="status" id="id_status">
+      <option value="">{% translate "All" %}</option>
+      {% for value, label in statuses %}
+        <option value="{{ value }}"{% if selected_status == value %} selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="field">
+    <label for="id_q">{% translate "Search" %}</label>
+    <input id="id_q" type="search" name="q" value="{{ query }}">
+  </div>
+  <div class="field">
+    <label>&nbsp;</label>
+    <button type="submit" class="btn btn-primary">{% translate "Filter" %}</button>
+  </div>
+</form>
+
+<div class="card">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>{% translate "No." %}</th>
+        <th>{% translate "Type" %}</th>
+        <th>{% translate "Status" %}</th>
+        <th>{% translate "Party" %}</th>
+        <th>{% translate "Total" %}</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for doc in rows %}
+      <tr>
+        <td>{{ doc.doc_no|default:doc.pk }}</td>
+        <td>{{ doc.get_doc_type_display }}</td>
+        <td>{{ doc.get_status_display }}</td>
+        <td>{{ doc.customer|default:doc.supplier|default:doc.payee }}</td>
+        <td>{{ doc.grand_total }}</td>
+        <td><a href="{% url 'document_detail' doc.pk %}">{% translate "Open" %}</a></td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6">{% translate "No documents yet." %}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

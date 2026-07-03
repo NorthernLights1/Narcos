@@ -1,0 +1,115 @@
+{% load i18n %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{ doc }} - Narcos</title>
+  <style>
+    @page { size: A4; margin: 14mm; }
+    body { color: #111827; font: 12px/1.45 Arial, sans-serif; margin: 0; }
+    h1, h2, p { margin: 0; }
+    h1 { font-size: 22px; }
+    h2 { font-size: 14px; margin: 20px 0 8px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border-bottom: 1px solid #d1d5db; padding: 6px; text-align: left; }
+    th:last-child, td:last-child { text-align: right; }
+    .muted { color: #6b7280; }
+    .top { align-items: start; display: flex; justify-content: space-between; gap: 24px; }
+    .label { border: 1px solid #111827; display: inline-block; font-weight: 700; margin-top: 8px; padding: 4px 8px; }
+    .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 18px; }
+    .box { border: 1px solid #d1d5db; padding: 8px; }
+    .total { font-size: 16px; font-weight: 700; }
+    .screen-actions { margin-bottom: 16px; }
+    .screen-actions a, .screen-actions button { margin-right: 8px; }
+    @media print { .screen-actions { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="screen-actions">
+    <button onclick="window.print()">{% translate "Print" %}</button>
+    <a href="?layout=COMPACT">{% translate "Compact" %}</a>
+    <a href="?layout=DETAILED">{% translate "Detailed" %}</a>
+  </div>
+
+  <div class="top">
+    <div>
+      <h1>{{ company.name|default:"Narcos" }}</h1>
+      <p class="muted">{{ company.address }}</p>
+      <p class="muted">{% translate "TIN" %}: {{ company.tin|default:"-" }}</p>
+      <p class="label">{% translate "Attachment / not a fiscal receipt" %}</p>
+    </div>
+    <div>
+      <h1>{{ doc.doc_no }}</h1>
+      <p>{{ doc.get_doc_type_display }}</p>
+      <p>{{ doc.document_date }}</p>
+      <p>{% translate "Fiscal receipt" %}: {{ doc.fiscal_receipt_no|default:"-" }}</p>
+    </div>
+  </div>
+
+  <div class="summary">
+    <div class="box"><strong>{% translate "Party" %}</strong><br>{{ doc.customer|default:doc.supplier|default:doc.payee|default:"-" }}</div>
+    <div class="box"><strong>{% translate "Subtotal" %}</strong><br>{{ doc.subtotal }}</div>
+    <div class="box"><strong>{% translate "Tax" %}</strong><br>{{ doc.tax_total }}</div>
+    <div class="box total"><strong>{% translate "Total" %}</strong><br>{{ doc.grand_total }}</div>
+  </div>
+
+  {% if doc.lines.exists %}
+  <h2>{% translate "Lines" %}</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>{% translate "Item" %}</th>
+        <th>{% translate "Batch" %}</th>
+        <th>{% translate "Qty" %}</th>
+        <th>{% translate "Price" %}</th>
+        <th>{% translate "Net" %}</th>
+        {% if layout == "DETAILED" and user.is_owner %}<th>{% translate "COGS" %}</th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for line in doc.lines.all %}
+      <tr>
+        <td>{{ line.item }}</td>
+        <td>{{ line.batch|default:line.batch_no_entered|default:"-" }}</td>
+        <td>{{ line.qty_base|default:line.qty_entered }} {{ line.unit_label }}</td>
+        <td>{{ line.unit_price }}</td>
+        <td>{{ line.line_net }}</td>
+        {% if layout == "DETAILED" and user.is_owner %}<td>{{ line.cogs_total }}</td>{% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if layout == "DETAILED" %}
+    {% if doc.charges.exists %}
+    <h2>{% translate "Charges" %}</h2>
+    <table>
+      <tbody>
+        {% for charge in doc.charges.all %}
+        <tr><td>{{ charge.label }}</td><td>{{ charge.amount }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    {% if doc.payment_lines.exists %}
+    <h2>{% translate "Payment lines" %}</h2>
+    <table>
+      <tbody>
+        {% for line in doc.payment_lines.all %}
+        <tr><td>{{ line.account }}</td><td>{{ line.get_method_display }}</td><td>{{ line.amount }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  {% endif %}
+
+  {% if doc.withholding_certificate_no %}
+  <p>{% translate "Withholding certificate" %}: {{ doc.withholding_certificate_no }}</p>
+  {% endif %}
+  {% if doc.notes %}
+  <h2>{% translate "Notes" %}</h2>
+  <p>{{ doc.notes }}</p>
+  {% endif %}
+</body>
+</html>

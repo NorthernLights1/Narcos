@@ -48,17 +48,38 @@ def ar_balance(customer_id: int) -> Decimal:
 
 
 def consigned_exposure(customer_id: int) -> Decimal:
-    """D25: locked-price value of stock in CONSIGNED(customer). Real values
-    arrive with P6 consignment; until then customers have nothing consigned."""
-    from stock.models import StockBalance, Zone  # local import avoids cycles
+    """D25: locked-price line-net value of stock still out on consignment."""
+    from docs.models import DocType, Document, DocumentLine  # local import avoids cycles
 
     total = Decimal("0.00")
-    balances = StockBalance.objects.filter(
-        zone=Zone.CONSIGNED, consignment_customer_id=customer_id, qty__gt=0
-    ).select_related("lot")
-    for balance in balances:
-        # ponytail: valued at lot cost until P6 stores locked issue prices
-        total += Decimal(balance.qty) * balance.lot.unit_cost
+    issues = Document.objects.filter(
+        doc_type__in=[DocType.CONSIGNMENT_ISSUE, DocType.OPENING_CONSIGNMENT],
+        status=Document.Status.POSTED,
+        customer_id=customer_id,
+    )
+    for issue in issues:
+        groups: dict[tuple[int, int | None], dict[str, Decimal | int]] = {}
+        for line in issue.lines.all():
+            group = groups.setdefault(
+                (line.item_id, line.batch_id),
+                {"qty": 0, "value": Decimal("0.00")},
+            )
+            group["qty"] += line.qty_base
+            group["value"] += line.line_net
+        for (item_id, batch_id), group in groups.items():
+            settled = 0
+            rows = DocumentLine.objects.filter(
+                document__related_document=issue,
+                document__doc_type=DocType.CONSIGNMENT_SETTLEMENT,
+                document__status=Document.Status.POSTED,
+                item_id=item_id,
+                batch_id=batch_id,
+            )
+            for row in rows:
+                settled += row.qty_sold + row.qty_returned + row.qty_expired_unfit
+            remaining = max(group["qty"] - settled, 0)
+            if group["qty"]:
+                total += group["value"] * Decimal(remaining) / Decimal(group["qty"])
     return total
 
 

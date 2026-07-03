@@ -147,9 +147,17 @@ class StockOutHandler(Handler):
 def stock_out_types():
     """Register the test handler under two unused doc types so concurrent
     postings contend on the BALANCE row, not the number sequence."""
+    old_zone_move = _HANDLERS.get(DocType.ZONE_MOVE)
+    old_adjustment = _HANDLERS.get(DocType.ADJUSTMENT)
     yield
-    _HANDLERS.pop(DocType.ZONE_MOVE, None)
-    _HANDLERS.pop(DocType.ADJUSTMENT, None)
+    if old_zone_move is None:
+        _HANDLERS.pop(DocType.ZONE_MOVE, None)
+    else:
+        _HANDLERS[DocType.ZONE_MOVE] = old_zone_move
+    if old_adjustment is None:
+        _HANDLERS.pop(DocType.ADJUSTMENT, None)
+    else:
+        _HANDLERS[DocType.ADJUSTMENT] = old_adjustment
 
 
 # --- I3: no negative stock under real parallel transactions ---

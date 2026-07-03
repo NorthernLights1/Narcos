@@ -147,6 +147,10 @@ IMPORTERS = {
     "items": (importers.import_items, gettext_lazy("Items")),
     "customers": (importers.import_customers, gettext_lazy("Customers")),
     "suppliers": (importers.import_suppliers, gettext_lazy("Suppliers")),
+    "opening-stock": (importers.import_opening_stock, gettext_lazy("Opening stock")),
+    "opening-ar": (importers.import_opening_ar, gettext_lazy("Opening receivable")),
+    "opening-ap": (importers.import_opening_ap, gettext_lazy("Opening payable")),
+    "opening-cash": (importers.import_opening_cash, gettext_lazy("Opening cash")),
 }
 
 
@@ -159,7 +163,10 @@ def csv_import(request, kind):
     if request.method == "POST":
         form = CsvImportForm(request.POST, request.FILES)
         if form.is_valid():
-            result = importer(form.cleaned_data["file"])
+            if kind in MASTER:
+                result = importer(form.cleaned_data["file"])
+            else:
+                result = importer(form.cleaned_data["file"], request.user)
             if result.is_clean:
                 log_event(
                     actor=request.user, action="CSV_IMPORT", entity=kind,
@@ -169,9 +176,12 @@ def csv_import(request, kind):
                     request,
                     _("Imported %(n)d records.") % {"n": result.created},
                 )
-                return redirect("master_list", kind=kind)
+                if kind in MASTER:
+                    return redirect("master_list", kind=kind)
+                return redirect("document_list")
     else:
         form = CsvImportForm()
     return render(request, "catalog/import.html", {
         "form": form, "title": title, "kind": kind, "result": result,
+        "back_url": "master_list" if kind in MASTER else "document_list",
     })

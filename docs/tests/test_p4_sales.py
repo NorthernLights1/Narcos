@@ -96,6 +96,10 @@ def test_cash_sale_moves_stock_and_money(owner, customer, supplier, drug, cash):
     assert doc.doc_no == "SI-000001"
     assert doc.grand_total == D("300.00")
     assert doc.tax_total == D("0.00")  # exempt medicine
+    receipt = Document.objects.get(doc_type=DocType.CUSTOMER_PAYMENT,
+                                   related_document=doc)
+    assert receipt.doc_no == "RC-000001"
+    assert doc.money_rows.count() == 0
     assert account_balance(cash) == D("300.00")
     assert doc.party_rows.count() == 0  # cash sale: no AR
     lot = CostLot.objects.get()
@@ -296,7 +300,11 @@ def test_void_sale_restores_stock_and_money(owner, customer, supplier, drug, cas
     add_sale_line(doc, drug, 20, "15.00", batch=batch)
     pay(doc, cash, "300.00")
     doc = post(doc, owner)
+    receipt = Document.objects.get(doc_type=DocType.CUSTOMER_PAYMENT)
+    with pytest.raises(PostingError):
+        void(receipt, owner, "void source instead")
     void(doc, owner, "entry error")
+    assert Document.objects.get(doc_type=DocType.CUSTOMER_PAYMENT).status == Document.Status.VOIDED
     lot = CostLot.objects.get()
     assert warehouse_qty(lot) == 100
     assert account_balance(cash) == D("0.00")

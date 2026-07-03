@@ -40,6 +40,10 @@ class CompanySettings(models.Model):
         ETHIOPIAN = "ETHIOPIAN", _("Ethiopian")
         BOTH = "BOTH", _("Both")
 
+    class PrintLayout(models.TextChoices):
+        COMPACT = "COMPACT", _("Compact")
+        DETAILED = "DETAILED", _("Detailed")
+
     FISCAL_MONTH_CHOICES = [(i + 1, name) for i, name in enumerate(MONTHS[:12])]
 
     name = models.CharField(_("Company name"), max_length=200, blank=True)
@@ -79,13 +83,17 @@ class CompanySettings(models.Model):
         _("Date display"), max_length=10, choices=DateDisplay.choices,
         default=DateDisplay.GREGORIAN,
     )
+    print_layout = models.CharField(
+        _("Print layout"), max_length=8, choices=PrintLayout.choices,
+        default=PrintLayout.COMPACT,
+    )
 
     AUDITED_FIELDS = [
         "name", "address", "tin", "tax_regime", "vat_rate", "tot_rate",
         "prices_tax_exclusive", "withholding_on_sales", "withholding_on_purchases",
         "withholding_rate", "near_expiry_months", "consignment_term_months",
         "default_credit_limit", "default_credit_action",
-        "fiscal_year_start_month", "date_display",
+        "fiscal_year_start_month", "date_display", "print_layout",
     ]
 
     class Meta:
@@ -131,7 +139,7 @@ class NumberSequence(models.Model):
     transaction: select_for_update takes a real row lock on PostgreSQL, so
     two concurrent postings of the same doc type serialize here (D14/D66)."""
 
-    doc_type = models.CharField(max_length=20, unique=True)
+    doc_type = models.CharField(max_length=25, unique=True)
     next_no = models.PositiveIntegerField(default=1)
 
     @classmethod

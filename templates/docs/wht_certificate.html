@@ -1,0 +1,32 @@
+{% load i18n %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{% translate "Withholding certificate" %} - {{ doc.doc_no }}</title>
+  <style>
+    @page { size: A4; margin: 18mm; }
+    body { color: #111827; font: 13px/1.5 Arial, sans-serif; margin: 0; }
+    h1, p { margin: 0 0 10px; }
+    h1 { font-size: 22px; }
+    table { border-collapse: collapse; margin-top: 18px; width: 100%; }
+    td, th { border: 1px solid #d1d5db; padding: 8px; text-align: left; }
+    .screen-actions { margin-bottom: 16px; }
+    @media print { .screen-actions { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="screen-actions"><button onclick="window.print()">{% translate "Print" %}</button></div>
+  <h1>{% translate "Withholding certificate" %}</h1>
+  <p><strong>{{ company.name|default:"Narcos" }}</strong></p>
+  <p>{% translate "TIN" %}: {{ company.tin|default:"-" }}</p>
+  <table>
+    <tbody>
+      <tr><th>{% translate "Supplier" %}</th><td>{{ doc.supplier }}</td></tr>
+      <tr><th>{% translate "Payment document" %}</th><td>{{ doc.doc_no }}</td></tr>
+      <tr><th>{% translate "Payment date" %}</th><td>{{ doc.document_date }}</td></tr>
+      <tr><th>{% translate "Certificate no." %}</th><td>{{ doc.withholding_certificate_no|default:"-" }}</td></tr>
+      <tr><th>{% translate "Withheld amount" %}</th><td>{{ doc.withheld_amount }}</td></tr>
+    </tbody>
+  </table>
+</body>
+</html>

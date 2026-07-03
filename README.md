@@ -18,6 +18,8 @@ chat history.
 | [03-open-risks.md](03-open-risks.md) | Blind spots, pitfalls, and things still to decide before/while building. Each is marked OPEN or DECIDED. |
 | [04-build-spec.md](04-build-spec.md) | The buildable spec derived from D1–D64: schema, posting engine, tax/withholding algorithms, per-document rules, screens, reports, build phases, and the mandatory invariant tests. **Implementers build from this file, in phase order.** |
 
+| [ops/RUNBOOK.md](ops/RUNBOOK.md) | Backup, restore, update, password recovery, and Windows service runbook. |
+
 ## Rules for this folder
 
 - **Append, don't rewrite history.** When a decision changes, add a new dated

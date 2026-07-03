@@ -190,7 +190,9 @@ class DocumentLine(models.Model):
     qty_sold = models.PositiveIntegerField(default=0)
     qty_returned = models.PositiveIntegerField(default=0)
     qty_expired_unfit = models.PositiveIntegerField(default=0)
-    # Returns / zone moves: where the stock goes
+    # Stock ops: signed adjustment qty and source/target zones
+    qty_delta = models.IntegerField(default=0)
+    source_zone = models.CharField(max_length=10, blank=True)
     target_zone = models.CharField(max_length=10, blank=True)
 
     def _document_is_locked(self) -> bool:

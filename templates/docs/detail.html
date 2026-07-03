@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{{ doc }} — Narcos{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ doc }}</h1>
+  <div class="actions">
+    {% if doc.status == "DRAFT" %}
+      <a class="btn" href="{% url 'document_edit' doc.pk %}">{% translate "Edit" %}</a>
+    {% elif doc.status == "POSTED" %}
+      <a class="btn" href="{% url 'document_edit' doc.pk %}">{% translate "Reference fields" %}</a>
+      <a class="btn" href="{% url 'document_print' doc.pk %}">{% translate "Print" %}</a>
+      {% if doc.doc_type == "SUPPLIER_PAYMENT" %}
+        {% if doc.withheld_amount %}
+        <a class="btn" href="{% url 'withholding_certificate_print' doc.pk %}">{% translate "WHT certificate" %}</a>
+        {% endif %}
+      {% endif %}
+      {% if doc.doc_type == "PROFORMA" %}
+      <form method="post" action="{% url 'document_convert_sale' doc.pk %}">
+        {% csrf_token %}
+        <button class="btn" type="submit">{% translate "Convert to sale" %}</button>
+      </form>
+      {% endif %}
+    {% endif %}
+  </div>
+</div>
+
+<section class="card">
+  <dl class="summary-grid">
+    <div><dt>{% translate "Type" %}</dt><dd>{{ doc.get_doc_type_display }}</dd></div>
+    <div><dt>{% translate "Status" %}</dt><dd>{{ doc.get_status_display }}</dd></div>
+    <div><dt>{% translate "Party" %}</dt><dd>{{ doc.customer|default:doc.supplier|default:doc.payee|default:"—" }}</dd></div>
+    <div><dt>{% translate "Date" %}</dt><dd>{{ doc.document_date|default:"—" }}</dd></div>
+    <div><dt>{% translate "Subtotal" %}</dt><dd>{{ doc.subtotal }}</dd></div>
+    <div><dt>{% translate "Tax" %}</dt><dd>{{ doc.tax_total }}</dd></div>
+    <div><dt>{% translate "Grand total" %}</dt><dd>{{ doc.grand_total }}</dd></div>
+    <div><dt>{% translate "Fiscal receipt" %}</dt><dd>{{ doc.fiscal_receipt_no|default:"—" }}</dd></div>
+  </dl>
+</section>
+
+{% if doc.status == "DRAFT" %}
+<section class="card">
+  <form method="post" action="{% url 'document_post' doc.pk %}">
+    {% csrf_token %}
+    {% if user.is_owner %}
+    <div class="field">
+      <label for="id_override_reason">{% translate "Override reason" %}</label>
+      <input id="id_override_reason" name="override_reason">
+    </div>
+    {% endif %}
+    <button type="submit" class="btn btn-primary">{% translate "Post" %}</button>
+  </form>
+  <form method="post" action="{% url 'document_delete' doc.pk %}">
+    {% csrf_token %}
+    <button type="submit" class="btn">{% translate "Delete draft" %}</button>
+  </form>
+</section>
+{% elif doc.status == "POSTED" and user.is_owner %}
+<section class="card">
+  <form method="post" action="{% url 'document_void' doc.pk %}">
+    {% csrf_token %}
+    <div class="field">
+      <label for="id_reason">{% translate "Void reason" %}</label>
+      <input id="id_reason" name="reason" required>
+    </div>
+    <button type="submit" class="btn btn-primary">{% translate "Void" %}</button>
+  </form>
+</section>
+{% endif %}
+
+{% if doc.lines.exists %}
+<section class="card">
+  <h2>{% translate "Lines" %}</h2>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>{% translate "Item" %}</th>
+        <th>{% translate "Batch" %}</th>
+        <th>{% translate "Qty" %}</th>
+        <th>{% translate "Price" %}</th>
+        <th>{% translate "Net" %}</th>
+        {% if user.is_owner %}<th>{% translate "COGS" %}</th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for line in doc.lines.all %}
+      <tr>
+        <td>{{ line.item }}</td>
+        <td>{{ line.batch|default:line.batch_no_entered|default:"—" }}</td>
+        <td>{{ line.qty_base|default:line.qty_entered }} {{ line.unit_label }}</td>
+        <td>{{ line.unit_price }}</td>
+        <td>{{ line.line_net }}</td>
+        {% if user.is_owner %}<td>{{ line.cogs_total }}</td>{% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+{% if doc.payment_lines.exists %}
+<section class="card">
+  <h2>{% translate "Payment lines" %}</h2>
+  <table class="table">
+    <tbody>
+      {% for line in doc.payment_lines.all %}
+      <tr><td>{{ line.account }}</td><td>{{ line.get_method_display }}</td><td>{{ line.amount }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+{% endblock %}

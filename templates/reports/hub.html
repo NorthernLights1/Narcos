@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% translate "Reports" %} - Narcos{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{% translate "Reports" %}</h1>
+</div>
+
+<div class="card">
+  <table class="table">
+    <tbody>
+      {% for slug, report in reports.items %}
+      <tr>
+        <td>{{ report.title }}</td>
+        <td><a href="{% url 'report_detail' slug %}">{% translate "Open" %}</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

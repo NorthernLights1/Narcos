@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% translate "Audit log" %} - Narcos{% endblock %}
+{% block content %}
+<h1>{% translate "Audit log" %}</h1>
+
+<div class="card">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>{% translate "When" %}</th>
+        <th>{% translate "Actor" %}</th>
+        <th>{% translate "Action" %}</th>
+        <th>{% translate "Entity" %}</th>
+        <th>{% translate "Before" %}</th>
+        <th>{% translate "After" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>{{ row.at }}</td>
+        <td>{{ row.actor|default:"-" }}</td>
+        <td>{{ row.action }}</td>
+        <td>{{ row.entity }} {{ row.entity_id }}</td>
+        <td>{{ row.before|default:"" }}</td>
+        <td>{{ row.after|default:"" }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6">{% translate "No audit rows." %}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

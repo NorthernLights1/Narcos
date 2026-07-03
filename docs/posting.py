@@ -20,6 +20,12 @@ class PostingError(Exception):
     """Business-rule failure during post/void. Message is user-facing."""
 
 
+OPENING_TYPES = {
+    DocType.OPENING_STOCK, DocType.OPENING_AR, DocType.OPENING_AP,
+    DocType.OPENING_CASH, DocType.OPENING_CONSIGNMENT, DocType.OPENING_EXPIRED,
+}
+
+
 @dataclass(frozen=True)
 class StockDelta:
     item_id: int
@@ -56,6 +62,9 @@ class Handler:
 
     def check_voidable(self, doc: Document) -> None:
         """Raise PostingError to block voiding (e.g. D5). Default: allowed."""
+
+    def after_post(self, doc: Document, actor) -> None:
+        """Optional hook for linked documents that need the source doc_no."""
 
 
 _HANDLERS: dict[str, Handler] = {}
@@ -152,6 +161,7 @@ def post(document: Document, actor, override_reason: str = "") -> Document:
         if doc.status != Document.Status.DRAFT:
             raise PostingError(_("Only drafts can be posted (D28)."))
         doc._override_reason = override_reason  # read by handlers (credit check)
+        doc._posting_actor = actor  # read by owner-only handlers
         handler = get_handler(doc.doc_type)
         handler.validate(doc)
 
@@ -164,7 +174,8 @@ def post(document: Document, actor, override_reason: str = "") -> Document:
         _write_money(doc, effects, now)
 
         doc.doc_no = f"{PREFIXES[doc.doc_type]}-{number:06d}"
-        doc.document_date = now  # D38: system time, never user-chosen
+        if doc.doc_type not in OPENING_TYPES or doc.document_date is None:
+            doc.document_date = now  # D38: system time, except opening docs
         doc.status = Document.Status.POSTED
         doc.posted_by = actor
         doc.posted_at = now
@@ -174,6 +185,7 @@ def post(document: Document, actor, override_reason: str = "") -> Document:
         if override_reason:
             log_event(actor, "OVERRIDE", "Document", doc.pk,
                       {"doc_no": doc.doc_no, "reason": override_reason})
+        handler.after_post(doc, actor)
     return doc
 
 
@@ -224,6 +236,14 @@ def void(document: Document, actor, reason: str) -> Document:
         doc.save()
         log_event(actor, "VOID", "Document", doc.pk,
                   {"doc_no": doc.doc_no, "reason": reason})
+        for linked in Document.objects.filter(
+            related_document=doc,
+            status=Document.Status.POSTED,
+            doc_type__in=[
+                DocType.CUSTOMER_PAYMENT, DocType.SUPPLIER_PAYMENT, DocType.ADJUSTMENT,
+            ],
+        ).order_by("pk"):
+            void(linked, actor, reason)
     return doc
 
 

@@ -72,6 +72,20 @@ def test_receiving_creates_batch_lot_stock_and_ap(owner, supplier, drug):
     assert ap.party_type == "SUPPLIER" and ap.amount_delta == Decimal("1000.00")
 
 
+def test_receiving_cash_now_moves_money_without_ap(owner, supplier, drug, cash):
+    doc = receiving(owner, supplier,
+                    {"item": drug, "qty": 10, "cost": "10.00",
+                     "batch_no": "B-1", "expiry": EXPIRY})
+    PaymentLine.objects.create(document=doc, account=cash, amount=Decimal("100.00"))
+    doc = post(doc, owner)
+    payment = Document.objects.get(doc_type=DocType.SUPPLIER_PAYMENT,
+                                   related_document=doc)
+    assert payment.doc_no == "PV-000001"
+    assert doc.money_rows.count() == 0
+    assert account_balance(cash) == Decimal("-100.00")
+    assert doc.party_rows.count() == 0
+
+
 def test_non_batch_item_receives_without_batch(owner, supplier, equipment):
     post(receiving(owner, supplier, {"item": equipment, "qty": 5, "cost": "900.00"}), owner)
     lot = CostLot.objects.get()

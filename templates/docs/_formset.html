@@ -1,0 +1,26 @@
+{% load i18n %}
+<section class="card">
+  <h2>{{ title }}</h2>
+  {{ formset.management_form }}
+  {% if formset.non_form_errors %}<p class="msg msg-error">{{ formset.non_form_errors|striptags }}</p>{% endif %}
+  <table class="table">
+    <thead>
+      <tr>
+        {% for field in formset.empty_form.visible_fields %}<th>{{ field.label }}</th>{% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in formset.forms %}
+      <tr>
+        {% for hidden in row.hidden_fields %}{{ hidden }}{% endfor %}
+        {% for field in row.visible_fields %}
+        <td>
+          {{ field }}
+          {% if field.errors %}<p class="field-error">{{ field.errors|striptags }}</p>{% endif %}
+        </td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>

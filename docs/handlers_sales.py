@@ -8,11 +8,11 @@ from django.utils.translation import gettext as _
 
 from core.audit import log_event
 from core.models import CompanySettings
-from docs.checks import ExpiryStatus, credit_check, expiry_status
+from docs.checks import ExpiryStatus, add_months, credit_check, expiry_status
 from docs.models import DocType, Document, LotConsumption
 from docs.posting import Effects, Handler, PostingError, StockDelta, register
 from docs.tax import Part, TaxError, compute_totals, round2
-from stock.models import CostLot, StockBalance, Zone
+from stock.models import CostLot, StockBalance, StockLedger, Zone
 
 
 def _line_parts(doc: Document) -> tuple[list, list[Part]]:
@@ -39,11 +39,17 @@ def _line_parts(doc: Document) -> tuple[list, list[Part]]:
 
 def _freeze_totals(doc: Document, parts: list[Part], settings) -> None:
     """§5 — the only tax computation. Freezes ※ totals onto the document."""
+    rate = (settings.vat_rate if settings.tax_regime == "VAT"
+            else settings.tot_rate if settings.tax_regime == "TOT"
+            else Decimal("0.00"))
+    return _freeze_totals_at_rate(doc, parts, rate)
+
+
+def _freeze_totals_at_rate(doc: Document, parts: list[Part], rate: Decimal) -> None:
+    """Same total math, but at a document's frozen issue-time rate."""
     try:
         totals = compute_totals(parts, doc.doc_discount,
-                                settings.tax_regime,
-                                settings.vat_rate if settings.tax_regime == "VAT"
-                                else settings.tot_rate)
+                                "VAT" if rate else "NONE", rate)
     except TaxError as exc:
         raise PostingError(str(exc))
     doc.subtotal = totals.subtotal
@@ -51,9 +57,7 @@ def _freeze_totals(doc: Document, parts: list[Part], settings) -> None:
     doc.exempt_base = totals.exempt_base
     doc.tax_total = totals.tax_total
     doc.grand_total = totals.grand_total
-    doc.tax_rate_snapshot = (settings.vat_rate if settings.tax_regime == "VAT"
-                             else settings.tot_rate if settings.tax_regime == "TOT"
-                             else Decimal("0.00"))
+    doc.tax_rate_snapshot = rate
 
 
 def _consume_fifo(line, qty_base: int) -> list[StockDelta]:
@@ -164,11 +168,32 @@ class SaleHandler(Handler):
                     _("Cash sale: payment lines (%(p)s) must equal the total (%(t)s).")
                     % {"p": paid, "t": doc.grand_total}
                 )
-            for p in payments:
-                effects.money.append((p.account_id, p.amount))
         else:
             effects.party.append(("CUSTOMER", doc.customer_id, doc.grand_total))  # AR +
         return effects
+
+    def after_post(self, doc: Document, actor) -> None:
+        if doc.sale_kind != Document.SaleKind.CASH:
+            return
+        from docs.posting import post
+        from money.models import PaymentAllocation, PaymentLine
+
+        payment = Document.objects.create(
+            doc_type=DocType.CUSTOMER_PAYMENT,
+            created_by=actor,
+            customer=doc.customer,
+            related_document=doc,
+            notes=_("Auto payment for %(no)s") % {"no": doc.doc_no},
+        )
+        for line in doc.payment_lines.all():
+            PaymentLine.objects.create(
+                document=payment,
+                account=line.account,
+                method=line.method,
+                amount=line.amount,
+            )
+        PaymentAllocation.objects.create(payment=payment, target=doc, amount=doc.grand_total)
+        post(payment, actor)
 
 
 class ProformaHandler(Handler):
@@ -195,6 +220,215 @@ class ProformaHandler(Handler):
         for line in lines:
             line.save()
         return Effects()  # no stock, no money, no AR
+
+
+class ConsignmentIssueHandler(Handler):
+    """CN: stock WAREHOUSE -> CONSIGNED(customer); price/tax frozen."""
+
+    def validate(self, doc: Document) -> None:
+        if doc.customer_id is None:
+            raise PostingError(_("Consignment issue needs a customer."))
+        lines = list(doc.lines.select_related("item", "batch"))
+        if not lines:
+            raise PostingError(_("Consignment issue needs at least one line."))
+        today = timezone.localdate()
+        settings = CompanySettings.load()
+        for line in lines:
+            if line.qty_entered <= 0:
+                raise PostingError(_("Line %(item)s: quantity must be positive.")
+                                   % {"item": line.item.code})
+            if line.unit_price < 0 or line.line_discount < 0:
+                raise PostingError(_("Line %(item)s: negative amounts not allowed.")
+                                   % {"item": line.item.code})
+            if line.item.is_batch_tracked and line.batch_id is None:
+                raise PostingError(_("Line %(item)s: pick a batch (D29).")
+                                   % {"item": line.item.code})
+            if line.batch_id is not None:
+                status = expiry_status(line.batch.expiry_date, today,
+                                       settings.near_expiry_months)
+                if status == ExpiryStatus.EXPIRED:
+                    raise PostingError(
+                        _("Batch %(no)s of %(item)s is expired; consignment blocked.")
+                        % {"no": line.batch.batch_no, "item": line.item.code}
+                    )
+
+    def build_effects(self, doc: Document) -> Effects:
+        settings = CompanySettings.load()
+        if doc.due_date is None:
+            doc.due_date = add_months(timezone.localdate(), settings.consignment_term_months)
+        lines, parts = _line_parts(doc)
+        _freeze_totals(doc, parts, settings)
+
+        from catalog.models import Customer
+
+        customer = Customer.objects.select_for_update().get(pk=doc.customer_id)
+        action, message = credit_check(customer, settings, doc.subtotal)
+        if action == "BLOCK" and not getattr(doc, "_override_reason", ""):
+            raise PostingError(message + " " + _("Owner override required (D25)."))
+        if action in ("WARN", "BLOCK"):
+            log_event(doc.created_by, f"CREDIT_{action}", "Document", doc.pk,
+                      {"message": message})
+
+        effects = Effects()
+        for line in lines:
+            for out_delta in _consume_fifo(line, line.qty_base):
+                effects.stock.append(out_delta)
+                effects.stock.append(StockDelta(
+                    item_id=out_delta.item_id, lot_id=out_delta.lot_id,
+                    zone=Zone.CONSIGNED, qty_delta=-out_delta.qty_delta,
+                    batch_id=out_delta.batch_id, customer_id=doc.customer_id,
+                    line_id=line.pk,
+                ))
+            line.save()
+        return effects
+
+
+def _settled_by_lot(issue: Document) -> dict[int, int]:
+    settled: dict[int, int] = {}
+    rows = StockLedger.objects.filter(
+        document__related_document=issue,
+        document__doc_type=DocType.CONSIGNMENT_SETTLEMENT,
+        document__status=Document.Status.POSTED,
+        zone=Zone.CONSIGNED,
+        qty_delta__lt=0,
+    ).values_list("lot_id", "qty_delta")
+    for lot_id, qty_delta in rows:
+        settled[lot_id] = settled.get(lot_id, 0) - qty_delta
+    return settled
+
+
+def _issue_pool(issue: Document, item_id: int, batch_id: int | None) -> tuple[list[dict], Decimal, bool]:
+    originals = list(issue.lines.filter(item_id=item_id, batch_id=batch_id).order_by("pk"))
+    if not originals:
+        raise PostingError(_("Settlement line has no matching consignment issue line."))
+    bases = {
+        (line.is_taxable, round2(line.line_net / line.qty_base))
+        for line in originals if line.qty_base
+    }
+    if len(bases) != 1:
+        # ponytail: add a source-line picker if same item/batch is issued at mixed prices.
+        raise PostingError(_("Split settlement lines by original consignment price."))
+    is_taxable, value_per_base = next(iter(bases))
+    settled = _settled_by_lot(issue)
+    issued: dict[int, dict] = {}
+    for line in originals:
+        for consumption in line.lot_consumptions.select_related("lot").order_by("pk"):
+            row = issued.setdefault(consumption.lot_id, {"lot": consumption.lot, "qty": 0})
+            row["qty"] += consumption.qty
+    pool = []
+    for row in issued.values():
+        remaining = row["qty"] - settled.get(row["lot"].pk, 0)
+        if remaining > 0:
+            pool.append({"lot": row["lot"], "remaining": remaining})
+    return pool, value_per_base, is_taxable
+
+
+class ConsignmentSettlementHandler(Handler):
+    """CS: settle CN quantities as sold, returned, or expired/unfit."""
+
+    RETURN_ZONES = (Zone.EXPIRED, Zone.UNFIT)
+
+    def validate(self, doc: Document) -> None:
+        if doc.customer_id is None:
+            raise PostingError(_("Consignment settlement needs a customer."))
+        if doc.related_document_id is None:
+            raise PostingError(_("Consignment settlement needs the issue document."))
+        if doc.related_document.doc_type not in (
+            DocType.CONSIGNMENT_ISSUE, DocType.OPENING_CONSIGNMENT,
+        ) \
+                or doc.related_document.status != Document.Status.POSTED:
+            raise PostingError(_("Settlement must reference a posted consignment issue."))
+        if doc.related_document.customer_id != doc.customer_id:
+            raise PostingError(_("Settlement customer differs from the issue's."))
+        if doc.sale_kind not in (Document.SaleKind.CASH, Document.SaleKind.CREDIT):
+            raise PostingError(_("Settlement must be cash or credit."))
+        lines = list(doc.lines.select_related("item"))
+        if not lines:
+            raise PostingError(_("Consignment settlement needs at least one line."))
+        for line in lines:
+            total = line.qty_sold + line.qty_returned + line.qty_expired_unfit
+            if total <= 0:
+                raise PostingError(_("Line %(item)s: enter at least one settled quantity.")
+                                   % {"item": line.item.code})
+            if line.qty_expired_unfit and line.target_zone not in self.RETURN_ZONES:
+                raise PostingError(
+                    _("Line %(item)s: expired/unfit quantity needs EXPIRED or UNFIT.")
+                    % {"item": line.item.code}
+                )
+
+    def build_effects(self, doc: Document) -> Effects:
+        settings = CompanySettings.load()
+        issue = Document.objects.select_for_update().get(pk=doc.related_document_id)
+        effects = Effects()
+        parts: list[Part] = []
+        for line in doc.lines.select_related("item", "batch"):
+            total = line.qty_sold + line.qty_returned + line.qty_expired_unfit
+            pool, value_per_base, is_taxable = _issue_pool(issue, line.item_id, line.batch_id)
+            if total > sum(row["remaining"] for row in pool):
+                raise PostingError(_("Line %(item)s: settling more than remains out.")
+                                   % {"item": line.item.code})
+
+            sold_left = line.qty_sold
+            returned_left = line.qty_returned
+            expired_left = line.qty_expired_unfit
+            cogs = Decimal("0.00")
+            for row in pool:
+                lot = row["lot"]
+                while row["remaining"] and (sold_left or returned_left or expired_left):
+                    if sold_left:
+                        qty = min(row["remaining"], sold_left)
+                        sold_left -= qty
+                        cogs += Decimal(qty) * lot.unit_cost
+                        LotConsumption.objects.create(line=line, lot=lot, qty=qty,
+                                                      unit_cost=lot.unit_cost)
+                        dest = None
+                    elif returned_left:
+                        qty = min(row["remaining"], returned_left)
+                        returned_left -= qty
+                        dest = Zone.WAREHOUSE
+                    else:
+                        qty = min(row["remaining"], expired_left)
+                        expired_left -= qty
+                        dest = line.target_zone
+                    row["remaining"] -= qty
+                    effects.stock.append(StockDelta(
+                        item_id=line.item_id, lot_id=lot.pk, zone=Zone.CONSIGNED,
+                        qty_delta=-qty, batch_id=line.batch_id,
+                        customer_id=doc.customer_id, line_id=line.pk,
+                    ))
+                    if dest:
+                        effects.stock.append(StockDelta(
+                            item_id=line.item_id, lot_id=lot.pk, zone=dest,
+                            qty_delta=qty, batch_id=line.batch_id, line_id=line.pk,
+                        ))
+
+            line.qty_base = total
+            line.line_net = round2(Decimal(line.qty_sold) * value_per_base)
+            line.is_taxable = is_taxable
+            line.cogs_total = round2(cogs)
+            line.save()
+            if line.qty_sold:
+                parts.append(Part(value=line.line_net, is_taxable=line.is_taxable))
+
+        _freeze_totals_at_rate(doc, parts, issue.tax_rate_snapshot)
+        if settings.withholding_on_sales and doc.customer_will_withhold:
+            doc.withholding_expected = round2(
+                settings.withholding_rate / 100 * (doc.grand_total - doc.tax_total)
+            )
+
+        if doc.sale_kind == Document.SaleKind.CASH:
+            payments = list(doc.payment_lines.all())
+            paid = sum((p.amount for p in payments), Decimal("0.00"))
+            if paid != doc.grand_total:
+                raise PostingError(
+                    _("Cash settlement: payment lines (%(p)s) must equal the total (%(t)s).")
+                    % {"p": paid, "t": doc.grand_total}
+                )
+            for p in payments:
+                effects.money.append((p.account_id, p.amount))
+        elif doc.grand_total:
+            effects.party.append(("CUSTOMER", doc.customer_id, doc.grand_total))
+        return effects
 
 
 class CustomerReturnHandler(Handler):
@@ -336,4 +570,6 @@ class CustomerReturnHandler(Handler):
 
 register(DocType.SALE, SaleHandler())
 register(DocType.PROFORMA, ProformaHandler())
+register(DocType.CONSIGNMENT_ISSUE, ConsignmentIssueHandler())
+register(DocType.CONSIGNMENT_SETTLEMENT, ConsignmentSettlementHandler())
 register(DocType.CUSTOMER_RETURN, CustomerReturnHandler())

@@ -5,6 +5,7 @@ import datetime
 from decimal import Decimal
 
 import pytest
+from django.urls import reverse
 
 from catalog.models import Customer, Item, Supplier
 from core.models import CompanySettings
@@ -209,6 +210,29 @@ def test_supplier_payment_with_withholding_and_remittance(owner, supplier, drug,
     assert wr.doc_no == "WR-000001"
     assert withholding_balance("PAYABLE") == D("0.00")
     assert account_balance(cash) == D("-1000.00")
+
+
+def test_supplier_withholding_certificate_print(client, owner, supplier, drug,
+                                                cash, wht_settings):
+    grn = receive(owner, supplier, drug)
+    pv = Document.objects.create(
+        doc_type=DocType.SUPPLIER_PAYMENT,
+        created_by=owner,
+        supplier=supplier,
+        withheld_amount=D("30.00"),
+        withholding_certificate_no="PV-WHT-1",
+    )
+    PaymentLine.objects.create(document=pv, account=cash, amount=D("970.00"))
+    PaymentAllocation.objects.create(payment=pv, target=grn, amount=D("1000.00"))
+    pv = post(pv, owner)
+
+    client.force_login(owner)
+    response = client.get(reverse("withholding_certificate_print", args=[pv.pk]))
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert "Withholding certificate" in content
+    assert "PV-WHT-1" in content
+    assert "30.00" in content
 
 
 def test_remittance_cannot_exceed_payable(owner, cash, wht_settings):

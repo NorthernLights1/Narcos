@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{{ title }} - Narcos{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ title }}</h1>
+  <div class="actions">
+    <a class="btn" href="?period={{ period }}&start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&format=csv">{% translate "CSV" %}</a>
+  </div>
+</div>
+
+<form method="get" class="card form-grid">
+  <div class="field">
+    <label for="id_period">{% translate "Period" %}</label>
+    <select id="id_period" name="period">
+      <option value="this_fy"{% if period == "this_fy" %} selected{% endif %}>{% translate "This fiscal year" %}</option>
+      <option value="last_fy"{% if period == "last_fy" %} selected{% endif %}>{% translate "Last fiscal year" %}</option>
+      <option value="custom"{% if period == "custom" %} selected{% endif %}>{% translate "Custom" %}</option>
+    </select>
+  </div>
+  <div class="field">
+    <label for="id_start">{% translate "Start" %}</label>
+    <input id="id_start" type="date" name="start" value="{{ start|date:'Y-m-d' }}">
+  </div>
+  <div class="field">
+    <label for="id_end">{% translate "End" %}</label>
+    <input id="id_end" type="date" name="end" value="{{ end|date:'Y-m-d' }}">
+  </div>
+  <div class="field">
+    <label>&nbsp;</label>
+    <button class="btn btn-primary" type="submit">{% translate "Apply" %}</button>
+  </div>
+</form>
+
+<div class="card">
+  <table class="table">
+    <thead>
+      <tr>
+        {% for column in columns %}<th>{{ column }}</th>{% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>
+      {% empty %}
+      <tr><td colspan="{{ columns|length }}">{% translate "No rows." %}</td></tr>
+      {% endfor %}
+      {% if total %}
+      <tr class="total-row">{% for cell in total %}<th>{{ cell }}</th>{% endfor %}</tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

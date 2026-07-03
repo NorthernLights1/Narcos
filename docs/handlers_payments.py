@@ -99,9 +99,10 @@ class _PaymentBase(Handler):
             if target.doc_type not in self.target_types:
                 raise PostingError(_("Documents of type %(t)s cannot be settled here.")
                                    % {"t": target.doc_type})
-            if target.doc_type == DocType.SALE \
-                    and target.sale_kind != Document.SaleKind.CREDIT:
-                raise PostingError(_("Cash sales have no balance to settle."))
+            if target.doc_type in (DocType.SALE, DocType.CONSIGNMENT_SETTLEMENT) \
+                    and target.sale_kind != Document.SaleKind.CREDIT \
+                    and doc.related_document_id != target.pk:
+                raise PostingError(_("Cash documents can only be settled by their auto payment."))
             if self._target_party_id(target) != party_id:
                 raise PostingError(_("Allocation target %(no)s belongs to another party.")
                                    % {"no": target.doc_no})
@@ -119,9 +120,14 @@ class _PaymentBase(Handler):
         effects = Effects()
         for line in lines:
             effects.money.append((line.account_id, self.money_sign * line.amount))
-        # The invoice settles for cash + withheld together (D51/D52); the
-        # withheld piece moves to its bucket, never touching revenue (D53).
-        effects.party.append((self.party_type, party_id, -total))
+        # The invoice settles for cash + withheld together (D51/D52); linked
+        # cash-now documents have no AR/AP row to reverse.
+        party_delta = Decimal("0.00")
+        for allocation in allocations:
+            if self._target_has_party_balance(doc, targets[allocation.target_id]):
+                party_delta -= allocation.amount
+        if party_delta:
+            effects.party.append((self.party_type, party_id, party_delta))
         if doc.withheld_amount > 0:
             effects.withholding.append((
                 self.withholding_direction, doc.withheld_amount,
@@ -131,6 +137,17 @@ class _PaymentBase(Handler):
 
     def _target_party_id(self, target: Document) -> int:
         raise NotImplementedError
+
+    def _target_has_party_balance(self, doc: Document, target: Document) -> bool:
+        if target.doc_type in (DocType.SALE, DocType.CONSIGNMENT_SETTLEMENT):
+            return target.sale_kind == Document.SaleKind.CREDIT
+        if target.doc_type == DocType.RECEIVING and doc.related_document_id == target.pk:
+            return False
+        return True
+
+    def check_voidable(self, doc: Document) -> None:
+        if doc.related_document_id and doc.related_document.status == Document.Status.POSTED:
+            raise PostingError(_("Void the source document; its auto payment will void with it."))
 
 
 class CustomerPaymentHandler(_PaymentBase):

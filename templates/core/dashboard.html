@@ -1,13 +1,86 @@
 {% extends "base.html" %}
 {% load i18n %}
-{% block title %}{% translate "Dashboard" %} — Narcos{% endblock %}
+{% block title %}{% translate "Dashboard" %} - Narcos{% endblock %}
 {% block content %}
 <h1>{% translate "Dashboard" %}</h1>
-<p class="today">{{ today }} · {{ today_ethiopian }}</p>
+<p class="today">{{ today }} - {{ today_ethiopian }}</p>
 <div class="cards">
-  {# Alert cards land here per spec §8 (P9): low stock, expiry, consignments due. #}
-  <div class="card"><h2>{% translate "Low stock" %}</h2><p class="placeholder">{% translate "Coming in a later phase." %}</p></div>
-  <div class="card"><h2>{% translate "Expiry" %}</h2><p class="placeholder">{% translate "Coming in a later phase." %}</p></div>
-  <div class="card"><h2>{% translate "Consignments due" %}</h2><p class="placeholder">{% translate "Coming in a later phase." %}</p></div>
+  <div class="card">
+    <h2>{% translate "Low stock" %}</h2>
+    {% if low_stock %}
+      <ul class="compact-list">
+        {% for row in low_stock %}
+          <li>{{ row.item.code }} - {{ row.item.name }} - {{ row.qty }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="placeholder">{% translate "No low-stock items." %}</p>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h2>{% translate "Expiry" %}</h2>
+    {% if expiry_alerts %}
+      <ul class="compact-list">
+        {% for row in expiry_alerts %}
+          <li>{{ row.balance.item.code }} - {{ row.balance.batch.batch_no }} - {{ row.balance.batch.expiry_date }} - {{ row.status }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="placeholder">{% translate "No expiry alerts." %}</p>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h2>{% translate "Consignments due" %}</h2>
+    {% if consignments_due %}
+      <ul class="compact-list">
+        {% for row in consignments_due %}
+          <li>
+            <a href="{% url 'document_detail' row.doc.pk %}">{{ row.doc.doc_no }}</a>
+            {{ row.doc.customer }} - {{ row.remaining }} - {{ row.state }}
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="placeholder">{% translate "None due in the next 14 days." %}</p>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h2>{% translate "AR overdue" %}</h2>
+    {% if ar_overdue %}
+      <ul class="compact-list">
+        {% for row in ar_overdue %}
+          <li><a href="{% url 'document_detail' row.doc.pk %}">{{ row.doc.doc_no }}</a> - {{ row.doc.customer }} - {{ row.balance }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="placeholder">{% translate "No overdue receivables." %}</p>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h2>{% translate "Fiscal mismatches" %}</h2>
+    {% if fiscal_mismatches %}
+      <ul class="compact-list">
+        {% for doc in fiscal_mismatches %}
+          <li><a href="{% url 'document_detail' doc.pk %}">{{ doc.doc_no }}</a> - {{ doc.machine_total }} / {{ doc.grand_total }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="placeholder">{% translate "No mismatches." %}</p>
+    {% endif %}
+  </div>
+  {% if user.is_owner %}
+  <div class="card">
+    <h2>{% translate "Low margin" %}</h2>
+    {% if low_margin %}
+      <ul class="compact-list">
+        {% for row in low_margin %}
+          <li>{{ row.item.code }} - {{ row.margin|floatformat:2 }}%</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="placeholder">{% translate "No low-margin items." %}</p>
+    {% endif %}
+  </div>
+  {% endif %}
 </div>
 {% endblock %}

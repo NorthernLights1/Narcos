@@ -14,13 +14,19 @@
   {% if user.is_authenticated %}
   <nav class="nav" aria-label="{% translate 'Main navigation' %}">
     <a href="{% url 'dashboard' %}">{% translate "Dashboard" %}</a>
+    <a href="{% url 'document_list' %}">{% translate "Documents" %}</a>
+    <a href="{% url 'report_hub' %}">{% translate "Reports" %}</a>
     <a href="{% url 'master_list' 'items' %}">{% translate "Items" %}</a>
     <a href="{% url 'master_list' 'customers' %}">{% translate "Customers" %}</a>
     <a href="{% url 'master_list' 'suppliers' %}">{% translate "Suppliers" %}</a>
     <a href="{% url 'master_list' 'accounts' %}">{% translate "Accounts" %}</a>
     <a href="{% url 'master_list' 'expense-categories' %}">{% translate "Expenses" %}</a>
     <a href="{% url 'master_list' 'fixed-assets' %}">{% translate "Assets" %}</a>
-    {% if user.is_owner %}<a href="{% url 'company_settings' %}">{% translate "Settings" %}</a>{% endif %}
+    {% if user.is_owner %}
+      <a href="{% url 'user_list' %}">{% translate "Users" %}</a>
+      <a href="{% url 'audit_log' %}">{% translate "Audit" %}</a>
+      <a href="{% url 'company_settings' %}">{% translate "Settings" %}</a>
+    {% endif %}
   </nav>
   <form class="logout" method="post" action="{% url 'logout' %}">
     {% csrf_token %}
