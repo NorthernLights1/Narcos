@@ -161,6 +161,12 @@ class DocumentLine(models.Model):
     document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name="lines")
     item = models.ForeignKey("catalog.Item", on_delete=models.PROTECT)
     batch = models.ForeignKey("stock.Batch", null=True, blank=True, on_delete=models.PROTECT)
+    # Receiving drafts carry the raw batch entry; the Batch row is get-or-created
+    # at posting (§7.1). Returns/moves pick a specific source lot (§7.7).
+    batch_no_entered = models.CharField(max_length=60, blank=True)
+    expiry_entered = models.DateField(null=True, blank=True)
+    lot = models.ForeignKey("stock.CostLot", null=True, blank=True,
+                            on_delete=models.PROTECT, related_name="+")
     unit_label = models.CharField(max_length=50)  # ※
     factor = models.PositiveIntegerField(default=1)  # ※ D62
     qty_entered = models.PositiveIntegerField()
