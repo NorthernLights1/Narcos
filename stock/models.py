@@ -51,6 +51,9 @@ class CostLot(models.Model):
     def save(self, *args, **kwargs):
         if self.pk is not None:
             raise NotImplementedError("Cost lots are frozen at receipt (D1); never edited.")
+        if self.source_line is not None and self.source_line.document.status != "DRAFT":
+            # Lots are created during posting while the doc is DRAFT in the DB
+            raise NotImplementedError("Cannot attach cost lots to a locked document (I1).")
         super().save(*args, **kwargs)
 
     def __str__(self) -> str:
@@ -71,6 +74,7 @@ class StockLedger(models.Model):
     consignment_customer = models.ForeignKey("catalog.Customer", null=True, blank=True,
                                              on_delete=models.PROTECT)
     qty_delta = models.IntegerField()  # + in, − out
+    is_reversal = models.BooleanField(default=False)  # written by void()
     at = models.DateTimeField(db_index=True)
 
     class Meta:

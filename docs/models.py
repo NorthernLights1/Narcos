@@ -48,8 +48,9 @@ PREFIXES = {
 
 # §7.12: the only fields editable after posting (reference-only, audited)
 POST_EDITABLE_FIELDS = {"fiscal_receipt_no", "machine_total", "withholding_certificate_no"}
-# Fields the void path itself must write
-VOID_FIELDS = {"status", "voided_by", "voided_at", "void_reason"}
+# Fields the void path itself must write (attnames — the diff compares attnames,
+# so the FK must appear here as voided_by_id, not voided_by)
+VOID_FIELDS = {"status", "voided_by_id", "voided_at", "void_reason"}
 
 
 class Document(models.Model):
@@ -110,7 +111,7 @@ class Document(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     posted_by = models.ForeignKey("core.User", null=True, blank=True,
                                   on_delete=models.PROTECT, related_name="documents_posted")
-    posted_at = models.DateTimeField(null=True, blank=True)
+    posted_at = models.DateTimeField(null=True, blank=True, db_index=True)  # clock-anomaly hot path
     voided_by = models.ForeignKey("core.User", null=True, blank=True,
                                   on_delete=models.PROTECT, related_name="documents_voided")
     voided_at = models.DateTimeField(null=True, blank=True)
@@ -132,13 +133,15 @@ class Document(models.Model):
                     f.attname for f in self._meta.concrete_fields
                     if getattr(old, f.attname) != getattr(self, f.attname)
                 }
-                # strip FK attnames back to field names for the allow-list
-                allowed = POST_EDITABLE_FIELDS | VOID_FIELDS | {"voided_by_id"}
+                allowed = POST_EDITABLE_FIELDS | VOID_FIELDS
                 if changed - allowed:
                     raise ImmutableDocumentError(
                         f"Posted document {old.doc_no} is immutable; "
                         f"attempted to change: {sorted(changed - allowed)} (I1)"
                     )
+                # Write only the changed fields so two staff editing different
+                # §7.12 reference fields never clobber each other.
+                kwargs.setdefault("update_fields", sorted(changed))
             elif old.status == self.Status.VOIDED:
                 raise ImmutableDocumentError("Voided documents are immutable.")
         super().save(*args, **kwargs)
@@ -182,7 +185,8 @@ class DocumentLine(models.Model):
         return self.document.status != Document.Status.DRAFT
 
     def save(self, *args, **kwargs):
-        if self.pk is not None and self._document_is_locked():
+        # Guards inserts AND updates: nothing may be attached to a locked doc (I1)
+        if self._document_is_locked():
             raise ImmutableDocumentError("Lines of a posted document are immutable (I1).")
         super().save(*args, **kwargs)
 
@@ -199,6 +203,11 @@ class DocumentCharge(models.Model):
     label = models.CharField(max_length=100)
     amount = models.DecimalField(max_digits=14, decimal_places=2)
     is_taxable = models.BooleanField(default=True)
+
+    def save(self, *args, **kwargs):
+        if self.document.status != Document.Status.DRAFT:
+            raise ImmutableDocumentError("Charges of a posted document are immutable (I1).")
+        super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
         if self.document.status != Document.Status.DRAFT:
@@ -219,4 +228,8 @@ class LotConsumption(models.Model):
     def save(self, *args, **kwargs):
         if self.pk is not None:
             raise NotImplementedError("Lot consumptions are frozen at posting.")
+        if self.line.document.status != Document.Status.DRAFT:
+            # Consumptions are written during posting, while the doc is still
+            # DRAFT in the DB; anything later is tampering (I1).
+            raise ImmutableDocumentError("Cannot attach consumptions to a locked document.")
         super().save(*args, **kwargs)

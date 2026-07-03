@@ -82,14 +82,16 @@ def _check_clock_anomaly(now, actor) -> None:
                   detail={"now": now.isoformat(), "latest_posting": latest.isoformat()})
 
 
-def _apply_stock(doc: Document, deltas: list[StockDelta], now, actor) -> None:
+def _apply_stock(doc: Document, deltas: list[StockDelta], now, actor,
+                 is_reversal: bool = False) -> None:
     if not deltas:
         return
     for d in deltas:
         StockLedger.objects.create(
             document=doc, document_line_id=d.line_id, item_id=d.item_id,
             batch_id=d.batch_id, lot_id=d.lot_id, zone=d.zone,
-            consignment_customer_id=d.customer_id, qty_delta=d.qty_delta, at=now,
+            consignment_customer_id=d.customer_id, qty_delta=d.qty_delta,
+            is_reversal=is_reversal, at=now,
         )
     # Net the deltas per balance row, then lock/update in stable key order (D14)
     net: dict[tuple, int] = {}
@@ -139,7 +141,10 @@ def _write_money(doc: Document, effects: Effects, now) -> None:
 def post(document: Document, actor) -> Document:
     """§4 Post(): single transaction, serialized by row locks (D14)."""
     with transaction.atomic():
-        doc = Document.objects.select_for_update().get(pk=document.pk)
+        try:
+            doc = Document.objects.select_for_update().get(pk=document.pk)
+        except Document.DoesNotExist:
+            raise PostingError(_("Document no longer exists (draft was deleted)."))
         if doc.status != Document.Status.DRAFT:
             raise PostingError(_("Only drafts can be posted (D28)."))
         handler = get_handler(doc.doc_type)
@@ -171,7 +176,10 @@ def void(document: Document, actor, reason: str) -> Document:
     if not reason.strip():
         raise PostingError(_("A void reason is required (D28)."))
     with transaction.atomic():
-        doc = Document.objects.select_for_update().get(pk=document.pk)
+        try:
+            doc = Document.objects.select_for_update().get(pk=document.pk)
+        except Document.DoesNotExist:
+            raise PostingError(_("Document no longer exists."))
         if doc.status != Document.Status.POSTED:
             raise PostingError(_("Only posted documents can be voided."))
         get_handler(doc.doc_type).check_voidable(doc)  # D5 hook
@@ -184,22 +192,22 @@ def void(document: Document, actor, reason: str) -> Document:
                 batch_id=row.batch_id, customer_id=row.consignment_customer_id,
                 qty_delta=-row.qty_delta, line_id=row.document_line_id,
             )
-            for row in doc.stock_moves.all()
+            for row in doc.stock_moves.filter(is_reversal=False)
         ]
-        _apply_stock(doc, reversals, now, actor)
-        for row in list(doc.money_rows.all()):
+        _apply_stock(doc, reversals, now, actor, is_reversal=True)
+        for row in list(doc.money_rows.filter(is_reversal=False)):
             MoneyLedger.objects.create(account_id=row.account_id,
                                        amount_delta=-row.amount_delta,
-                                       document=doc, at=now)
-        for row in list(doc.party_rows.all()):
+                                       document=doc, is_reversal=True, at=now)
+        for row in list(doc.party_rows.filter(is_reversal=False)):
             PartyLedger.objects.create(party_type=row.party_type, party_id=row.party_id,
                                        amount_delta=-row.amount_delta,
-                                       document=doc, at=now)
-        for row in list(doc.withholding_rows.all()):
+                                       document=doc, is_reversal=True, at=now)
+        for row in list(doc.withholding_rows.filter(is_reversal=False)):
             WithholdingLedger.objects.create(direction=row.direction,
                                              amount_delta=-row.amount_delta,
                                              document=doc, certificate_no=row.certificate_no,
-                                             at=now)
+                                             is_reversal=True, at=now)
 
         doc.status = Document.Status.VOIDED
         doc.voided_by = actor
@@ -217,23 +225,28 @@ def void(document: Document, actor, reason: str) -> Document:
 class ExpenseHandler(Handler):
     """§7.9: category, account (via payment lines), payee, amount → money −."""
 
-    def validate(self, doc: Document) -> None:
-        if doc.expense_category_id is None:
-            raise PostingError(_("Expense needs a category."))
+    @staticmethod
+    def _check_lines(doc: Document) -> list:
         lines = list(doc.payment_lines.all())
         if not lines:
             raise PostingError(_("Expense needs at least one payment line."))
-        total = sum((line.amount for line in lines), Decimal("0.00"))
-        if total <= 0:
-            raise PostingError(_("Expense amount must be positive."))
         if any(line.amount <= 0 for line in lines):
             raise PostingError(_("Every payment line must be positive."))
+        total = sum((line.amount for line in lines), Decimal("0.00"))
         if doc.grand_total != total:
             raise PostingError(_("Grand total must equal the sum of payment lines."))
+        return lines
+
+    def validate(self, doc: Document) -> None:
+        if doc.expense_category_id is None:
+            raise PostingError(_("Expense needs a category."))
+        self._check_lines(doc)
 
     def build_effects(self, doc: Document) -> Effects:
+        # Re-read and re-check under the posting lock: a line inserted between
+        # validate() and here must not slip into the ledger unverified (TOCTOU).
         effects = Effects()
-        for line in doc.payment_lines.all():
+        for line in self._check_lines(doc):
             effects.money.append((line.account_id, -line.amount))
         return effects
 

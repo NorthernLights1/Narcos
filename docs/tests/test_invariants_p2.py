@@ -59,6 +59,20 @@ def test_i1_payment_lines_frozen_after_posting(owner, cash, rent):
         line.save()
 
 
+def test_i1_no_new_lines_on_posted_documents(owner, cash, rent):
+    """Regression for review finding: inserts (not just updates) must be blocked."""
+    from money.models import PaymentLine
+
+    doc = post(make_expense(owner, cash, rent), owner)
+    with pytest.raises(ValueError):
+        PaymentLine.objects.create(document=doc, account=cash,
+                                   amount=Decimal("999999.00"))
+    from docs.models import DocumentCharge
+    with pytest.raises(ImmutableDocumentError):
+        DocumentCharge.objects.create(document=doc, label="sneaky",
+                                      amount=Decimal("5.00"))
+
+
 def test_i1_voided_documents_fully_immutable(owner, cash, rent):
     doc = post(make_expense(owner, cash, rent), owner)
     void(doc, owner, "test")
@@ -96,9 +110,17 @@ def test_i2_void_requires_owner_and_reason(owner, employee, cash, rent):
         void(doc, employee, "not allowed")
     with pytest.raises(PostingError):
         void(doc, owner, "   ")
-    with pytest.raises(PostingError):  # double void
-        void(doc, owner, "first")
+    voided = void(doc, owner, "first")  # must succeed
+    assert voided.status == Document.Status.VOIDED
+    with pytest.raises(PostingError):  # double void blocked
         void(doc, owner, "second")
+
+
+def test_i2_reversal_rows_are_tagged(owner, cash, rent):
+    doc = post(make_expense(owner, cash, rent), owner)
+    void(doc, owner, "test")
+    kinds = sorted(doc.money_rows.values_list("is_reversal", flat=True))
+    assert kinds == [False, True]  # one original, one tagged reversal
 
 
 # --- Engine plumbing for stock invariants: a test-only stock-out handler ---
