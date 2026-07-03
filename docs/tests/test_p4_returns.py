@@ -130,6 +130,40 @@ def test_unreferenced_return_needs_entered_cost(owner, sold_sale, drug):
         post(cr, owner)
 
 
+def test_cumulative_returns_capped_at_sold_qty(owner, sold_sale, drug):
+    """Review-gate CRITICAL regression: 20 sold; 15 returned; a second
+    15-unit return must be blocked (only 5 remain returnable)."""
+    post(return_draft(owner, sold_sale, drug, 15), owner)
+    second = return_draft(owner, sold_sale, drug, 15)
+    with pytest.raises(PostingError):
+        post(second, owner)
+    third = return_draft(owner, sold_sale, drug, 5)  # exactly the remainder
+    assert post(third, owner).status == Document.Status.POSTED
+
+
+def test_two_lines_same_item_capped_together(owner, sold_sale, drug):
+    """The cap also counts lines within the same return document."""
+    cr = return_draft(owner, sold_sale, drug, 15)
+    DocumentLine.objects.create(
+        document=cr, item=drug, batch=sold_sale.lines.get().batch, qty_entered=15,
+        unit_price=D("15.00"), target_zone=Zone.WAREHOUSE, unit_label="pack", factor=1,
+    )
+    with pytest.raises(PostingError):
+        post(cr, owner)
+
+
+def test_return_of_item_not_on_sale_rejected(owner, sold_sale, customer):
+    other = Item.objects.create(code="OTHER", name="Other", base_unit="pack",
+                                is_batch_tracked=False, has_expiry=False)
+    cr = Document.objects.create(doc_type=DocType.CUSTOMER_RETURN, created_by=owner,
+                                 customer=customer, related_document=sold_sale)
+    DocumentLine.objects.create(document=cr, item=other, qty_entered=1,
+                                unit_price=D("5.00"), target_zone=Zone.WAREHOUSE,
+                                unit_label="pack", factor=1)
+    with pytest.raises(PostingError):
+        post(cr, owner)
+
+
 def test_returned_goods_resellable_from_new_lot(owner, sold_sale, drug, customer, cash):
     cr = return_draft(owner, sold_sale, drug, 5)
     post(cr, owner)

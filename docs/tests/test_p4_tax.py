@@ -128,3 +128,34 @@ def test_empty_invoice_is_all_zero():
 
 def test_single_part_gets_whole_discount():
     assert allocate_discount([taxable("100.00")], D("7.77")) == [D("7.77")]
+
+
+# --- Review-gate HIGH regression: bounded allocation, no negative bases ---
+
+
+def test_near_total_discount_never_negative_bases():
+    """21 exempt lines + tiny taxable charge, discount ≈ subtotal: the naive
+    last-absorbs rule pushed taxable_base negative. Must stay bounded."""
+    parts = [exempt("1.00") for _ in range(21)] + [taxable("0.43")]
+    subtotal = D("21.43")
+    totals = compute_totals(parts, D("21.00"), "VAT", D("15.00"))
+    assert totals.taxable_base >= D("0.00")
+    assert totals.exempt_base >= D("0.00")
+    assert totals.tax_total >= D("0.00")
+    # exact-sum property preserved: bases sum to subtotal − discount
+    assert totals.taxable_base + totals.exempt_base == subtotal - D("21.00")
+
+
+def test_allocation_never_exceeds_part_value_fuzz():
+    import random
+    rng = random.Random(7)
+    for _ in range(300):
+        parts = [Part(value=D(rng.randint(1, 5000)) / 100,
+                      is_taxable=rng.random() < 0.5)
+                 for _ in range(rng.randint(1, 12))]
+        subtotal = sum((p.value for p in parts), D("0"))
+        discount = (subtotal * D(rng.randint(0, 10000)) / 10000).quantize(D("0.01"))
+        allocations = allocate_discount(parts, discount)
+        assert sum(allocations) == discount
+        for part, alloc in zip(parts, allocations):
+            assert D("0.00") <= alloc <= part.value

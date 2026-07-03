@@ -137,9 +137,14 @@ class SaleHandler(Handler):
                 settings.withholding_rate / 100 * (doc.grand_total - doc.tax_total)
             )
 
-        # D25/§8: credit exposure check (cash sales never count)
+        # D25/§8: credit exposure check (cash sales never count). Lock the
+        # customer row first so two concurrent credit sales for the same
+        # customer serialize and can't both slip under the limit.
         if doc.sale_kind == Document.SaleKind.CREDIT:
-            action, message = credit_check(doc.customer, settings, doc.grand_total)
+            from catalog.models import Customer
+
+            customer = Customer.objects.select_for_update().get(pk=doc.customer_id)
+            action, message = credit_check(customer, settings, doc.grand_total)
             if action == "BLOCK" and not getattr(doc, "_override_reason", ""):
                 raise PostingError(message + " " + _("Owner override required (D25)."))
             if action in ("WARN", "BLOCK"):
@@ -172,8 +177,16 @@ class ProformaHandler(Handler):
     def validate(self, doc: Document) -> None:
         if doc.customer_id is None:
             raise PostingError(_("Proforma needs a customer."))
-        if not doc.lines.exists():
+        lines = list(doc.lines.select_related("item"))
+        if not lines:
             raise PostingError(_("Proforma needs at least one line."))
+        for line in lines:
+            if line.qty_entered <= 0:
+                raise PostingError(_("Line %(item)s: quantity must be positive.")
+                                   % {"item": line.item.code})
+            if line.unit_price < 0 or line.line_discount < 0:
+                raise PostingError(_("Line %(item)s: negative amounts not allowed.")
+                                   % {"item": line.item.code})
 
     def build_effects(self, doc: Document) -> Effects:
         settings = CompanySettings.load()
@@ -218,38 +231,63 @@ class CustomerReturnHandler(Handler):
                 raise PostingError(_("Line %(item)s: pick the batch returned (D29).")
                                    % {"item": line.item.code})
 
-    def _original_line(self, doc: Document, line):
-        if doc.related_document is None:
-            return None
-        return doc.related_document.lines.filter(
-            item_id=line.item_id, batch_id=line.batch_id
-        ).first()
+    @staticmethod
+    def _sale_totals(sale: Document, item_id, batch_id) -> tuple[int, Decimal, object]:
+        """Aggregate the sale's matching lines (a sale may legally carry the
+        same item+batch on several lines): (qty sold, total cogs, first line)."""
+        matching = list(sale.lines.filter(item_id=item_id, batch_id=batch_id)
+                        .order_by("pk"))
+        qty_sold = sum(line.qty_base for line in matching)
+        cogs = sum((line.cogs_total for line in matching), Decimal("0.00"))
+        return qty_sold, cogs, matching[0] if matching else None
 
-    def _return_cost(self, doc: Document, line) -> Decimal:
-        """Original COGS unit cost from the referenced sale line's consumptions;
-        owner-entered cost otherwise (§7.6)."""
-        original = self._original_line(doc, line)
-        if original is not None and original.qty_base:
-            return round2(original.cogs_total / original.qty_base)
-        if line.unit_cost_entered is None:
-            raise PostingError(_("Line %(item)s: enter the unit cost (no sale reference).")
-                               % {"item": line.item.code})
-        return line.unit_cost_entered
+    @staticmethod
+    def _already_returned(sale: Document, item_id, batch_id) -> int:
+        """Base units already returned against this sale by POSTED returns."""
+        from django.db.models import Sum
+
+        from docs.models import DocumentLine
+
+        return (
+            DocumentLine.objects.filter(
+                document__related_document=sale,
+                document__doc_type=DocType.CUSTOMER_RETURN,
+                document__status=Document.Status.POSTED,
+                item_id=item_id, batch_id=batch_id,
+            ).aggregate(total=Sum("qty_base"))["total"] or 0
+        )
 
     def build_effects(self, doc: Document) -> Effects:
         settings = CompanySettings.load()
         now = timezone.now()
+        sale = None
+        if doc.related_document_id is not None:
+            # Serialize returns against the same sale: two concurrent CRs must
+            # not both pass the cumulative-quantity cap (review-gate CRITICAL).
+            sale = Document.objects.select_for_update().get(pk=doc.related_document_id)
         lines = list(doc.lines.select_related("item", "batch"))
         parts = []
         effects = Effects()
+        requested: dict[tuple, int] = {}  # cumulative within THIS document too
         for line in lines:
             line.qty_base = line.qty_entered * line.factor
-            original = self._original_line(doc, line)
-            if original is not None:
-                if line.qty_base > original.qty_base:
+            original = None
+            if sale is not None:
+                key = (line.item_id, line.batch_id)
+                qty_sold, sale_cogs, original = self._sale_totals(
+                    sale, line.item_id, line.batch_id)
+                if original is None:
                     raise PostingError(
-                        _("Line %(item)s: returning more than was sold.")
-                        % {"item": line.item.code})
+                        _("Line %(item)s: the referenced sale has no such "
+                          "item/batch.") % {"item": line.item.code})
+                requested[key] = requested.get(key, 0) + line.qty_base
+                already = self._already_returned(sale, line.item_id, line.batch_id)
+                if requested[key] + already > qty_sold:
+                    raise PostingError(
+                        _("Line %(item)s: returning more than remains returnable "
+                          "on the sale (%(left)d of %(sold)d base units left).")
+                        % {"item": line.item.code,
+                           "left": max(qty_sold - already, 0), "sold": qty_sold})
                 if not line.unit_price:
                     line.unit_price = original.unit_price
                 line.is_taxable = original.is_taxable  # snapshot from the sale
@@ -259,7 +297,16 @@ class CustomerReturnHandler(Handler):
             line.line_net = round2(gross - line.line_discount)
             parts.append(Part(value=line.line_net, is_taxable=line.is_taxable))
 
-            cost = self._return_cost(doc, line)
+            # §7.6: original COGS unit cost — weighted over the sale's matching
+            # lines when referenced; owner-entered cost otherwise
+            if sale is not None and qty_sold:
+                cost = round2(sale_cogs / qty_sold)
+            elif line.unit_cost_entered is not None:
+                cost = line.unit_cost_entered
+            else:
+                raise PostingError(
+                    _("Line %(item)s: enter the unit cost (no sale reference).")
+                    % {"item": line.item.code})
             lot = CostLot.objects.create(
                 item=line.item, batch=line.batch, source_line=line,
                 received_at=now, qty_received=line.qty_base, unit_cost=cost,

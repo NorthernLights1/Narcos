@@ -36,7 +36,12 @@ class TaxError(ValueError):
 
 def allocate_discount(parts: list[Part], doc_discount: Decimal) -> list[Decimal]:
     """D64: pro-rata by value, 2 dp per part, LAST part absorbs the rounding
-    remainder so the allocations sum exactly to doc_discount."""
+    remainder so the allocations sum exactly to doc_discount.
+
+    Bounds (review-gate fix): no allocation may exceed its part's value or go
+    below zero — near-total discounts otherwise push the last part's net (and
+    the tax base) negative. Overflow/deficit rolls onto earlier parts with
+    headroom; the sum stays exact."""
     subtotal = sum((p.value for p in parts), Decimal("0.00"))
     if doc_discount == 0 or not parts:
         return [Decimal("0.00")] * len(parts)
@@ -49,6 +54,29 @@ def allocate_discount(parts: list[Part], doc_discount: Decimal) -> list[Decimal]
         allocations.append(share)
         allocated += share
     allocations.append(doc_discount - allocated)  # last absorbs remainder
+
+    last = len(parts) - 1
+    excess = allocations[last] - parts[last].value
+    if excess > 0:  # last part over-discounted → push overflow backwards
+        allocations[last] = parts[last].value
+        j = last - 1
+        while j >= 0 and excess > 0:
+            headroom = parts[j].value - allocations[j]
+            take = min(headroom, excess)
+            allocations[j] += take
+            excess -= take
+            j -= 1
+        if excess > 0:  # unreachable while doc_discount <= subtotal
+            raise TaxError("Discount allocation failed — check the amounts.")
+    elif allocations[last] < 0:  # earlier rounding over-allocated → claw back
+        deficit = -allocations[last]
+        allocations[last] = Decimal("0.00")
+        j = last - 1
+        while j >= 0 and deficit > 0:
+            take = min(allocations[j], deficit)
+            allocations[j] -= take
+            deficit -= take
+            j -= 1
     return allocations
 
 
@@ -72,6 +100,9 @@ def compute_totals(parts: list[Part], doc_discount: Decimal,
             taxable_base += net
         else:
             exempt_base += net
+
+    if taxable_base < 0 or exempt_base < 0:
+        raise TaxError("Internal error: negative tax base after allocation.")
 
     if regime in ("VAT", "TOT"):
         tax_total = round2(taxable_base * rate / 100)  # once, at doc level (D32)
