@@ -1,0 +1,92 @@
+"""Catalog forms. Margin/pricing-mode fields are owner-only (D33)."""
+
+from django import forms
+from django.forms import inlineformset_factory
+from django.utils.translation import gettext_lazy as _
+
+from catalog.models import (
+    Account,
+    Customer,
+    ExpenseCategory,
+    FixedAsset,
+    Item,
+    ItemUnit,
+    Supplier,
+)
+
+OWNER_ONLY_ITEM_FIELDS = ["pricing_mode", "auto_margin_pct", "min_margin_pct"]
+
+
+class ItemForm(forms.ModelForm):
+    class Meta:
+        model = Item
+        fields = [
+            "code", "name", "category", "is_batch_tracked", "has_expiry",
+            "vat_exempt", "base_unit", "generic_name", "dosage_form", "strength",
+            "pack_description", "maintained_price", "pricing_mode",
+            "auto_margin_pct", "min_margin_pct", "reorder_level", "shelf_bin",
+            "is_active",
+        ]
+
+    def __init__(self, *args, is_owner: bool = True, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not is_owner:
+            for name in OWNER_ONLY_ITEM_FIELDS:
+                del self.fields[name]
+
+    def clean(self):
+        data = super().clean()
+        if data.get("has_expiry") and not data.get("is_batch_tracked"):
+            self.add_error(
+                "has_expiry",
+                _("Expiry dates live on batches — enable batch tracking or clear this."),
+            )
+        if data.get("pricing_mode") == Item.PricingMode.AUTO and not data.get("auto_margin_pct"):
+            self.add_error("auto_margin_pct", _("Required when pricing is automatic."))
+        return data
+
+
+ItemUnitFormSet = inlineformset_factory(
+    Item, ItemUnit, fields=["unit_label", "factor_to_base"], extra=1, can_delete=True
+)
+
+
+class CustomerForm(forms.ModelForm):
+    class Meta:
+        model = Customer
+        fields = [
+            "code", "name", "tin", "phone", "address", "credit_limit",
+            "credit_action", "is_withholding_agent", "is_active",
+        ]
+
+
+class SupplierForm(forms.ModelForm):
+    class Meta:
+        model = Supplier
+        fields = ["code", "name", "tin", "phone", "address", "is_active"]
+
+
+class AccountForm(forms.ModelForm):
+    class Meta:
+        model = Account
+        fields = ["name", "type", "is_active"]
+
+
+class ExpenseCategoryForm(forms.ModelForm):
+    class Meta:
+        model = ExpenseCategory
+        fields = ["name", "is_active"]
+
+
+class FixedAssetForm(forms.ModelForm):
+    class Meta:
+        model = FixedAsset
+        fields = ["name", "cost", "purchase_date", "useful_life_years", "notes"]
+        widgets = {
+            "purchase_date": forms.DateInput(attrs={"type": "date"}),
+            "notes": forms.Textarea(attrs={"rows": 3}),
+        }
+
+
+class CsvImportForm(forms.Form):
+    file = forms.FileField(label=_("CSV file"))

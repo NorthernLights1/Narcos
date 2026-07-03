@@ -128,9 +128,8 @@ class AuditLog(models.Model):
 
 class NumberSequence(models.Model):
     """Gapless per-doc-type numbering (D8). take() must run inside the posting
-    transaction: select_for_update is a no-op on SQLite (the IMMEDIATE
-    transaction already serializes writers) and a real row lock on PostgreSQL
-    (D14/D65)."""
+    transaction: select_for_update takes a real row lock on PostgreSQL, so
+    two concurrent postings of the same doc type serialize here (D14/D66)."""
 
     doc_type = models.CharField(max_length=20, unique=True)
     next_no = models.PositiveIntegerField(default=1)

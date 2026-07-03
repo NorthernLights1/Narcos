@@ -227,10 +227,8 @@ One code path posts every document type; per-type logic plugs in.
 1. Validate the draft (per-type rules §7; system boundaries validated hard).
 2. `select_for_update()` the number_sequences row for the doc type; then lock
    (or create) every stock_balances row the document touches, in a stable
-   order (item id, lot id) to avoid deadlocks (D14). On SQLite these calls are
-   no-ops — the IMMEDIATE transaction already holds the single write lock,
-   which serializes postings entirely; on Postgres they take real row locks
-   (D65).
+   order (item id, lot id) to avoid deadlocks (D14). These take real row
+   locks on PostgreSQL (D66).
 3. Re-check business rules under lock — especially **no negative stock** (D4)
    and expired-sale block (D46).
 4. Freeze snapshots ※: prices, discounts, is_taxable, unit factors, computed
@@ -515,19 +513,17 @@ corresponding opening documents (§7.13) and is audited.
 
 ## 15. Non-functional
 
-- **Backups (D13/D48):** nightly Task Scheduler job: SQLite **online backup**
-  (`sqlite3 .backup` / Python `Connection.backup()` — safe while the app
-  runs; never a raw copy of a live db file) + zip of media folder → local
-  disk + external drive/cloud copy (may be encrypted). Retention: last 14
-  daily. Restore = stop app, put the file back — owner-only, documented
-  runbook, **tested before go-live**.
+- **Backups (D13/D48):** nightly Task Scheduler job: `pg_dump` (custom
+  format, online-safe) + zip of media folder → local disk + external
+  drive/cloud copy (may be encrypted). Retention: last 14 daily. Restore =
+  `pg_restore` into a fresh database — owner-only, documented runbook,
+  **tested before go-live**.
 - **Updates (R44):** runbook — restore latest backup to a scratch DB, run
   migrations there, then apply to live. Versions pinned.
-- **Security (R45):** the database is a file in the app's data folder —
-  filesystem access equals data access, so the Windows account/PC login is
-  the real boundary (document this for the owner). Django `SECRET_KEY` in an
-  env file outside source control; static IP/hostname when the LAN arrives;
-  HTTPS optional on closed LAN.
+- **Security (R45):** PostgreSQL bound to **localhost only** — browsers talk
+  to the app, never the DB. Strong unique DB password + Django `SECRET_KEY`
+  in an env file outside source control; static IP/hostname when the LAN
+  arrives; HTTPS optional on closed LAN.
 - **Concurrency (D14):** everything in §4; plus the app must run correctly
   with a single PC (v1 reality) and multiple browsers alike.
 - **i18n (D56):** wrap everything from day one; `LANGUAGES = [en]` in v1.
@@ -545,7 +541,7 @@ next phase starts (posting, money, and tax are where silent bugs live).
   audit_log, number_sequences, base templates (Tailwind + HTMX + Alpine
   wired), i18n wiring, Ethiopian calendar module (§12) with tests.
   *Accept:* login works; owner can edit settings; every settings change audited;
-  calendar tests pass; DB configured per D65 (WAL + IMMEDIATE verified by test).
+  calendar tests pass; DB configured per D66 (PostgreSQL, localhost — verified by test).
 - **P1 — Master data + imports.** Items (+units), customers, suppliers,
   accounts, expense categories, fixed assets; duplicate search-as-you-type
   (D26); CSV importers with validate-first (§14).
@@ -624,8 +620,8 @@ next phase starts (posting, money, and tax are where silent bugs live).
 - **I16** Stock count compares against the frozen snapshot, not live qty;
   mid-count movement triggers the warning and correct variance.
 
-D65 rider: the suite runs on SQLite day to day; **I3 and I4 must additionally
-pass against PostgreSQL before any multi-user/LAN/hosted deployment.**
+D66 rider: the suite runs against PostgreSQL — the shipped database. I3 and
+I4 exercise real parallel transactions with row locks.
 
 ---
 

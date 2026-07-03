@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% translate "Import" %} {{ title }} — Narcos{% endblock %}
+{% block content %}
+<h1>{% translate "Import" %} — {{ title }}</h1>
+<form method="post" enctype="multipart/form-data" class="card">
+  {% csrf_token %}
+  <p class="field-help">
+    {% translate "The whole file is validated first. If any row has an error, nothing is imported." %}
+  </p>
+  <div class="field">
+    {{ form.file.label_tag }} {{ form.file }}
+    {% if form.file.errors %}<p class="field-error">{{ form.file.errors|striptags }}</p>{% endif %}
+  </div>
+  <button type="submit" class="btn btn-primary">{% translate "Validate and import" %}</button>
+  <a class="btn btn-quiet" href="{% url 'master_list' kind %}">{% translate "Back" %}</a>
+</form>
+
+{% if result and result.errors %}
+<div class="card">
+  <h2 class="msg-error">{% translate "Import rejected — fix these rows and retry:" %}</h2>
+  <ul>
+    {% for error in result.errors %}<li>{{ error }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+{% endblock %}

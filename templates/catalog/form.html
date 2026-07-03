@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{{ cfg.title }} — Narcos{% endblock %}
+{% block content %}
+<h1>{{ cfg.title }}{% if instance %} — {{ instance }}{% endif %}</h1>
+<form method="post" class="card">
+  {% csrf_token %}
+  {% if form.non_field_errors %}<p class="msg msg-error">{{ form.non_field_errors }}</p>{% endif %}
+
+  {% if not instance %}
+  {# D26: search-as-you-type duplicate check — matches appear as you type #}
+  <div id="dupe-matches"></div>
+  {% endif %}
+
+  <div class="form-grid">
+    {% for field in form %}
+    <div class="field">
+      <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+      {% if not instance and field.name == "name" or not instance and field.name == "code" %}
+        <input type="text" name="{{ field.name }}" id="{{ field.id_for_label }}"
+               value="{{ field.value|default:'' }}" maxlength="200"
+               hx-get="{% url 'master_search' kind %}" hx-trigger="keyup changed delay:400ms"
+               hx-target="#dupe-matches" hx-include="this">
+      {% else %}
+        {{ field }}
+      {% endif %}
+      {% if field.help_text %}<p class="field-help">{{ field.help_text }}</p>{% endif %}
+      {% if field.errors %}<p class="field-error">{{ field.errors|striptags }}</p>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if units_formset %}
+  <h2>{% translate "Alternate units" %}</h2>
+  <p class="field-help">{% translate "Optional. e.g. carton = 12 base units. Stock is always counted in the base unit." %}</p>
+  {{ units_formset.management_form }}
+  {% if units_formset.non_form_errors %}<p class="msg msg-error">{{ units_formset.non_form_errors }}</p>{% endif %}
+  <table class="table">
+    <thead><tr><th>{% translate "Unit label" %}</th><th>{% translate "Base units per 1" %}</th><th>{% translate "Delete" %}</th></tr></thead>
+    <tbody>
+      {% for unit_form in units_formset %}
+      <tr>
+        {{ unit_form.id }}
+        <td>{{ unit_form.unit_label }}{% if unit_form.unit_label.errors %}<p class="field-error">{{ unit_form.unit_label.errors|striptags }}</p>{% endif %}</td>
+        <td>{{ unit_form.factor_to_base }}{% if unit_form.factor_to_base.errors %}<p class="field-error">{{ unit_form.factor_to_base.errors|striptags }}</p>{% endif %}</td>
+        <td>{% if unit_form.instance.pk %}{{ unit_form.DELETE }}{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <div class="actions">
+    <button type="submit" class="btn btn-primary">{% translate "Save" %}</button>
+    <a class="btn btn-quiet" href="{% url 'master_list' kind %}">{% translate "Cancel" %}</a>
+  </div>
+</form>
+{% endblock %}

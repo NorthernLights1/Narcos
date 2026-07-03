@@ -1,0 +1,10 @@
+{% load i18n %}
+{% if rows %}
+<div class="msg msg-warning">
+  <strong>{% translate "Similar records already exist:" %}</strong>
+  <ul>
+    {% for row in rows %}<li>{{ row }}</li>{% endfor %}
+  </ul>
+  {% translate "Pick the existing one instead of creating a duplicate (D26)." %}
+</div>
+{% endif %}
