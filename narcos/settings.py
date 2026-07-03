@@ -1,4 +1,4 @@
-"""Narcos settings — spec §1, §15; database per D65 (SQLite, WAL, IMMEDIATE)."""
+"""Narcos settings — spec §1, §15; database per D66 (PostgreSQL, localhost)."""
 
 import os
 from pathlib import Path
@@ -55,20 +55,16 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "narcos.wsgi.application"
 
-DATA_DIR = BASE_DIR / "data"
-DATA_DIR.mkdir(exist_ok=True)
-
-# D65: SQLite with WAL + IMMEDIATE write transactions. Posting code still
-# calls select_for_update() (no-op here, real row locks on PostgreSQL).
+# D66: PostgreSQL, localhost only (R45). Password from env in production;
+# the default below is the local dev role only.
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": DATA_DIR / "narcos.sqlite3",
-        "OPTIONS": {
-            "transaction_mode": "IMMEDIATE",
-            "timeout": 5,  # seconds to wait on a locked database
-            "init_command": "PRAGMA journal_mode=WAL;",
-        },
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.environ.get("NARCOS_DB_NAME", "narcos"),
+        "USER": os.environ.get("NARCOS_DB_USER", "narcos"),
+        "PASSWORD": os.environ.get("NARCOS_DB_PASSWORD", "narcos-dev"),
+        "HOST": os.environ.get("NARCOS_DB_HOST", "localhost"),
+        "PORT": os.environ.get("NARCOS_DB_PORT", "5432"),
     }
 }
 
