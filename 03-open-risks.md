@@ -4,18 +4,19 @@ Status: `OPEN` (needs a decision), `TO BUILD` (decided, not built yet), `WATCH`
 (future, don't block it), `RESOLVED` (in [02-decisions.md](02-decisions.md)),
 `DROPPED`/`DEFERRED` (out of v1).
 
-**As of 2026-07-02 (after round 6):** every design question is closed. Tax
-settled (D50–D54) · stack locked (D55: Django + PostgreSQL + HTMX/Alpine +
-Tailwind) · owner's closing answers landed as D56–D63, including **D62 (unit
-conversion kept — D58 reversed)** and **D63 (input VAT confirmed not modeled —
-R34 closed)**. Ops/build items: `TO BUILD` (R10, R11 — UPS/backup-drive
-purchase is the client's to make, R44, R45). `WATCH` (R9, R8b, R40, R46).
+**As of 2026-07-03 (after round 7):** every design question is closed. Tax
+settled (D50–D54) · stack locked (D55: Django + **PostgreSQL 16** + HTMX/Alpine +
+Tailwind — D66 confirms PostgreSQL after D65 amendment) · owner's closing answers
+landed as D56–D63, including **D62 (unit conversion kept — D58 reversed)** and
+**D63 (input VAT confirmed not modeled — R34 closed)**. Ops/build items:
+`TO BUILD` (R10, R11 — UPS/backup-drive purchase is the client's to make, R44, R45).
+`WATCH` (R9, R8b, R40, R46).
 **Go-live checklist:** R39 legal form per client → set withholding switches ·
 R43 parallel run · printer confirmed owned ✓ · UPS + backup drive to be bought
 by client before go-live. **The buildable spec exists:**
-[04-build-spec.md](04-build-spec.md) (from D1–D64, incl. the R25 revival fixed
+[04-build-spec.md](04-build-spec.md) (from D1–D66, incl. the R25 revival fixed
 by D64). R38's "carry units into the buildable spec" is done (spec §3.2/D62).
-**Next step: build phase P0.**
+**Next step: build phase P0.1 (Postgres setup) → P1–P10.**
 
 ---
 
@@ -175,7 +176,7 @@ Budget for a **small UPS** so power cuts don't lose half-typed forms.
 
 ## Build-ready decision set (all decided)
 
-[02-decisions.md](02-decisions.md): D1–D61. Round 3 added D39 opening
+[02-decisions.md](02-decisions.md): D1–D66. Round 3 added D39 opening
 consignment · D40 batch + cost lots · D41 minimal returns · D42 receiving sees
 cost · D43 fiscal reconciliation · D44 partial payments · D45 VAT simplified
 (*largely undone by round 4*) · D46 expiry sale rule · D47 audit + clock · D48
@@ -187,3 +188,6 @@ D56 English-only, translation-ready · D57 go-live CSV import · D58 one unit pe
 item (*superseded by D62*) · D59 near-expiry default 6 months · D60 consignment
 term + reminders (2w/1w before 3 months) · D61 FEFO batch suggestion. Round 6
 added D62 unit-conversion model kept · D63 input VAT confirmed not modeled.
+Round 7 (2026-07-03) added D65 SQLite amendment (test scope) and D66 PostgreSQL
+final (test-what-you-ship principle, multi-client product, postings must be
+multi-user correct).

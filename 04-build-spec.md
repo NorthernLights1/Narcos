@@ -25,8 +25,8 @@ Rules for the implementer:
 
 | Layer | Choice |
 |---|---|
-| Language / framework | Python 3.12+, Django 6.x (needs ≥5.1 for the D65 SQLite options) |
-| Database | **SQLite** (WAL mode, `busy_timeout=5000`, Django `transaction_mode: "IMMEDIATE"`) — D65. PostgreSQL 16 is the scale-up target; the portability rules below are binding. |
+| Language / framework | Python 3.12+, Django 6.x (needs ≥5.1) |
+| Database | **PostgreSQL 16** — D66. Runs as a Windows native service, auto-start, localhost-only (D45/R45). Connection: `postgresql://narcos:$NARCOS_DB_PW@localhost:5432/narcos` (env var for password). |
 | Frontend | Django templates + HTMX (partial updates) + Alpine.js (in-form math) + Tailwind CSS (standalone CLI build — **no Node project**) |
 | Static files | WhiteNoise |
 | App server | Waitress, run as a Windows service (NSSM or winsw) |
@@ -42,13 +42,12 @@ Dependencies: pin exact versions (R44). No Redis, no Celery, no background
 workers — scheduled jobs (backup) run via Windows Task Scheduler; in-app
 "alerts" are computed on dashboard load, not pushed.
 
-**Database portability rules (D65, binding):** no raw SQL anywhere; unique
-constraints only via Django expression-based `UniqueConstraint`; the posting
-engine calls `select_for_update()` unconditionally (no-op on SQLite — the
-IMMEDIATE transaction already serializes writers; real row locks on
-Postgres); ledger-reconciliation totals sum in Python `Decimal`, never SQL
-`SUM` alone; invariants I3/I4 must pass against PostgreSQL before any
-multi-user/LAN/hosted deployment.
+**Database rules (D66, binding):** no raw SQL anywhere; unique constraints
+only via Django expression-based `UniqueConstraint`; the posting engine calls
+`select_for_update()` for real row locks on PostgreSQL (D14); ledger-reconciliation
+totals sum in Python `Decimal`, never SQL `SUM` alone; invariants I3/I4 must
+pass on PostgreSQL. These rules were written to enable portability (D65), but
+D66 makes them the primary build standard.
 
 ---
 
@@ -157,8 +156,8 @@ ledger rows; the ledger is the source of truth) — item, batch null, lot,
 zone, consignment_customer null → qty. `CHECK (qty >= 0)` enforces
 no-negative-stock at lot+zone granularity (D4). Uniqueness: Django
 expression-based `UniqueConstraint` over `(item, Coalesce(batch, 0), lot,
-zone, Coalesce(customer, 0))` — portable across SQLite and Postgres (D65).
-Posting locks the touched balance rows via `select_for_update()` (D14/D65).
+zone, Coalesce(customer, 0))` — works across PostgreSQL and (if ever needed) SQLite.
+Posting locks the touched balance rows via `select_for_update()` for real row locks (D14/D66).
 
 Lot remaining sellable qty = its balance in WAREHOUSE. FIFO = oldest
 `received_at` lot with WAREHOUSE balance, within the chosen batch (D40).

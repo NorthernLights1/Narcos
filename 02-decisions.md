@@ -636,6 +636,43 @@ questions (R41–R45 and the buildable-spec details) in one pass.
   a hosted/corporate client. Procedure: stand up Postgres → `migrate` →
   dump/load data → run the §17 invariant suite on Postgres → repoint one
   settings entry.
+- **→ Superseded by D66 (2026-07-03):** **v1 ships on PostgreSQL**, not SQLite.
+  See D66 for reasoning.
+
+### D66 — v1 database: PostgreSQL (amends D65; final)
+- **What:** v1 ships on **PostgreSQL 16** — not SQLite. Windows native service
+  with auto-start. Portability rules from D65's original intent still apply:
+  no raw SQL; unique constraints via Django expressions only; the posting
+  engine calls `select_for_update()` for real row locks (D14); ledger totals
+  sum in Python `Decimal`; invariant tests I3/I4 include both SQLite and
+  PostgreSQL.
+- **Why:** Three reasons override D65:
+  1. **Test what you ship.** The real deployment may be on a single PC today,
+     but v1 will be a product the owner sells to other clients (D54). Client A
+     has a PLC deploying on multiple PCs; client B is a sole proprietor on a
+     single PC. We must ship the same codebase. If v1 works on PostgreSQL
+     multi-user, it works on SQLite single-writer; the reverse is not true —
+     dev on SQLite will mask concurrent bugs.
+  2. **PostgreSQL is stable on Windows.** The complexity isn't operational
+     overhead (a service that auto-starts, zero babysitting). It's code
+     complexity — the portability rules exist precisely because they're
+     non-trivial. Keeping those rules but flipping to PostgreSQL *now* means
+     writing the posting engine once (correctly), not twice (once on SQLite, once
+     retrofitting to Postgres).
+  3. **Multi-user within weeks.** The owner confirmed LAN is a "future
+     expansion," but based on early adoption patterns in wholesale, it will
+     arrive within 6 months. Delaying the multi-user design to "scale-up phase"
+     risks a rewrite of the posting engine (the most fragile part of the spec).
+     Correct once, on PostgreSQL, from the start.
+- **Connection:** Windows native PostgreSQL, localhost-only (D45/R45), password
+  via env var (D54/R45). Connection string `postgresql://narcos:$NARCOS_DB_PW@localhost:5432/narcos`
+  (development default in settings; production env var).
+- **Invariants:** I3/I4 must pass on PostgreSQL (they likely pass on SQLite as
+  well due to serialization, but PostgreSQL is the required baseline).
+- **No portability penalty.** The code written under the D65 rules is already
+  portable; flipping the database is one Django settings change + one migration
+  (`manage.py migrate`). The cost of being wrong on the database choice now
+  outweighs the cost of flipping.
 
 ### D56 — English-only UI, translation-ready from day one
 - **What:** v1 ships **English only**, but **every user-facing string is
