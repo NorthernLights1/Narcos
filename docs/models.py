@@ -86,6 +86,7 @@ class Document(models.Model):
     grand_total = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     tax_rate_snapshot = models.DecimalField(max_digits=5, decimal_places=2, default=0)  # §5 ※
 
+    customer_will_withhold = models.BooleanField(default=False)  # D51 checkbox
     withholding_expected = models.DecimalField(  # D51, display only
         max_digits=14, decimal_places=2, default=0
     )
@@ -105,6 +106,11 @@ class Document(models.Model):
                                      on_delete=models.PROTECT, related_name="transfers_out")
     to_account = models.ForeignKey("catalog.Account", null=True, blank=True,
                                    on_delete=models.PROTECT, related_name="transfers_in")
+
+    # CR → original SALE, CS → CONSIGNMENT_ISSUE, proforma → converted SALE
+    related_document = models.ForeignKey("self", null=True, blank=True,
+                                         on_delete=models.PROTECT,
+                                         related_name="related_documents")
 
     created_by = models.ForeignKey("core.User", on_delete=models.PROTECT,
                                    related_name="documents_created")

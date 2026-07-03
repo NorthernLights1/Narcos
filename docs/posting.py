@@ -138,8 +138,12 @@ def _write_money(doc: Document, effects: Effects, now) -> None:
         )
 
 
-def post(document: Document, actor) -> Document:
-    """§4 Post(): single transaction, serialized by row locks (D14)."""
+def post(document: Document, actor, override_reason: str = "") -> Document:
+    """§4 Post(): single transaction, serialized by row locks (D14).
+    override_reason: owner-only escape for credit BLOCK (D25) — never for
+    negative stock (D4). Audited when used."""
+    if override_reason and not actor.is_owner:
+        raise PostingError(_("Only the owner can override (D28)."))
     with transaction.atomic():
         try:
             doc = Document.objects.select_for_update().get(pk=document.pk)
@@ -147,6 +151,7 @@ def post(document: Document, actor) -> Document:
             raise PostingError(_("Document no longer exists (draft was deleted)."))
         if doc.status != Document.Status.DRAFT:
             raise PostingError(_("Only drafts can be posted (D28)."))
+        doc._override_reason = override_reason  # read by handlers (credit check)
         handler = get_handler(doc.doc_type)
         handler.validate(doc)
 
@@ -166,6 +171,9 @@ def post(document: Document, actor) -> Document:
         doc.save()
         log_event(actor, "POST", "Document", doc.pk,
                   {"doc_no": doc.doc_no, "doc_type": doc.doc_type})
+        if override_reason:
+            log_event(actor, "OVERRIDE", "Document", doc.pk,
+                      {"doc_no": doc.doc_no, "reason": override_reason})
     return doc
 
 
