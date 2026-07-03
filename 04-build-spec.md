@@ -1,6 +1,6 @@
 # Buildable Spec (v1)
 
-Derived from [02-decisions.md](02-decisions.md) **D1–D64**. This is the
+Derived from [02-decisions.md](02-decisions.md) **D1–D65**. This is the
 document an implementing model builds from, module by module, in the order of
 §16. **If anything here conflicts with the decision log, the decision log wins
 — stop and flag the conflict instead of guessing.** Decision references (D…)
@@ -25,8 +25,8 @@ Rules for the implementer:
 
 | Layer | Choice |
 |---|---|
-| Language / framework | Python 3.12+, Django 5.x |
-| Database | PostgreSQL 16 (local, bound to **localhost only**, R45) |
+| Language / framework | Python 3.12+, Django 6.x (needs ≥5.1 for the D65 SQLite options) |
+| Database | **SQLite** (WAL mode, `busy_timeout=5000`, Django `transaction_mode: "IMMEDIATE"`) — D65. PostgreSQL 16 is the scale-up target; the portability rules below are binding. |
 | Frontend | Django templates + HTMX (partial updates) + Alpine.js (in-form math) + Tailwind CSS (standalone CLI build — **no Node project**) |
 | Static files | WhiteNoise |
 | App server | Waitress, run as a Windows service (NSSM or winsw) |
@@ -41,6 +41,14 @@ sequences), `catalog` (items, parties), `stock` (batches, lots, balances),
 Dependencies: pin exact versions (R44). No Redis, no Celery, no background
 workers — scheduled jobs (backup) run via Windows Task Scheduler; in-app
 "alerts" are computed on dashboard load, not pushed.
+
+**Database portability rules (D65, binding):** no raw SQL anywhere; unique
+constraints only via Django expression-based `UniqueConstraint`; the posting
+engine calls `select_for_update()` unconditionally (no-op on SQLite — the
+IMMEDIATE transaction already serializes writers; real row locks on
+Postgres); ledger-reconciliation totals sum in Python `Decimal`, never SQL
+`SUM` alone; invariants I3/I4 must pass against PostgreSQL before any
+multi-user/LAN/hosted deployment.
 
 ---
 
@@ -147,9 +155,10 @@ lot FK, zone, consignment_customer FK null, qty_delta: qty (+ in, − out), at: 
 **stock_balances** (derived cache, maintained in the same transaction as the
 ledger rows; the ledger is the source of truth) — item, batch null, lot,
 zone, consignment_customer null → qty. `CHECK (qty >= 0)` enforces
-no-negative-stock at lot+zone granularity (D4). Postgres: unique index over
-`(item_id, COALESCE(batch_id,0), lot_id, zone, COALESCE(customer_id,0))`.
-Posting locks the touched balance rows `FOR UPDATE` (D14).
+no-negative-stock at lot+zone granularity (D4). Uniqueness: Django
+expression-based `UniqueConstraint` over `(item, Coalesce(batch, 0), lot,
+zone, Coalesce(customer, 0))` — portable across SQLite and Postgres (D65).
+Posting locks the touched balance rows via `select_for_update()` (D14/D65).
 
 Lot remaining sellable qty = its balance in WAREHOUSE. FIFO = oldest
 `received_at` lot with WAREHOUSE balance, within the chosen batch (D40).
@@ -217,9 +226,12 @@ One code path posts every document type; per-type logic plugs in.
 
 **Post(document)** — single DB transaction:
 1. Validate the draft (per-type rules §7; system boundaries validated hard).
-2. `SELECT FOR UPDATE` the number_sequences row for the doc type; then lock
+2. `select_for_update()` the number_sequences row for the doc type; then lock
    (or create) every stock_balances row the document touches, in a stable
-   order (item id, lot id) to avoid deadlocks (D14).
+   order (item id, lot id) to avoid deadlocks (D14). On SQLite these calls are
+   no-ops — the IMMEDIATE transaction already holds the single write lock,
+   which serializes postings entirely; on Postgres they take real row locks
+   (D65).
 3. Re-check business rules under lock — especially **no negative stock** (D4)
    and expired-sale block (D46).
 4. Freeze snapshots ※: prices, discounts, is_taxable, unit factors, computed
@@ -504,15 +516,19 @@ corresponding opening documents (§7.13) and is audited.
 
 ## 15. Non-functional
 
-- **Backups (D13/D48):** nightly Task Scheduler job: `pg_dump` + zip of media
-  folder → local disk + external drive/cloud copy (may be encrypted).
-  Retention: last 14 daily. Restore: owner-only, documented runbook,
-  **tested before go-live**.
+- **Backups (D13/D48):** nightly Task Scheduler job: SQLite **online backup**
+  (`sqlite3 .backup` / Python `Connection.backup()` — safe while the app
+  runs; never a raw copy of a live db file) + zip of media folder → local
+  disk + external drive/cloud copy (may be encrypted). Retention: last 14
+  daily. Restore = stop app, put the file back — owner-only, documented
+  runbook, **tested before go-live**.
 - **Updates (R44):** runbook — restore latest backup to a scratch DB, run
   migrations there, then apply to live. Versions pinned.
-- **Security (R45):** Postgres on localhost only; strong DB password; Django
-  `SECRET_KEY` + DB credentials in an env file outside source control; static
-  IP/hostname when the LAN arrives; HTTPS optional on closed LAN.
+- **Security (R45):** the database is a file in the app's data folder —
+  filesystem access equals data access, so the Windows account/PC login is
+  the real boundary (document this for the owner). Django `SECRET_KEY` in an
+  env file outside source control; static IP/hostname when the LAN arrives;
+  HTTPS optional on closed LAN.
 - **Concurrency (D14):** everything in §4; plus the app must run correctly
   with a single PC (v1 reality) and multiple browsers alike.
 - **i18n (D56):** wrap everything from day one; `LANGUAGES = [en]` in v1.
@@ -530,7 +546,7 @@ next phase starts (posting, money, and tax are where silent bugs live).
   audit_log, number_sequences, base templates (Tailwind + HTMX + Alpine
   wired), i18n wiring, Ethiopian calendar module (§12) with tests.
   *Accept:* login works; owner can edit settings; every settings change audited;
-  calendar tests pass.
+  calendar tests pass; DB configured per D65 (WAL + IMMEDIATE verified by test).
 - **P1 — Master data + imports.** Items (+units), customers, suppliers,
   accounts, expense categories, fixed assets; duplicate search-as-you-type
   (D26); CSV importers with validate-first (§14).
@@ -608,6 +624,9 @@ next phase starts (posting, money, and tax are where silent bugs live).
   return — a direct ZONE_MOVE on consigned stock is impossible (D6).
 - **I16** Stock count compares against the frozen snapshot, not live qty;
   mid-count movement triggers the warning and correct variance.
+
+D65 rider: the suite runs on SQLite day to day; **I3 and I4 must additionally
+pass against PostgreSQL before any multi-user/LAN/hosted deployment.**
 
 ---
 

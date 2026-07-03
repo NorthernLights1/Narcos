@@ -605,6 +605,37 @@ questions (R41–R45 and the buildable-spec details) in one pass.
   - **React SPA** — doubles the codebase for zero visual gain on a
     forms-and-tables LAN app; a JS frontend can still be bolted onto the same
     backend later if ever wanted.
+- **→ Amended by D65 (2026-07-03):** the v1 **database** is **SQLite**;
+  PostgreSQL becomes the scale-up path. Everything else in D55 stands.
+
+---
+
+## Round 7 (2026-07-03)
+
+### D65 — v1 database: SQLite; PostgreSQL is the scale-up path (amends D55)
+- **What:** v1 ships on **SQLite** — WAL journal mode, `busy_timeout`, and
+  Django's `transaction_mode: IMMEDIATE` so every posting transaction takes
+  the write lock up front. **Portability rules are binding** so Postgres stays
+  a half-day config swap: no raw SQL; unique constraints via Django
+  expressions only; the posting engine calls `select_for_update()`
+  unconditionally (no-op on SQLite, real row locks on Postgres);
+  ledger-reconciliation report totals sum in Python `Decimal`, not SQL;
+  invariant tests **I3/I4 must pass against PostgreSQL before any
+  multi-user/LAN/hosted deployment**.
+- **Why:** The real v1 deployment is one shared everyday desktop (Word etc.)
+  run by a non-technical owner. SQLite has **no service to fail or restart** —
+  the database is a file, backups are file copies, and the failure surface
+  collapses into the app itself. D14's invariants still hold: SQLite has a
+  single writer by construction, so IMMEDIATE posting transactions are fully
+  serialized — no oversell, no duplicate numbers — and the workload is a few
+  writes per minute. The one conceded trade-off: SQLite stores decimals as
+  floats under the hood (hence the `Decimal`-summing rule); Postgres remains
+  the technically stronger money store, which is why it stays the scale-up
+  target rather than being dropped.
+- **Migration trigger:** sustained concurrent multi-user posting on a LAN, or
+  a hosted/corporate client. Procedure: stand up Postgres → `migrate` →
+  dump/load data → run the §17 invariant suite on Postgres → repoint one
+  settings entry.
 
 ### D56 — English-only UI, translation-ready from day one
 - **What:** v1 ships **English only**, but **every user-facing string is
