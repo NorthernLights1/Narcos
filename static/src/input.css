@@ -4,7 +4,7 @@
 
 @layer base {
   body { @apply bg-paper text-ink font-sans min-h-screen; }
-  h1 { @apply text-2xl font-semibold mb-4; }
+  h1 { @apply text-2xl font-semibold mb-1; }
   h2 { @apply text-base font-semibold mb-2; }
   label { @apply block text-sm font-medium mb-1; }
   input, select, textarea {
@@ -15,26 +15,124 @@
 }
 
 @layer components {
-  .topbar { @apply flex items-center gap-6 bg-ink text-white px-6 py-3; }
+  /* ---- shell: slim topbar + sidebar ---- */
+  .topbar { @apply flex items-center gap-6 bg-ink text-white px-6 py-2.5 sticky top-0 z-30; }
   .brand { @apply font-bold tracking-wide text-lg; }
-  .nav { @apply flex gap-4 text-sm; }
-  .nav a { @apply text-slate-200 hover:text-white; }
   .logout { @apply ml-auto flex items-center gap-3 text-sm; }
   .who { @apply text-slate-300; }
-  .page { @apply max-w-5xl mx-auto px-6 py-8; }
-  .card { @apply bg-white rounded-lg shadow-sm border border-slate-200 p-6; }
+  .shell { @apply flex min-h-screen items-stretch; }
+  .sidebar { @apply w-52 shrink-0 bg-white border-r border-slate-200 px-3 py-4; }
+  .sidebar nav { @apply sticky top-14 flex flex-col gap-0.5; }
+  .sidebar a {
+    @apply block rounded px-3 py-1.5 text-sm text-slate-700
+      hover:bg-slate-100 hover:text-ink;
+  }
+  .nav-group {
+    @apply px-3 pt-4 pb-1 text-xs font-semibold uppercase tracking-wider
+      text-slate-400 first:pt-0;
+  }
+  .page { @apply flex-1 min-w-0 max-w-6xl px-6 py-6; }
+
+  /* ---- headers, cards, buttons ---- */
+  .page-head { @apply flex flex-wrap items-start justify-between gap-3 mb-4; }
+  .actions { @apply flex flex-wrap items-center gap-2; }
+  .card { @apply bg-white rounded-lg shadow-sm border border-slate-200 p-6 mb-4; }
+  .card-head { @apply flex items-center justify-between gap-3 mb-3; }
+  .card-head h2 { @apply mb-0; }
   .card-narrow { @apply max-w-sm mx-auto mt-16; }
-  .cards { @apply grid gap-4 sm:grid-cols-2 lg:grid-cols-3 mt-6; }
+  .cards { @apply grid gap-4 sm:grid-cols-2 lg:grid-cols-3 mt-4; }
   .btn { @apply inline-block rounded px-4 py-2 text-sm font-medium cursor-pointer; }
   .btn-primary { @apply bg-accent text-white hover:bg-accent-dark; }
+  .btn-secondary {
+    @apply bg-white border border-slate-300 text-slate-700
+      hover:border-accent hover:text-accent;
+  }
   .btn-quiet { @apply bg-transparent text-slate-300 hover:text-white; }
+  .btn-sm { @apply px-2.5 py-1 text-xs; }
+  .hint { @apply text-xs text-slate-400; }
+
+  /* ---- forms ---- */
   .field { @apply mb-4; }
+  .field-wide { @apply sm:col-span-2; }
   .field-error { @apply text-danger text-xs mt-1; }
+  .field-help { @apply text-xs text-slate-400 mt-1; }
   .form-grid { @apply grid gap-x-6 sm:grid-cols-2; }
+  .filterbar { @apply grid gap-x-4 items-end sm:grid-cols-4 py-4; }
+  .filterbar .field { @apply mb-0; }
+  .searchbar { @apply flex gap-2 mb-4 max-w-md; }
+  .searchbar .btn-quiet { @apply text-slate-500 hover:text-ink; }
+
+  /* ---- tables ---- */
+  .table-wrap { @apply overflow-x-auto; }
+  .table { @apply w-full text-sm; }
+  .table th {
+    @apply text-left text-xs font-semibold uppercase tracking-wide
+      text-slate-500 border-b border-slate-200 px-3 py-2 whitespace-nowrap;
+  }
+  .table td { @apply border-b border-slate-100 px-3 py-2 align-top; }
+  .table tbody tr:hover { @apply bg-slate-50; }
+  .table td a { @apply text-accent hover:underline; }
+  .num { @apply text-right tabular-nums; }
+  .table-input td { @apply px-1.5 py-1.5; }
+  .table-input input, .table-input select { @apply px-2 py-1.5; }
+  .col-del { @apply w-8 text-center; }
+  .col-del input[type="checkbox"] { @apply mt-2.5; }
+
+  /* ---- badges ---- */
+  .badge {
+    @apply inline-block rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+  .badge-DRAFT { @apply bg-amber-100 text-amber-800; }
+  .badge-POSTED { @apply bg-emerald-100 text-emerald-800; }
+  .badge-VOIDED { @apply bg-slate-200 text-slate-500 line-through; }
+
+  /* ---- totals preview ---- */
+  .totals-preview { @apply border-accent/40; }
+  .totals-grid { @apply grid gap-x-8 gap-y-1 sm:grid-cols-2 max-w-xl; }
+  .totals-grid > div { @apply flex justify-between border-b border-slate-100 py-1; }
+  /* keep the [hidden] attribute working despite the flex display above */
+  .totals-grid > div[hidden] { @apply hidden; }
+  .totals-grid dt { @apply text-sm text-slate-500; }
+  .totals-grid dd { @apply text-sm font-medium tabular-nums; }
+  .totals-grand dt, .totals-grand dd { @apply text-base font-semibold text-ink; }
+  .amount-ok { @apply text-accent; }
+  .amount-bad { @apply text-danger; }
+
+  /* ---- dropdown menu (details) ---- */
+  .menu { @apply relative; }
+  .menu summary { @apply list-none cursor-pointer select-none; }
+  .menu summary::-webkit-details-marker { @apply hidden; }
+  .menu-panel {
+    @apply absolute right-0 z-20 mt-1 w-64 rounded-lg border border-slate-200
+      bg-white p-2 shadow-lg max-h-96 overflow-y-auto;
+  }
+  .menu-panel a { @apply block rounded px-3 py-1.5 text-sm hover:bg-slate-100; }
+  .menu-group {
+    @apply px-3 pt-3 pb-1 text-xs font-semibold uppercase tracking-wider
+      text-slate-400 first:pt-1;
+  }
+
+  /* ---- misc ---- */
   .messages { @apply mb-4 space-y-2; }
   .msg { @apply rounded px-4 py-2 text-sm; }
   .msg-success { @apply bg-emerald-50 text-emerald-900 border border-emerald-200; }
   .msg-error { @apply bg-red-50 text-red-900 border border-red-200; }
   .today { @apply text-slate-500; }
   .placeholder { @apply text-slate-400 text-sm; }
+  .compact-list { @apply space-y-1 text-sm; }
+  .compact-list a { @apply text-accent hover:underline; }
+  .summary-grid { @apply grid gap-x-8 gap-y-2 sm:grid-cols-2 lg:grid-cols-4; }
+  .summary-grid dt { @apply text-xs uppercase tracking-wide text-slate-400; }
+  .summary-grid dd { @apply text-sm font-medium; }
+
+  /* ---- Choices.js integration ---- */
+  .choices { @apply mb-0 text-sm; }
+  .choices__inner {
+    @apply rounded border border-slate-300 bg-white px-2 py-1 text-sm min-h-0;
+  }
+  .table-input .choices { @apply min-w-[14rem]; }
+  .choices__list--dropdown .choices__item { @apply text-sm; }
+  .is-focused .choices__inner, .is-open .choices__inner {
+    @apply border-accent ring-2 ring-accent/40;
+  }
 }

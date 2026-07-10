@@ -148,7 +148,8 @@ def import_items(uploaded_file) -> ImportResult:
     parsed: list[tuple[dict, list[tuple[str, int]]]] = []
     _check_duplicate_codes(rows, Item, result.errors)
     for i, row in enumerate(rows, start=2):
-        if not _check_required(row, i, ["code", "name", "category", "base_unit"], result.errors):
+        # code is optional — blank codes are auto-assigned at save (AutoCodeModel)
+        if not _check_required(row, i, ["name", "category", "base_unit"], result.errors):
             continue
         category = row["category"].upper()
         if category not in categories:
@@ -157,7 +158,7 @@ def import_items(uploaded_file) -> ImportResult:
             continue
         batch_default = category in (Item.Category.DRUG, Item.Category.REAGENT)
         fields = {
-            "code": row["code"],
+            "code": row.get("code", ""),
             "name": row["name"],
             "category": category,
             "base_unit": row["base_unit"],
@@ -206,10 +207,11 @@ def _import_party(uploaded_file, model, extra_parser=None) -> ImportResult:
     parsed: list[dict] = []
     _check_duplicate_codes(rows, model, result.errors)
     for i, row in enumerate(rows, start=2):
-        if not _check_required(row, i, ["code", "name"], result.errors):
+        # code is optional — blank codes are auto-assigned at save (AutoCodeModel)
+        if not _check_required(row, i, ["name"], result.errors):
             continue
         fields = {
-            "code": row["code"],
+            "code": row.get("code", ""),
             "name": row["name"],
             "tin": row.get("tin", ""),
             "phone": row.get("phone", ""),

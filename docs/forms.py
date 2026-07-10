@@ -1,12 +1,37 @@
 """Document forms for the implemented posting handlers."""
 
 from django import forms
+from django.db.models import F, Q, Sum
+from django.db.models.functions import Coalesce
 from django.forms import inlineformset_factory
 from django.utils.translation import gettext_lazy as _
 
 from docs.models import DocType, Document, DocumentCharge, DocumentLine
 from money.models import PaymentAllocation, PaymentLine
-from stock.models import Zone
+from stock.models import Batch, Zone
+
+
+class ItemSelect(forms.Select):
+    """Item options carry price/unit/VAT data for the client-side preview
+    and prefill (display only — posting snapshots everything server-side)."""
+
+    def create_option(self, name, value, label, selected, index,
+                      subindex=None, attrs=None):
+        option = super().create_option(name, value, label, selected, index,
+                                       subindex=subindex, attrs=attrs)
+        item = getattr(value, "instance", None)
+        if item is not None:
+            option["attrs"]["data-vat-exempt"] = "1" if item.vat_exempt else "0"
+            option["attrs"]["data-base-unit"] = item.base_unit
+            if item.maintained_price is not None:
+                option["attrs"]["data-price"] = str(item.maintained_price)
+        return option
+
+
+def _batch_label(batch: Batch) -> str:
+    expiry = batch.expiry_date.isoformat() if batch.expiry_date else _("no expiry")
+    on_hand = batch.warehouse_qty or 0
+    return f"{batch.item.code} · {batch.batch_no} · {expiry} · {on_hand}"
 
 
 DOC_CONFIG = {
@@ -173,6 +198,19 @@ class DocumentForm(forms.ModelForm):
             "supplier_invoice_date": forms.DateInput(attrs={"type": "date"}),
             "notes": forms.Textarea(attrs={"rows": 3}),
         }
+        help_texts = {
+            "withheld_amount": _(
+                "Only when the payer kept back withholding tax: copy the "
+                "amount printed on the certificate they hand you. Leave 0 "
+                "otherwise."
+            ),
+            "withholding_certificate_no": _(
+                "The serial number printed on that certificate."
+            ),
+        }
+
+    SEARCHABLE = ("customer", "supplier", "expense_category", "from_account",
+                  "to_account", "related_document")
 
     def __init__(self, *args, doc_type: str, **kwargs):
         super().__init__(*args, **kwargs)
@@ -187,6 +225,9 @@ class DocumentForm(forms.ModelForm):
             self.fields["related_document"].queryset = Document.objects.filter(
                 doc_type__in=source_types, status=Document.Status.POSTED,
             ).order_by("-posted_at")
+        for name in self.SEARCHABLE:
+            if name in self.fields:
+                self.fields[name].widget.attrs["data-search"] = "1"
 
 
 class DocumentReferenceForm(forms.ModelForm):
@@ -225,6 +266,7 @@ class DocumentLineForm(forms.ModelForm):
         ]
         widgets = {
             "expiry_entered": forms.DateInput(attrs={"type": "date"}),
+            "item": ItemSelect,
         }
 
     def __init__(self, *args, line_fields: list[str], **kwargs):
@@ -235,6 +277,40 @@ class DocumentLineForm(forms.ModelForm):
                 del self.fields[name]
         if "qty_base" in self.fields:
             self.fields["qty_base"].disabled = True
+        if "batch" in self.fields:
+            # Label shows item · batch no · expiry · warehouse on-hand, so the
+            # picker carries the shelf context (display only; D4 still guards).
+            self.fields["batch"].queryset = (
+                Batch.objects.select_related("item")
+                .annotate(warehouse_qty=Sum(
+                    "stockbalance__qty",
+                    filter=Q(stockbalance__zone=Zone.WAREHOUSE),
+                ))
+                .order_by("item__code", "expiry_date", "batch_no")
+            )
+            self.fields["batch"].label_from_instance = _batch_label
+        for name in ("item", "batch", "lot"):
+            if name in self.fields:
+                self.fields[name].widget.attrs["data-search"] = "1"
+
+
+def _allocation_label(target: Document) -> str:
+    """`GRN-000001 · Care · open 2,900.00 of 4,900.00` — the open balance is
+    annotated onto the queryset; display only, the handler re-checks under
+    lock at posting (I13)."""
+    party = target.customer or target.supplier
+    open_amount = target.grand_total - (target.settled or 0)
+    label = f"{target.doc_no} · {party.name if party else '—'} · "
+    if open_amount == target.grand_total:
+        label += _("open %(o)s") % {"o": f"{open_amount:,.2f}"}
+    else:
+        label += _("open %(o)s of %(t)s") % {
+            "o": f"{open_amount:,.2f}", "t": f"{target.grand_total:,.2f}"}
+    if target.withholding_expected > 0:
+        # Cross-check hint: the customer's certificate should match this
+        label += " · " + _("WHT expected %(w)s") % {
+            "w": f"{target.withholding_expected:,.2f}"}
+    return label
 
 
 class PaymentAllocationForm(forms.ModelForm):
@@ -242,7 +318,8 @@ class PaymentAllocationForm(forms.ModelForm):
         model = PaymentAllocation
         fields = ["target", "amount"]
 
-    def __init__(self, *args, doc_type: str, **kwargs):
+    def __init__(self, *args, doc_type: str, customer_id=None, supplier_id=None,
+                 **kwargs):
         super().__init__(*args, **kwargs)
         target_types = {
             DocType.CUSTOMER_PAYMENT: [
@@ -253,7 +330,18 @@ class PaymentAllocationForm(forms.ModelForm):
         qs = Document.objects.filter(status=Document.Status.POSTED)
         if target_types:
             qs = qs.filter(doc_type__in=target_types)
+        if customer_id:
+            qs = qs.filter(customer_id=customer_id)
+        if supplier_id:
+            qs = qs.filter(supplier_id=supplier_id)
+        # Only invoices that still have an open balance are offered
+        qs = qs.select_related("customer", "supplier").annotate(
+            settled=Sum("allocations_received__amount",
+                        filter=Q(allocations_received__payment__status=Document.Status.POSTED)),
+        ).exclude(grand_total__lte=Coalesce(F("settled"), 0))
         self.fields["target"].queryset = qs.order_by("-posted_at", "-pk")
+        self.fields["target"].label_from_instance = _allocation_label
+        self.fields["target"].widget.attrs["data-search"] = "1"
 
 
 LineFormSet = inlineformset_factory(
@@ -299,7 +387,12 @@ def formsets_for(doc: Document, data=None):
             "allocations", _("Allocations"),
             PaymentAllocationFormSet(
                 data, instance=doc, prefix="allocations",
-                form_kwargs={"doc_type": doc.doc_type},
+                form_kwargs={
+                    "doc_type": doc.doc_type,
+                    # Once the draft has a party, offer only their invoices
+                    "customer_id": doc.customer_id,
+                    "supplier_id": doc.supplier_id,
+                },
             ),
         ))
     return formsets

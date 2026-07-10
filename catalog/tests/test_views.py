@@ -25,7 +25,7 @@ def employee(client):
 
 
 ITEM_POST = {
-    "code": "AMOX-500", "name": "Amoxicillin 500mg", "category": "DRUG",
+    "name": "Amoxicillin 500mg", "category": "DRUG",
     "is_batch_tracked": "on", "has_expiry": "on", "base_unit": "pack of 10",
     "maintained_price": "150.00", "pricing_mode": "MANUAL", "is_active": "on",
     # units formset management form (no units)
@@ -37,14 +37,15 @@ ITEM_POST = {
 def test_create_item_writes_audit_row(client, owner):
     response = client.post(reverse("master_create", args=["items"]), ITEM_POST)
     assert response.status_code == 302
-    assert Item.objects.filter(code="AMOX-500").exists()
+    item = Item.objects.get(name="Amoxicillin 500mg")
+    assert item.code == "ITM-0001"  # auto-assigned, never typed
     entry = AuditLog.objects.get(action="MASTER_CREATE", entity="Item")
-    assert entry.after["code"] == "AMOX-500"
+    assert entry.after["code"] == "ITM-0001"
 
 
 def test_edit_item_audits_only_the_diff(client, owner):
     client.post(reverse("master_create", args=["items"]), ITEM_POST)
-    item = Item.objects.get(code="AMOX-500")
+    item = Item.objects.get(name="Amoxicillin 500mg")
     changed = ITEM_POST | {"maintained_price": "175.00"}
     client.post(reverse("master_edit", args=["items", item.pk]), changed)
     entry = AuditLog.objects.get(action="MASTER_UPDATE", entity="Item")
@@ -63,10 +64,10 @@ def test_employee_item_form_hides_margin_fields(client, employee):
 def test_employee_can_create_master_data(client, employee):
     response = client.post(
         reverse("master_create", args=["customers"]),
-        {"code": "C001", "name": "Pharmacy A"},
+        {"name": "Pharmacy A"},
     )
     assert response.status_code == 302
-    assert Customer.objects.filter(code="C001").exists()
+    assert Customer.objects.filter(code="CUS-0001", name="Pharmacy A").exists()
 
 
 def test_duplicate_search_returns_matches(client, owner):
@@ -102,5 +103,5 @@ def test_item_with_units_saves_and_lists(client, owner):
     }
     response = client.post(reverse("master_create", args=["items"]), post)
     assert response.status_code == 302
-    item = Item.objects.get(code="AMOX-500")
+    item = Item.objects.get(name="Amoxicillin 500mg")
     assert item.units.get().factor_to_base == 12

@@ -5,19 +5,47 @@
 <div class="page-head">
   <h1>{% translate "Documents" %}</h1>
   <div class="actions">
-    {% if user.is_owner %}
-      <a class="btn" href="{% url 'csv_import' 'opening-stock' %}">{% translate "Import opening stock" %}</a>
-      <a class="btn" href="{% url 'csv_import' 'opening-ar' %}">{% translate "Import opening AR" %}</a>
-      <a class="btn" href="{% url 'csv_import' 'opening-ap' %}">{% translate "Import opening AP" %}</a>
-      <a class="btn" href="{% url 'csv_import' 'opening-cash' %}">{% translate "Import opening cash" %}</a>
-    {% endif %}
-    {% for value, label in doc_types %}
-      <a class="btn" href="{% url 'document_create' value %}">{{ label }}</a>
-    {% endfor %}
+    <a class="btn btn-primary" href="{% url 'document_create' 'SALE' %}">{% translate "New sale" %}</a>
+    <a class="btn btn-secondary" href="{% url 'document_create' 'RECEIVING' %}">{% translate "New receiving" %}</a>
+    <a class="btn btn-secondary" href="{% url 'document_create' 'CUSTOMER_PAYMENT' %}">{% translate "Customer payment" %}</a>
+    <a class="btn btn-secondary" href="{% url 'document_create' 'SUPPLIER_PAYMENT' %}">{% translate "Supplier payment" %}</a>
+    <details class="menu">
+      <summary class="btn btn-secondary">{% translate "More…" %}</summary>
+      <div class="menu-panel">
+        <p class="menu-group">{% translate "Customers" %}</p>
+        <a href="{% url 'document_create' 'PROFORMA' %}">{% translate "Proforma" %}</a>
+        <a href="{% url 'document_create' 'CUSTOMER_RETURN' %}">{% translate "Customer return" %}</a>
+        <a href="{% url 'document_create' 'CONSIGNMENT_ISSUE' %}">{% translate "Consignment issue" %}</a>
+        <a href="{% url 'document_create' 'CONSIGNMENT_SETTLEMENT' %}">{% translate "Consignment settlement" %}</a>
+        <p class="menu-group">{% translate "Suppliers" %}</p>
+        <a href="{% url 'document_create' 'SUPPLIER_RETURN' %}">{% translate "Supplier return" %}</a>
+        <p class="menu-group">{% translate "Money" %}</p>
+        <a href="{% url 'document_create' 'EXPENSE' %}">{% translate "Expense" %}</a>
+        <a href="{% url 'document_create' 'TRANSFER' %}">{% translate "Transfer" %}</a>
+        <a href="{% url 'document_create' 'WHT_REMITTANCE' %}">{% translate "Withholding remittance" %}</a>
+        <p class="menu-group">{% translate "Stock" %}</p>
+        <a href="{% url 'document_create' 'ZONE_MOVE' %}">{% translate "Zone move" %}</a>
+        <a href="{% url 'document_create' 'ADJUSTMENT' %}">{% translate "Adjustment" %}</a>
+        <a href="{% url 'document_create' 'STOCK_COUNT' %}">{% translate "Stock count" %}</a>
+        {% if user.is_owner %}
+        <p class="menu-group">{% translate "Opening (one-time)" %}</p>
+        <a href="{% url 'document_create' 'OPENING_STOCK' %}">{% translate "Opening stock" %}</a>
+        <a href="{% url 'document_create' 'OPENING_EXPIRED' %}">{% translate "Opening expired/unfit" %}</a>
+        <a href="{% url 'document_create' 'OPENING_CONSIGNMENT' %}">{% translate "Opening consignment" %}</a>
+        <a href="{% url 'document_create' 'OPENING_AR' %}">{% translate "Opening receivable" %}</a>
+        <a href="{% url 'document_create' 'OPENING_AP' %}">{% translate "Opening payable" %}</a>
+        <a href="{% url 'document_create' 'OPENING_CASH' %}">{% translate "Opening cash" %}</a>
+        <a href="{% url 'csv_import' 'opening-stock' %}">{% translate "Import opening stock" %}</a>
+        <a href="{% url 'csv_import' 'opening-ar' %}">{% translate "Import opening AR" %}</a>
+        <a href="{% url 'csv_import' 'opening-ap' %}">{% translate "Import opening AP" %}</a>
+        <a href="{% url 'csv_import' 'opening-cash' %}">{% translate "Import opening cash" %}</a>
+        {% endif %}
+      </div>
+    </details>
   </div>
 </div>
 
-<form method="get" class="card form-grid">
+<form method="get" class="card filterbar">
   <div class="field">
     <label for="id_type">{% translate "Type" %}</label>
     <select name="type" id="id_type">
@@ -38,10 +66,10 @@
   </div>
   <div class="field">
     <label for="id_q">{% translate "Search" %}</label>
-    <input id="id_q" type="search" name="q" value="{{ query }}">
+    <input id="id_q" type="search" name="q" value="{{ query }}"
+           placeholder="{% translate 'Doc no, customer, supplier…' %}">
   </div>
-  <div class="field">
-    <label>&nbsp;</label>
+  <div class="field field-submit">
     <button type="submit" class="btn btn-primary">{% translate "Filter" %}</button>
   </div>
 </form>
@@ -54,22 +82,22 @@
         <th>{% translate "Type" %}</th>
         <th>{% translate "Status" %}</th>
         <th>{% translate "Party" %}</th>
-        <th>{% translate "Total" %}</th>
+        <th class="num">{% translate "Total" %}</th>
         <th></th>
       </tr>
     </thead>
     <tbody>
       {% for doc in rows %}
       <tr>
-        <td>{{ doc.doc_no|default:doc.pk }}</td>
+        <td><a href="{% url 'document_detail' doc.pk %}">{{ doc.doc_no|default:doc.pk }}</a></td>
         <td>{{ doc.get_doc_type_display }}</td>
-        <td>{{ doc.get_status_display }}</td>
+        <td><span class="badge badge-{{ doc.status }}">{{ doc.get_status_display }}</span></td>
         <td>{{ doc.customer|default:doc.supplier|default:doc.payee }}</td>
-        <td>{{ doc.grand_total }}</td>
+        <td class="num">{{ doc.grand_total }}</td>
         <td><a href="{% url 'document_detail' doc.pk %}">{% translate "Open" %}</a></td>
       </tr>
       {% empty %}
-      <tr><td colspan="6">{% translate "No documents yet." %}</td></tr>
+      <tr><td colspan="6" class="placeholder">{% translate "No documents yet." %}</td></tr>
       {% endfor %}
     </tbody>
   </table>

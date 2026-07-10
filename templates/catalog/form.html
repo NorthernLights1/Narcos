@@ -5,11 +5,24 @@
 <h1>{{ cfg.title }}{% if instance %} — {{ instance }}{% endif %}</h1>
 <form method="post" class="card">
   {% csrf_token %}
+  {% if common_units %}
+  <datalist id="unit-options">
+    {% for unit in common_units %}<option value="{{ unit }}"></option>{% endfor %}
+  </datalist>
+  {% endif %}
   {% if form.non_field_errors %}<p class="msg msg-error">{{ form.non_field_errors }}</p>{% endif %}
 
   {% if not instance %}
   {# D26: search-as-you-type duplicate check — matches appear as you type #}
   <div id="dupe-matches"></div>
+  {% endif %}
+
+  {% if kind in "items customers suppliers" %}
+    {% if instance %}
+      <p class="field-help">{% translate "Code" %}: <strong>{{ instance.code }}</strong></p>
+    {% else %}
+      <p class="field-help">{% translate "The code is assigned automatically when you save — like document numbers." %}</p>
+    {% endif %}
   {% endif %}
 
   <div class="form-grid">
@@ -52,7 +65,7 @@
 
   <div class="actions">
     <button type="submit" class="btn btn-primary">{% translate "Save" %}</button>
-    <a class="btn btn-quiet" href="{% url 'master_list' kind %}">{% translate "Cancel" %}</a>
+    <a class="btn btn-secondary" href="{% url 'master_list' kind %}">{% translate "Cancel" %}</a>
   </div>
 </form>
 {% endblock %}

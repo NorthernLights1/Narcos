@@ -16,17 +16,27 @@ from catalog.models import (
 
 OWNER_ONLY_ITEM_FIELDS = ["pricing_mode", "auto_margin_pct", "min_margin_pct"]
 
+# Suggestions for the unit dropdowns (datalist: pick from the list or type a
+# new one — D62 keeps units free-form on purpose).
+COMMON_UNITS = [
+    "unit", "tablet", "capsule", "strip", "blister", "bottle", "vial",
+    "ampoule", "sachet", "tube", "box", "pack", "carton", "piece", "pair",
+    "roll", "kit", "test",
+]
+
 
 class ItemForm(forms.ModelForm):
     class Meta:
         model = Item
+        # No "code" — assigned automatically at save, like document numbers.
         fields = [
-            "code", "name", "category", "is_batch_tracked", "has_expiry",
+            "name", "category", "is_batch_tracked", "has_expiry",
             "vat_exempt", "base_unit", "generic_name", "dosage_form", "strength",
             "pack_description", "maintained_price", "pricing_mode",
             "auto_margin_pct", "min_margin_pct", "reorder_level", "shelf_bin",
             "is_active",
         ]
+        widgets = {"base_unit": forms.TextInput(attrs={"list": "unit-options"})}
 
     def __init__(self, *args, is_owner: bool = True, **kwargs):
         super().__init__(*args, **kwargs)
@@ -47,7 +57,8 @@ class ItemForm(forms.ModelForm):
 
 
 ItemUnitFormSet = inlineformset_factory(
-    Item, ItemUnit, fields=["unit_label", "factor_to_base"], extra=1, can_delete=True
+    Item, ItemUnit, fields=["unit_label", "factor_to_base"], extra=1, can_delete=True,
+    widgets={"unit_label": forms.TextInput(attrs={"list": "unit-options"})},
 )
 
 
@@ -55,7 +66,7 @@ class CustomerForm(forms.ModelForm):
     class Meta:
         model = Customer
         fields = [
-            "code", "name", "tin", "phone", "address", "credit_limit",
+            "name", "tin", "phone", "address", "credit_limit",
             "credit_action", "is_withholding_agent", "is_active",
         ]
 
@@ -63,7 +74,7 @@ class CustomerForm(forms.ModelForm):
 class SupplierForm(forms.ModelForm):
     class Meta:
         model = Supplier
-        fields = ["code", "name", "tin", "phone", "address", "is_active"]
+        fields = ["name", "tin", "phone", "address", "is_active"]
 
 
 class AccountForm(forms.ModelForm):

@@ -4,44 +4,56 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Narcos{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'css/choices.min.css' %}">
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
   <script src="{% static 'js/htmx.min.js' %}" defer></script>
   <script src="{% static 'js/alpine.min.js' %}" defer></script>
+  <script src="{% static 'js/choices.min.js' %}"></script>
+  <script src="{% static 'js/app.js' %}"></script>
 </head>
 <body>
 <header class="topbar">
   <span class="brand">Narcos</span>
   {% if user.is_authenticated %}
-  <nav class="nav" aria-label="{% translate 'Main navigation' %}">
-    <a href="{% url 'dashboard' %}">{% translate "Dashboard" %}</a>
-    <a href="{% url 'document_list' %}">{% translate "Documents" %}</a>
-    <a href="{% url 'report_hub' %}">{% translate "Reports" %}</a>
-    <a href="{% url 'master_list' 'items' %}">{% translate "Items" %}</a>
-    <a href="{% url 'master_list' 'customers' %}">{% translate "Customers" %}</a>
-    <a href="{% url 'master_list' 'suppliers' %}">{% translate "Suppliers" %}</a>
-    <a href="{% url 'master_list' 'accounts' %}">{% translate "Accounts" %}</a>
-    <a href="{% url 'master_list' 'expense-categories' %}">{% translate "Expenses" %}</a>
-    <a href="{% url 'master_list' 'fixed-assets' %}">{% translate "Assets" %}</a>
-    {% if user.is_owner %}
-      <a href="{% url 'user_list' %}">{% translate "Users" %}</a>
-      <a href="{% url 'audit_log' %}">{% translate "Audit" %}</a>
-      <a href="{% url 'company_settings' %}">{% translate "Settings" %}</a>
-    {% endif %}
-  </nav>
   <form class="logout" method="post" action="{% url 'logout' %}">
     {% csrf_token %}
-    <span class="who">{{ user.username }}</span>
+    <span class="who">{{ user.username }}{% if user.is_owner %} · {% translate "Owner" %}{% endif %}</span>
     <button type="submit" class="btn btn-quiet">{% translate "Log out" %}</button>
   </form>
   {% endif %}
 </header>
-<main class="page">
-  {% if messages %}
-  <ul class="messages">
-    {% for message in messages %}<li class="msg msg-{{ message.tags }}">{{ message }}</li>{% endfor %}
-  </ul>
+<div class="shell">
+  {% if user.is_authenticated %}
+  <aside class="sidebar">
+    <nav aria-label="{% translate 'Main navigation' %}">
+      <p class="nav-group">{% translate "Work" %}</p>
+      <a href="{% url 'dashboard' %}">{% translate "Dashboard" %}</a>
+      <a href="{% url 'document_list' %}">{% translate "Documents" %}</a>
+      <a href="{% url 'report_hub' %}">{% translate "Reports" %}</a>
+      <p class="nav-group">{% translate "Master data" %}</p>
+      <a href="{% url 'master_list' 'items' %}">{% translate "Items" %}</a>
+      <a href="{% url 'master_list' 'customers' %}">{% translate "Customers" %}</a>
+      <a href="{% url 'master_list' 'suppliers' %}">{% translate "Suppliers" %}</a>
+      <a href="{% url 'master_list' 'accounts' %}">{% translate "Accounts" %}</a>
+      <a href="{% url 'master_list' 'expense-categories' %}">{% translate "Expense categories" %}</a>
+      <a href="{% url 'master_list' 'fixed-assets' %}">{% translate "Fixed assets" %}</a>
+      {% if user.is_owner %}
+      <p class="nav-group">{% translate "Administration" %}</p>
+      <a href="{% url 'user_list' %}">{% translate "Users" %}</a>
+      <a href="{% url 'audit_log' %}">{% translate "Audit log" %}</a>
+      <a href="{% url 'company_settings' %}">{% translate "Settings" %}</a>
+      {% endif %}
+    </nav>
+  </aside>
   {% endif %}
-  {% block content %}{% endblock %}
-</main>
+  <main class="page">
+    {% if messages %}
+    <ul class="messages">
+      {% for message in messages %}<li class="msg msg-{{ message.tags }}">{{ message }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
 </body>
 </html>

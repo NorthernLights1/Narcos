@@ -19,6 +19,7 @@ from docs.forms import (
 )
 from docs.models import POST_EDITABLE_FIELDS, DocType, Document, DocumentCharge, DocumentLine
 from docs.posting import PostingError, post, void
+from docs.preview import draft_expected_totals
 from stock.models import StockBalance, Zone
 
 
@@ -100,6 +101,35 @@ def document_edit(request, pk):
     return _draft_form(request, doc)
 
 
+def _totals_preview_context(config) -> dict | None:
+    """Client-side preview data for priced documents. Display only — the
+    posting handlers recompute everything through docs/tax.py (D32)."""
+    if config.get("allocations"):
+        # RC/PV: live "paid vs allocated" check mirroring D44
+        return {"mode": "payment", "regime": "NONE", "rate": 0,
+                "wht_rate": 0, "wht_enabled": "0"}
+    lines = config.get("lines", ())
+    if ("unit_cost_entered" in lines and "qty_entered" in lines
+            and "unit_price" not in lines):
+        # Receiving-style (GRN, opening stock): Σ qty × unit cost, no tax (D63)
+        return {"mode": "cost", "regime": "NONE", "rate": 0,
+                "wht_rate": 0, "wht_enabled": "0"}
+    if "unit_price" not in config.get("lines", ()):
+        return None
+    settings = CompanySettings.load()
+    rate = {
+        CompanySettings.TaxRegime.VAT: settings.vat_rate,
+        CompanySettings.TaxRegime.TOT: settings.tot_rate,
+    }.get(settings.tax_regime, 0)
+    return {
+        "mode": "price",
+        "regime": settings.tax_regime,
+        "rate": rate,
+        "wht_rate": settings.withholding_rate,
+        "wht_enabled": "1" if settings.withholding_on_sales else "0",
+    }
+
+
 def _draft_form(request, doc: Document):
     config = _config(doc.doc_type)
     if request.method == "POST":
@@ -125,6 +155,7 @@ def _draft_form(request, doc: Document):
         "title": config["title"],
         "form": form,
         "formsets": formsets,
+        "totals_preview": _totals_preview_context(config),
     })
 
 
@@ -164,7 +195,11 @@ def document_detail(request, pk):
         ),
         pk=pk,
     )
-    return render(request, "docs/detail.html", {"doc": doc, "config": DOC_CONFIG.get(doc.doc_type)})
+    return render(request, "docs/detail.html", {
+        "doc": doc,
+        "config": DOC_CONFIG.get(doc.doc_type),
+        "expected": draft_expected_totals(doc),
+    })
 
 
 @login_required

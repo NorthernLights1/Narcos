@@ -1,26 +1,46 @@
 {% load i18n %}
-<section class="card">
-  <h2>{{ title }}</h2>
+<section class="card formset-card">
+  <div class="card-head">
+    <h2>{{ title }}</h2>
+    <button type="button" class="btn btn-secondary btn-sm"
+            data-add-row="{{ formset.prefix }}">+ {% translate "Add row" %}</button>
+  </div>
   {{ formset.management_form }}
   {% if formset.non_form_errors %}<p class="msg msg-error">{{ formset.non_form_errors|striptags }}</p>{% endif %}
-  <table class="table">
-    <thead>
-      <tr>
-        {% for field in formset.empty_form.visible_fields %}<th>{{ field.label }}</th>{% endfor %}
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in formset.forms %}
-      <tr>
-        {% for hidden in row.hidden_fields %}{{ hidden }}{% endfor %}
-        {% for field in row.visible_fields %}
-        <td>
-          {{ field }}
-          {% if field.errors %}<p class="field-error">{{ field.errors|striptags }}</p>{% endif %}
-        </td>
+  <div class="table-wrap">
+    <table class="table table-input">
+      <thead>
+        <tr>
+          {% for field in formset.empty_form.visible_fields %}
+            <th{% if field.name == "DELETE" %} class="col-del" title="{% translate 'Remove' %}"{% endif %}>
+              {% if field.name == "DELETE" %}✕{% else %}{{ field.label }}{% endif %}
+            </th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody id="{{ formset.prefix }}-rows">
+        {% for row in formset.forms %}
+        <tr>
+          {% for field in row.visible_fields %}
+          <td{% if field.name == "DELETE" %} class="col-del"{% endif %}>
+            {% if forloop.first %}{% for hidden in row.hidden_fields %}{{ hidden }}{% endfor %}{% endif %}
+            {{ field }}
+            {% if field.errors %}<p class="field-error">{{ field.errors|striptags }}</p>{% endif %}
+          </td>
+          {% endfor %}
+        </tr>
         {% endfor %}
-      </tr>
+      </tbody>
+    </table>
+  </div>
+  <template id="{{ formset.prefix }}-empty-row">
+    <tr>
+      {% for field in formset.empty_form.visible_fields %}
+      <td{% if field.name == "DELETE" %} class="col-del"{% endif %}>
+        {% if forloop.first %}{% for hidden in formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}{% endif %}
+        {{ field }}
+      </td>
       {% endfor %}
-    </tbody>
-  </table>
+    </tr>
+  </template>
 </section>

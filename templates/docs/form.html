@@ -3,13 +3,13 @@
 {% block title %}{{ title }} — Narcos{% endblock %}
 {% block content %}
 <h1>{{ title }}{% if doc.pk %} — {{ doc }}{% endif %}</h1>
-<form method="post">
+<form method="post" id="doc-form">
   {% csrf_token %}
   <section class="card">
     {% if form.non_field_errors %}<p class="msg msg-error">{{ form.non_field_errors|striptags }}</p>{% endif %}
     <div class="form-grid">
       {% for field in form %}
-      <div class="field">
+      <div class="field{% if field.name == 'notes' %} field-wide{% endif %}">
         {{ field.label_tag }}
         {{ field }}
         {% if field.help_text %}<p class="field-help">{{ field.help_text }}</p>{% endif %}
@@ -23,12 +23,53 @@
     {% include "docs/_formset.html" with title=section_title formset=formset %}
   {% endfor %}
 
+  {% if totals_preview.mode == "payment" %}
+  <section class="card totals-preview" id="totals-preview" data-mode="payment">
+    <div class="card-head">
+      <h2>{% translate "Payment check" %}</h2>
+      <span class="hint">{% translate "Money lines + withheld must equal the allocations exactly (D44)." %}</span>
+    </div>
+    <dl class="totals-grid">
+      <div><dt>{% translate "Money lines" %}</dt><dd data-out="paid">0.00</dd></div>
+      <div><dt>{% translate "Withheld (certificate)" %}</dt><dd data-out="withheld">0.00</dd></div>
+      <div class="totals-grand"><dt>{% translate "Total payment" %}</dt><dd data-out="grand">0.00</dd></div>
+      <div><dt>{% translate "Allocated to invoices" %}</dt><dd data-out="allocated">0.00</dd></div>
+      <div><dt>{% translate "Difference" %}</dt><dd data-out="difference">0.00</dd></div>
+    </dl>
+    <p class="hint" data-out="match-note"></p>
+  </section>
+  {% elif totals_preview %}
+  <section class="card totals-preview" id="totals-preview"
+           data-mode="{{ totals_preview.mode }}"
+           data-regime="{{ totals_preview.regime }}"
+           data-rate="{{ totals_preview.rate }}"
+           data-wht-rate="{{ totals_preview.wht_rate }}"
+           data-wht-enabled="{{ totals_preview.wht_enabled }}">
+    <div class="card-head">
+      <h2>{% translate "Totals preview" %}</h2>
+      <span class="hint">{% translate "Final totals are computed by the server at save/post." %}</span>
+    </div>
+    <dl class="totals-grid">
+      <div><dt>{% translate "Subtotal" %}</dt><dd data-out="subtotal">0.00</dd></div>
+      <div><dt>{% translate "Discount" %}</dt><dd data-out="discount">0.00</dd></div>
+      <div><dt>{% translate "Tax" %}</dt><dd data-out="tax">0.00</dd></div>
+      <div class="totals-grand"><dt>{% translate "Grand total" %}</dt><dd data-out="grand">0.00</dd></div>
+      <div data-out="withholding-row" hidden>
+        <dt>{% translate "Withholding expected" %}</dt><dd data-out="withholding">0.00</dd>
+      </div>
+      <div data-out="net-cash-row" hidden>
+        <dt>{% translate "Cash expected after withholding" %}</dt><dd data-out="net-cash">0.00</dd>
+      </div>
+    </dl>
+  </section>
+  {% endif %}
+
   <div class="actions">
     <button type="submit" class="btn btn-primary">{% translate "Save" %}</button>
     {% if doc.pk %}
-      <a class="btn" href="{% url 'document_detail' doc.pk %}">{% translate "Cancel" %}</a>
+      <a class="btn btn-secondary" href="{% url 'document_detail' doc.pk %}">{% translate "Cancel" %}</a>
     {% else %}
-      <a class="btn" href="{% url 'document_list' %}">{% translate "Cancel" %}</a>
+      <a class="btn btn-secondary" href="{% url 'document_list' %}">{% translate "Cancel" %}</a>
     {% endif %}
   </div>
 </form>

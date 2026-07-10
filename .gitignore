@@ -7,3 +7,8 @@ staticfiles/
 .env
 tools/
 .pytest_cache/
+
+# agent tooling (installed via `npx skills` / ECC installer, personal/local tooling)
+.agents/
+.claude/
+skills-lock.json

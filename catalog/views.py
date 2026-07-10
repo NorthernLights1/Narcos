@@ -12,6 +12,7 @@ from django.utils.translation import gettext_lazy
 
 from catalog import importers
 from catalog.forms import (
+    COMMON_UNITS,
     AccountForm,
     CsvImportForm,
     CustomerForm,
@@ -104,6 +105,7 @@ def master_form(request, kind, pk=None):
                     return render(request, "catalog/form.html", {
                         "cfg": cfg, "kind": kind, "form": form,
                         "units_formset": units_formset, "instance": instance,
+                        "common_units": COMMON_UNITS,
                     })
                 units_formset.save()
             after = snapshot(saved, cfg.model.AUDITED_FIELDS)
@@ -124,6 +126,7 @@ def master_form(request, kind, pk=None):
     return render(request, "catalog/form.html", {
         "cfg": cfg, "kind": kind, "form": form,
         "units_formset": units_formset, "instance": instance,
+        "common_units": COMMON_UNITS if cfg.model is Item else None,
     })
 
 

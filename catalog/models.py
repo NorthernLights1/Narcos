@@ -1,10 +1,38 @@
 """Catalog models — spec §3.2: items/units, parties, accounts, categories, assets."""
 
-from django.db import models
+from django.db import models, transaction
 from django.utils.translation import gettext_lazy as _
 
+# Master codes are assigned automatically, like document numbers (D8): the
+# forms never ask for one. An explicit code still wins when set programmatically
+# (CSV migration of a legacy numbering scheme).
+MASTER_CODE_PREFIXES = {"Item": "ITM", "Customer": "CUS", "Supplier": "SUP"}
 
-class Item(models.Model):
+
+class AutoCodeModel(models.Model):
+    """Blank code → next PREFIX-0001 from the same locked per-key sequence
+    documents use. Skips numbers already taken by imported legacy codes."""
+
+    class Meta:
+        abstract = True
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            from core.models import NumberSequence
+
+            model = type(self)
+            prefix = MASTER_CODE_PREFIXES[model.__name__]
+            with transaction.atomic():
+                while True:
+                    number = NumberSequence.take(f"CODE_{model.__name__.upper()}")
+                    candidate = f"{prefix}-{number:04d}"
+                    if not model.objects.filter(code=candidate).exists():
+                        self.code = candidate
+                        break
+        super().save(*args, **kwargs)
+
+
+class Item(AutoCodeModel):
     """D29: mixed catalog — drugs, reagents, supplies, equipment."""
 
     class Category(models.TextChoices):
@@ -91,7 +119,7 @@ class ItemUnit(models.Model):
         return f"{self.unit_label} ×{self.factor_to_base}"
 
 
-class Customer(models.Model):
+class Customer(AutoCodeModel):
     class CreditAction(models.TextChoices):  # D25; null on customer = company default
         WARN = "WARN", _("Warn and allow")
         BLOCK = "BLOCK", _("Block (owner may override)")
@@ -127,7 +155,7 @@ class Customer(models.Model):
         return f"{self.code} — {self.name}"
 
 
-class Supplier(models.Model):
+class Supplier(AutoCodeModel):
     code = models.CharField(_("Code"), max_length=30, unique=True)
     name = models.CharField(_("Name"), max_length=200)
     tin = models.CharField(_("TIN"), max_length=30, blank=True)

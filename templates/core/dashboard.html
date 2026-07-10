@@ -2,8 +2,18 @@
 {% load i18n %}
 {% block title %}{% translate "Dashboard" %} - Narcos{% endblock %}
 {% block content %}
-<h1>{% translate "Dashboard" %}</h1>
-<p class="today">{{ today }} - {{ today_ethiopian }}</p>
+<div class="page-head">
+  <div>
+    <h1>{% translate "Dashboard" %}</h1>
+    <p class="today">{{ today }} - {{ today_ethiopian }}</p>
+  </div>
+  <div class="actions">
+    <a class="btn btn-primary" href="{% url 'document_create' 'SALE' %}">{% translate "New sale" %}</a>
+    <a class="btn btn-secondary" href="{% url 'document_create' 'RECEIVING' %}">{% translate "New receiving" %}</a>
+    <a class="btn btn-secondary" href="{% url 'document_create' 'CUSTOMER_PAYMENT' %}">{% translate "Customer payment" %}</a>
+    <a class="btn btn-secondary" href="{% url 'report_hub' %}">{% translate "Reports" %}</a>
+  </div>
+</div>
 <div class="cards">
   <div class="card">
     <h2>{% translate "Low stock" %}</h2>

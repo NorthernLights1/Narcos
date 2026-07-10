@@ -769,3 +769,54 @@ questions (R41–R45 and the buildable-spec details) in one pass.
   VAT is ambiguous. Pro-rata is the standard, defensible allocation.
   *(Spec-level decision by the design reviewer — flag if the client's
   accountant prefers a different allocation.)*
+
+---
+
+## Round 8 (2026-07-10) — pre-demo owner feedback
+
+### D67 — Master codes are auto-assigned (items, customers, suppliers)
+- **What:** The item/customer/supplier **code is no longer typed** on the
+  forms. A blank code gets the next **`ITM-0001` / `CUS-0001` / `SUP-0001`**
+  from the same locked per-key sequence documents use (D8 mechanism). An
+  **explicit code still wins** when supplied programmatically — the CSV
+  importers keep an optional `code` column so a legacy numbering scheme can
+  be migrated; the auto-sequence walks past any number a legacy code already
+  occupies. One-time `renumber_master_codes` management command migrates
+  hand-typed codes (audited, D47).
+- **Why:** Owner: manual codes are busywork and a typo source with no upside
+  for this business; the only real use (preserving an existing scheme) lives
+  in the import path, not the daily UI.
+
+### D68 — UI workflow layer: entry aids are display-only; the engine stays authoritative
+- **What:** The document screens gained: dynamic add-row on line/charge/
+  payment/allocation tables; searchable pickers (vendored Choices.js, offline
+  like htmx/alpine per D55); batch options labelled `item · batch · expiry ·
+  on-hand`; item pick prefills base unit and maintained price (only into
+  empty fields); a **live totals preview** on priced forms (mirrors §5 incl.
+  D64 allocation and D51 expected withholding); an **expected-totals card on
+  draft detail** (server-side, mirrors the handlers' math) so staff confirm
+  money **before** posting; a **payment check panel** on RC/PV (money +
+  withheld vs. allocations, D44); allocation options show each invoice's
+  **open balance** and expected withholding, and list **only unpaid invoices
+  of the chosen party**; unit fields offer a datalist of common units (D62's
+  free-form entry kept). Every one of these is **display-only**: posting
+  recomputes and freezes all numbers through the one engine (D32 unchanged).
+- **Why:** Owner reviewed the v1 screens before the client demo: fixed 5-row
+  tables, unlabelled pickers, and posting-before-seeing-totals were unusable
+  in daily work. Previews may drift in theory; the frozen numbers cannot —
+  any mismatch surfaces at post time as a visible bug, not silent corruption.
+
+### D69 — Withholding practice confirmed; threshold automation deferred
+- **What:** Owner confirmed the tax reality this install runs under: **all
+  medical items are VAT-exempt** (consistent with D50/D63), so the tax story
+  is **3% withholding on sales to PLC buyers** (D51 flow): expectation shown
+  at sale, actual amount + certificate number entered at payment from the
+  customer's certificate, reconciled at filing via the withholding-received
+  report. The **checkbox stays manual in v1** — nothing auto-ticks it from
+  the customer's withholding-agent flag, and the legal 10,000-birr threshold
+  is not encoded. Candidate v1.1 enhancement: default `customer_will_withhold`
+  from `is_withholding_agent` (± threshold), owner to decide after go-live.
+- **Why:** Captures the owner's stated practice so the config (VAT regime
+  kept at VAT, items exempt, withholding-on-sales ON) is a recorded decision,
+  not folklore; automation deferred until real usage shows whether staff
+  forget the checkbox.

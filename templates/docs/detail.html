@@ -36,7 +36,28 @@
     <div><dt>{% translate "Grand total" %}</dt><dd>{{ doc.grand_total }}</dd></div>
     <div><dt>{% translate "Fiscal receipt" %}</dt><dd>{{ doc.fiscal_receipt_no|default:"—" }}</dd></div>
   </dl>
+  {% if doc.status == "DRAFT" %}
+  <p class="hint">{% translate "Draft — the document number, date, and totals are computed and frozen when you post." %}</p>
+  {% endif %}
 </section>
+
+{% if expected %}
+<section class="card totals-preview">
+  <div class="card-head">
+    <h2>{% translate "Expected totals" %}</h2>
+    <span class="hint">{% translate "Computed from the draft lines — posting freezes these numbers." %}</span>
+  </div>
+  <dl class="totals-grid">
+    <div><dt>{% translate "Subtotal" %}</dt><dd>{{ expected.subtotal }}</dd></div>
+    <div><dt>{% translate "Discount" %}</dt><dd>{{ expected.discount }}</dd></div>
+    <div><dt>{% translate "Tax" %}</dt><dd>{{ expected.tax }}</dd></div>
+    <div class="totals-grand"><dt>{% translate "Grand total" %}</dt><dd>{{ expected.grand }}</dd></div>
+    {% if expected.withholding > 0 %}
+    <div><dt>{% translate "Withholding expected" %}</dt><dd>{{ expected.withholding }}</dd></div>
+    {% endif %}
+  </dl>
+</section>
+{% endif %}
 
 {% if doc.status == "DRAFT" %}
 <section class="card">
@@ -77,9 +98,14 @@
         <th>{% translate "Item" %}</th>
         <th>{% translate "Batch" %}</th>
         <th>{% translate "Qty" %}</th>
-        <th>{% translate "Price" %}</th>
-        <th>{% translate "Net" %}</th>
-        {% if user.is_owner %}<th>{% translate "COGS" %}</th>{% endif %}
+        {% if doc.doc_type == "RECEIVING" %}
+          <th class="num">{% translate "Unit cost" %}</th>
+          <th class="num">{% translate "Free" %}</th>
+        {% else %}
+          <th class="num">{% translate "Price" %}</th>
+          <th class="num">{% translate "Net" %}</th>
+          {% if user.is_owner %}<th class="num">{% translate "COGS" %}</th>{% endif %}
+        {% endif %}
       </tr>
     </thead>
     <tbody>
@@ -87,10 +113,18 @@
       <tr>
         <td>{{ line.item }}</td>
         <td>{{ line.batch|default:line.batch_no_entered|default:"—" }}</td>
-        <td>{{ line.qty_base|default:line.qty_entered }} {{ line.unit_label }}</td>
-        <td>{{ line.unit_price }}</td>
-        <td>{{ line.line_net }}</td>
-        {% if user.is_owner %}<td>{{ line.cogs_total }}</td>{% endif %}
+        <td>
+          {{ line.qty_entered }} {{ line.unit_label }}{% if line.factor > 1 %}
+            × {{ line.factor }} = {% widthratio line.qty_entered 1 line.factor %} {{ line.item.base_unit }}{% endif %}
+        </td>
+        {% if doc.doc_type == "RECEIVING" %}
+          <td class="num">{{ line.unit_cost_entered|default:"—" }}</td>
+          <td class="num">{{ line.free_qty }}</td>
+        {% else %}
+          <td class="num">{{ line.unit_price }}</td>
+          <td class="num">{{ line.line_net }}</td>
+          {% if user.is_owner %}<td class="num">{{ line.cogs_total }}</td>{% endif %}
+        {% endif %}
       </tr>
       {% endfor %}
     </tbody>
