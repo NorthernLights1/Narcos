@@ -820,3 +820,57 @@ questions (R41–R45 and the buildable-spec details) in one pass.
   kept at VAT, items exempt, withholding-on-sales ON) is a recorded decision,
   not folklore; automation deferred until real usage shows whether staff
   forget the checkbox.
+
+---
+
+## Round 9 (2026-07-12) — owner walkthrough feedback, part 2
+
+### D70 — Consignment withholding is decided at issue; the settlement inherits it
+- **What:** The **"customer will withhold"** checkbox moved from the
+  consignment settlement to the **consignment issue**. At posting, the
+  settlement **inherits the issue's flag** regardless of how the settlement
+  was created; the expected 3% is still computed at settlement time, on the
+  **sold portion only** (that's when revenue exists). The actual withheld
+  amount + certificate stay on the customer payment (D51 unchanged).
+- **Why:** Owner: withholding depends on **who the buyer is** (PLC), which is
+  known when the goods go out — asking again at settlement invites
+  contradiction and forgetting.
+
+### D71 — Settlement is a guided split; its money computes itself
+- **What:** A **"Settle consignment"** button on a posted issue creates the
+  settlement prefilled: one line per item+batch still out (issued − already
+  settled, in base units), with columns **Still out · Sold · Returned ·
+  Expired/damaged · Damaged goes to** (EXPIRED/UNFIT only). No unit/factor/
+  price columns — settlement quantities are base units and money comes from
+  the **issue's frozen prices** (§7.5). The **money due is computed
+  automatically** — sold × issue price, taxed at the issue's rate snapshot;
+  returned/expired earn nothing — shown live on the form (below the payment
+  lines) and server-side on the draft before posting. The blank-form
+  settlement path remains for edge cases but shows no live money until an
+  issue is linked.
+- **Why:** Owner: the settlement form looked like a sale and left the final
+  amount to mental arithmetic. The engine already knew every number; the
+  screen now says it.
+
+### D72 — Payment amounts prefill; a manual edit always wins
+- **What:** Money boxes fill themselves wherever the total is knowable, and
+  never overwrite a user's own numbers (so splitting across cash/bank stays
+  manual): cash sale/settlement → first payment line tracks the grand total
+  (cleared when switched to credit); customer/supplier payment → picking an
+  invoice prefills the allocation with its **open balance**, the **withheld
+  amount** from the invoice's expected withholding, and the first payment
+  line with allocations − withheld; expense → payment mirrors the entered
+  total. **Receivings deliberately do not prefill**: empty payment lines mean
+  "bought on credit" (the normal case), and auto-filling would silently turn
+  every delivery into paid-in-full and spawn auto supplier payments.
+- **Why:** Owner: totals must not be left to manual arithmetic at entry time.
+  The engine's exact-match rules (D3/D44) still verify everything at posting.
+
+**Also in this round (no separate decisions):** the register page label is
+**"Transactions"** (URLs, code, and these docs keep saying *document* — D28's
+vocabulary is unchanged); grey placeholder hints on all forms; **D23 auto
+pricing implemented** (AUTO items prefill latest lot cost × (1+margin), the
+item form shows selling price *or* margin per mode); batch pickers filter to
+the line's item and show `exp · on hand` under the box once picked; receiving
+column renamed **"Cost paid / unit"** vs the sale's **"Selling price / unit"**;
+static assets carry a `?v=` cache-buster (bump when app.css/app.js change).

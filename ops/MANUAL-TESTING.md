@@ -14,6 +14,17 @@ Written for a dev machine (Linux, `.venv`, PostgreSQL on localhost).
 > and payments show a **Payment check** panel (paid + withheld vs allocated).
 > Where the steps below say "enter code X", skip it — codes assign themselves.
 
+> **2026-07-12 UI update (D70–D72):** the register page is labelled
+> **Transactions** (same URLs). All forms carry grey placeholder hints.
+> Batch pickers **filter to the line's item** and show `exp · on hand` under
+> the box once picked. AUTO-priced items prefill *latest cost × (1+margin)*.
+> **Payment amounts prefill** (cash sale total; allocation open balances;
+> withheld from the invoice's expectation) — a manual edit always wins, and
+> receivings never prefill (empty = bought on credit). Consignment:
+> withholding is ticked **on the issue**; settle via the **"Settle
+> consignment" button** on the posted issue — the split lines and the money
+> due compute themselves.
+
 ---
 
 ## 0. One-time setup
@@ -64,7 +75,7 @@ what the tests can't — the screens, the flow, and the feel.
 | Users | `/users/` | Create employee accounts here |
 | Audit log | `/audit/` | Every change shows up here |
 | Master data | `/master/items/`, `/master/customers/`, `/master/suppliers/`, `/master/accounts/`, `/master/expense-categories/`, `/master/fixed-assets/` | Each has list, new, edit, CSV import |
-| Documents | `/documents/` | List + filter; create via `/documents/new/<TYPE>/` |
+| Transactions | `/documents/` | The register: list + filter; create via `/documents/new/<TYPE>/` |
 | Reports | `/reports/` | 16 reports; some owner-only |
 
 Document types you can create: `RECEIVING`, `SALE`, `PROFORMA`,
@@ -189,8 +200,11 @@ return 50 tablets.
 
 `/documents/new/CUSTOMER_PAYMENT/` — Mekelle Clinic. The allocation picker
 lists **only their unpaid invoices**, each labelled with its open balance
-(`SI-000002 · … · open 80.10`); the **Payment check** panel tracks paid vs
-allocated as you type and must reach difference 0.00 (D44).
+(`SI-000002 · … · open 80.10`); picking one **prefills the allocation with
+the open balance** — and the withheld amount, when the invoice expects
+withholding — and the first payment line fills with allocations − withheld
+(D72; edit any of them and your number wins). The **Payment check** panel
+tracks paid vs allocated as you type and must reach difference 0.00 (D44).
 - ✅ Over-allocating beyond an invoice's open balance is rejected (I13).
 - ✅ Fully-settled invoices disappear from the picker (the auto-paid cash
   sale never appears at all).
@@ -228,18 +242,25 @@ the withheld amount + their certificate number.
 
 ## 6. Consignment
 
-1. `CONSIGNMENT_ISSUE` to Mekelle Clinic: 100 tablets. ✅ Stock moves out of
-   the warehouse into a **consignment zone tagged to that customer** — it's
-   still yours; `/reports/consignment/` shows it outstanding, and no revenue
-   or AR was created.
-2. `CONSIGNMENT_SETTLEMENT` against that issue: they sold 60, returned 30,
-   10 expired at their shelf.
-   - ✅ The 60 become a real sale (revenue + VAT + AR/cash now, not at issue
-     time).
-   - ✅ The 30 come back to the warehouse.
-   - ✅ The 10 land in the expired/unfit zone and show in `/reports/losses/`
-     at lot cost.
-   - ✅ The settlement can't exceed what was issued.
+1. `CONSIGNMENT_ISSUE` to Mekelle Clinic: 100 tablets. If the customer is a
+   withholding agent, tick **customer will withhold** here — on the issue,
+   not later (D70). ✅ Stock moves out of the warehouse into a **consignment
+   zone tagged to that customer** — it's still yours; `/reports/consignment/`
+   shows it outstanding, and no revenue or AR was created.
+2. Open the posted issue and press **"Settle consignment"** (D71). The draft
+   arrives prefilled: one line per item+batch with **Still out** already
+   filled. Enter the split: sold 60, returned 30, 10 expired.
+   - ✅ The totals panel (below the payment lines) prices the **60 sold** at
+     the *issue's* frozen price as you type — returned/expired add nothing.
+   - ✅ Cash settlement: the payment line prefills with that total (split it
+     manually if paid part cash / part transfer).
+   - ✅ If the issue was withholding-flagged, the settlement inherits it —
+     there is no checkbox to remember here.
+   - Post, then: the 60 became revenue + AR/cash **now** (not at issue time);
+     the 30 are back in the warehouse; the 10 sit in expired/unfit and show
+     in `/reports/losses/` at lot cost.
+   - ✅ Settling more than is out is refused; pressing Settle again offers
+     only the remainder; a fully-settled issue refuses politely.
 
 ---
 

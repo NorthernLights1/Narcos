@@ -1,9 +1,36 @@
-/* Narcos UI enhancements: dynamic formset rows, searchable selects, and a
- * client-side totals preview. Display convenience only — the server's tax
- * engine (docs/tax.py) remains the single authority for stored totals (D32). */
+/* Narcos UI enhancements: dynamic formset rows, searchable selects, dependent
+ * batch filtering, and client-side totals previews. Display convenience only —
+ * the server's tax engine (docs/tax.py) remains the single authority for
+ * stored totals (D32). */
 
 (function () {
   "use strict";
+
+  /* ---------- option snapshots ----------
+   * Choices.js rebuilds <option> elements and drops their data-* attributes,
+   * so every select's options (value, label, dataset) are captured before
+   * enhancement. Prefill, previews, and batch filtering read the snapshot. */
+
+  function snapshotOptions(el) {
+    el._opts = Array.prototype.map.call(el.options, function (o) {
+      return {
+        value: o.value,
+        label: (o.textContent || "").trim(),
+        data: Object.assign({}, o.dataset),
+      };
+    });
+  }
+
+  function optionData(select, value) {
+    if (select._opts) {
+      for (var i = 0; i < select._opts.length; i++) {
+        if (select._opts[i].value === value) return select._opts[i].data;
+      }
+      return null;
+    }
+    var o = select.options[select.selectedIndex];
+    return o ? o.dataset : null;
+  }
 
   /* ---------- searchable selects (Choices.js, vendored) ---------- */
 
@@ -12,7 +39,8 @@
     root.querySelectorAll("select[data-search]").forEach(function (el) {
       if (el.dataset.enhanced) return;
       el.dataset.enhanced = "1";
-      new Choices(el, {
+      snapshotOptions(el);
+      el._choices = new Choices(el, {
         shouldSort: false,
         itemSelectText: "",
         allowHTML: false,
@@ -43,11 +71,7 @@
     if (button) addFormsetRow(button.dataset.addRow);
   });
 
-  /* ---------- prefill from the picked item ---------- */
-
-  function selectedOption(select) {
-    return select.options[select.selectedIndex] || null;
-  }
+  /* ---------- item pick: prefill + batch filtering ---------- */
 
   function rowInput(row, suffix) {
     return row.querySelector('[name$="-' + suffix + '"]');
@@ -55,25 +79,156 @@
 
   function prefillFromItem(select) {
     var row = select.closest("tr");
-    var option = selectedOption(select);
-    if (!row || !option) return;
+    var data = optionData(select, select.value);
+    if (!row || !data) return;
     var price = rowInput(row, "unit_price");
-    if (price && (!price.value || Number(price.value) === 0) && option.dataset.price) {
-      price.value = option.dataset.price;
+    if (price && (!price.value || Number(price.value) === 0) && data.price) {
+      price.value = data.price;
     }
     var unitLabel = rowInput(row, "unit_label");
-    if (unitLabel && !unitLabel.value && option.dataset.baseUnit) {
-      unitLabel.value = option.dataset.baseUnit;
+    if (unitLabel && !unitLabel.value && data.baseUnit) {
+      unitLabel.value = data.baseUnit;
     }
+  }
+
+  function updateBatchHint(batchSelect) {
+    var cell = batchSelect.closest("td");
+    if (!cell) return;
+    var hint = cell.querySelector(".cell-hint");
+    var data = batchSelect.value ? optionData(batchSelect, batchSelect.value) : null;
+    if (!data) {
+      if (hint) hint.remove();
+      return;
+    }
+    if (!hint) {
+      hint = document.createElement("span");
+      hint.className = "cell-hint";
+      cell.appendChild(hint);
+    }
+    hint.textContent = (data.expiry ? "exp " + data.expiry : "no expiry")
+      + " · " + (data.onhand || 0) + " in stock";
+  }
+
+  function filterBatches(row) {
+    var itemSelect = row.querySelector('select[name$="-item"]');
+    var batchSelect = row.querySelector('select[name$="-batch"]');
+    if (!itemSelect || !batchSelect || !batchSelect._opts) return;
+    var itemValue = itemSelect.value;
+    var previous = batchSelect.value;
+    var list = batchSelect._opts.filter(function (o) {
+      return o.value === "" || !itemValue || o.data.item === itemValue;
+    });
+    var stillValid = list.some(function (o) { return o.value === previous; });
+    if (batchSelect._choices) {
+      batchSelect._choices.setChoices(list.map(function (o) {
+        return {
+          value: o.value,
+          label: o.label || "—",
+          selected: stillValid ? o.value === previous : o.value === "",
+        };
+      }), "value", "label", true);
+      if (!stillValid) batchSelect._choices.setChoiceByValue("");
+    } else {
+      batchSelect.innerHTML = "";
+      list.forEach(function (o) {
+        var opt = document.createElement("option");
+        opt.value = o.value;
+        opt.textContent = o.label;
+        Object.keys(o.data).forEach(function (k) { opt.dataset[k] = o.data[k]; });
+        opt.selected = stillValid ? o.value === previous : o.value === "";
+        batchSelect.appendChild(opt);
+      });
+    }
+    updateBatchHint(batchSelect);
+  }
+
+  /* ---------- amount autofill ----------
+   * Prefill a money box only while the user hasn't touched it: empty, or
+   * still holding our last prefill. A manual edit (including a split across
+   * lines) is never overwritten. */
+
+  function autofill(input, value) {
+    if (!input) return;
+    var current = input.value;
+    if (current === "" || current === "0" || current === input.dataset.autofill) {
+      input.value = String(value);
+      input.dataset.autofill = String(value);
+    }
+  }
+
+  function clearAutofill(input) {
+    if (input && input.value === input.dataset.autofill) {
+      input.value = "";
+      delete input.dataset.autofill;
+    }
+  }
+
+  function firstUntouchedPaymentAmount() {
+    var rows = document.querySelectorAll("#payments-rows tr");
+    if (!rows.length) return null;
+    for (var i = 1; i < rows.length; i++) {
+      var other = rowInput(rows[i], "amount");
+      if (other && Number(other.value || 0) > 0) return null;  // split manually
+    }
+    return rowInput(rows[0], "amount");
+  }
+
+  function prefillPaymentFromAllocations() {
+    var allocated = sumRows("allocations-rows", "amount");
+    var withheldInput = document.querySelector('input[name="withheld_amount"]');
+    var withheld = Number(withheldInput ? withheldInput.value : 0) || 0;
+    if (allocated <= 0) return;
+    autofill(firstUntouchedPaymentAmount(),
+             round2(Math.max(allocated - withheld, 0)).toFixed(2));
   }
 
   document.addEventListener("change", function (event) {
     var el = event.target;
-    if (el.matches && el.matches('select[name$="-item"]')) prefillFromItem(el);
+    if (el.matches && el.matches('select[name$="-item"]')) {
+      prefillFromItem(el);
+      var row = el.closest("tr");
+      if (row) filterBatches(row);
+    }
+    if (el.matches && el.matches('select[name$="-batch"]')) {
+      updateBatchHint(el);
+    }
+    if (el.matches && el.matches('select[name$="-target"]')) {
+      var data = optionData(el, el.value);
+      var row = el.closest("tr");
+      if (data && row) {
+        autofill(rowInput(row, "amount"), data.open || "");
+        var withheldInput = document.querySelector('input[name="withheld_amount"]');
+        if (withheldInput && data.wht) autofill(withheldInput, data.wht);
+        prefillPaymentFromAllocations();
+      }
+    }
+    if (el.matches && el.matches('select[name="sale_kind"]') && el.value !== "CASH") {
+      clearAutofill(firstUntouchedPaymentAmount());
+    }
     recomputeTotals();
   });
 
-  /* ---------- totals preview (mirrors §5; preview only) ---------- */
+  /* ---------- item form: pricing mode toggle (D23) ---------- */
+
+  function initPricingToggle() {
+    var mode = document.querySelector('select[name="pricing_mode"]');
+    if (!mode) return;
+    function wrap(name) {
+      var el = document.querySelector('[name="' + name + '"]');
+      return el ? el.closest(".field") : null;
+    }
+    function apply() {
+      var auto = mode.value === "AUTO";
+      var price = wrap("maintained_price");
+      var margin = wrap("auto_margin_pct");
+      if (price) price.hidden = auto;
+      if (margin) margin.hidden = !auto;
+    }
+    mode.addEventListener("change", apply);
+    apply();
+  }
+
+  /* ---------- totals previews (mirror §5; preview only) ---------- */
 
   function round2(value) {
     return Math.round((value + Number.EPSILON) * 100) / 100;
@@ -101,8 +256,8 @@
       if (qty <= 0 || price <= 0) return;
       var net = Math.max(round2(qty * price - discount), 0);
       var itemSelect = row.querySelector('select[name$="-item"]');
-      var option = itemSelect ? selectedOption(itemSelect) : null;
-      var exempt = option ? option.dataset.vatExempt === "1" : false;
+      var data = itemSelect ? optionData(itemSelect, itemSelect.value) : null;
+      var exempt = data ? data.vatExempt === "1" : false;
       parts.push({ value: net, taxable: !exempt });
     });
     document.querySelectorAll("#charges-rows tr").forEach(function (row) {
@@ -111,6 +266,34 @@
       if (amount <= 0) return;
       var taxableBox = row.querySelector('input[name$="-is_taxable"]');
       parts.push({ value: round2(amount), taxable: !taxableBox || taxableBox.checked });
+    });
+    return parts;
+  }
+
+  function sumRows(tbodyId, suffix) {
+    var total = 0;
+    document.querySelectorAll("#" + tbodyId + " tr").forEach(function (row) {
+      if (rowIsDeleted(row)) return;
+      total += Number((rowInput(row, suffix) || {}).value || 0);
+    });
+    return round2(total);
+  }
+
+  function collectSettlementParts() {
+    /* Sold quantities × the issue's frozen per-base values (§7.5).
+     * Returned/expired quantities earn nothing. */
+    var parts = [];
+    document.querySelectorAll("#lines-rows tr").forEach(function (row) {
+      if (rowIsDeleted(row)) return;
+      var soldInput = rowInput(row, "qty_sold");
+      if (!soldInput) return;
+      var sold = Number(soldInput.value || 0);
+      var perBase = Number(soldInput.dataset.valuePerBase || 0);
+      if (sold <= 0 || perBase <= 0) return;
+      parts.push({
+        value: round2(sold * perBase),
+        taxable: soldInput.dataset.taxable === "1",
+      });
     });
     return parts;
   }
@@ -124,15 +307,6 @@
       if (qty > 0 && cost > 0) subtotal += round2(qty * cost);
     });
     return round2(subtotal);
-  }
-
-  function sumRows(tbodyId, suffix) {
-    var total = 0;
-    document.querySelectorAll("#" + tbodyId + " tr").forEach(function (row) {
-      if (rowIsDeleted(row)) return;
-      total += Number((rowInput(row, suffix) || {}).value || 0);
-    });
-    return round2(total);
   }
 
   function recomputePaymentCheck(panel) {
@@ -181,7 +355,8 @@
     var whtRate = Number(panel.dataset.whtRate || 0);
     var whtEnabled = panel.dataset.whtEnabled === "1";
 
-    var parts = collectParts();
+    var parts = panel.dataset.mode === "settlement"
+      ? collectSettlementParts() : collectParts();
     var subtotal = round2(parts.reduce(function (sum, p) { return sum + p.value; }, 0));
     var docDiscountInput = document.querySelector('input[name="doc_discount"]');
     var docDiscount = Math.min(Number(docDiscountInput ? docDiscountInput.value : 0) || 0, subtotal);
@@ -199,8 +374,17 @@
     var tax = regime === "VAT" || regime === "TOT" ? round2(taxableBase * rate / 100) : 0;
     var grand = round2(taxableBase + exemptBase + tax);
 
+    /* Cash sale: the payment must equal the total anyway — prefill it. */
+    var saleKind = document.querySelector('select[name="sale_kind"]');
+    if (saleKind && saleKind.value === "CASH" && grand > 0) {
+      autofill(firstUntouchedPaymentAmount(), grand.toFixed(2));
+    }
+
     var whtBox = document.querySelector('input[name="customer_will_withhold"]');
-    var withholding = whtEnabled && whtBox && whtBox.checked
+    /* Settlements have no checkbox — they inherit the issue's flag (D70). */
+    var willWithhold = whtBox ? whtBox.checked
+      : panel.dataset.willWithhold === "1";
+    var withholding = whtEnabled && willWithhold
       ? round2(whtRate / 100 * (grand - tax))
       : 0;
 
@@ -221,11 +405,24 @@
   }
 
   document.addEventListener("input", function (event) {
-    if (event.target.closest("#doc-form")) recomputeTotals();
+    var el = event.target;
+    if (!el.closest("#doc-form")) return;
+    if (el.name === "grand_total") {
+      // Expense & co.: the payment mirrors the entered total
+      autofill(firstUntouchedPaymentAmount(),
+               (Number(el.value || 0) || 0).toFixed(2));
+    }
+    if (el.name === "withheld_amount" || el.closest("#allocations-rows")) {
+      prefillPaymentFromAllocations();
+    }
+    recomputeTotals();
   });
 
   document.addEventListener("DOMContentLoaded", function () {
     enhanceSelects(document);
+    initPricingToggle();
+    document.querySelectorAll("#lines-rows tr").forEach(filterBatches);
+    document.querySelectorAll('select[name$="-batch"]').forEach(updateBatchHint);
     recomputeTotals();
   });
 })();

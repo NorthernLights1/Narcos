@@ -32,6 +32,7 @@
       {% if not instance and field.name == "name" or not instance and field.name == "code" %}
         <input type="text" name="{{ field.name }}" id="{{ field.id_for_label }}"
                value="{{ field.value|default:'' }}" maxlength="200"
+               placeholder="{{ field.field.widget.attrs.placeholder|default:'' }}"
                hx-get="{% url 'master_search' kind %}" hx-trigger="keyup changed delay:400ms"
                hx-target="#dupe-matches" hx-include="this">
       {% else %}

@@ -50,6 +50,7 @@
   .btn-quiet { @apply bg-transparent text-slate-300 hover:text-white; }
   .btn-sm { @apply px-2.5 py-1 text-xs; }
   .hint { @apply text-xs text-slate-400; }
+  .cell-hint { @apply block text-xs text-slate-500 mt-1 whitespace-nowrap; }
 
   /* ---- forms ---- */
   .field { @apply mb-4; }

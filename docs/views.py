@@ -8,6 +8,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.translation import gettext as _
 from django.views.decorators.http import require_POST
 
+from catalog.forms import COMMON_UNITS
 from core.audit import log_change, snapshot
 from core.models import CompanySettings
 from docs.forms import (
@@ -17,6 +18,7 @@ from docs.forms import (
     DocumentReferenceForm,
     formsets_for,
 )
+from docs.handlers_sales import outstanding_by_item_batch
 from docs.models import POST_EDITABLE_FIELDS, DocType, Document, DocumentCharge, DocumentLine
 from docs.posting import PostingError, post, void
 from docs.preview import draft_expected_totals
@@ -61,8 +63,45 @@ def document_create(request, doc_type):
     _config(doc_type)
     if doc_type == DocType.STOCK_COUNT and request.method == "GET":
         return _start_stock_count(request)
+    if (doc_type == DocType.CONSIGNMENT_SETTLEMENT and request.method == "GET"
+            and request.GET.get("from")):
+        return _start_consignment_settlement(request, request.GET["from"])
     doc = Document(doc_type=doc_type, created_by=request.user)
     return _draft_form(request, doc)
+
+
+def _start_consignment_settlement(request, issue_pk):
+    """Settle button on a posted issue: prefill one line per item+batch still
+    out, so staff only type the sold/returned/expired split (D6)."""
+    issue = get_object_or_404(
+        Document, pk=issue_pk, status=Document.Status.POSTED,
+        doc_type__in=[DocType.CONSIGNMENT_ISSUE, DocType.OPENING_CONSIGNMENT],
+    )
+    outstanding = outstanding_by_item_batch(issue)
+    if not outstanding:
+        messages.info(request, _("Nothing is still out on %(no)s — it is fully settled.")
+                      % {"no": issue.doc_no})
+        return redirect("document_detail", pk=issue.pk)
+    with transaction.atomic():
+        doc = Document.objects.create(
+            doc_type=DocType.CONSIGNMENT_SETTLEMENT, created_by=request.user,
+            customer=issue.customer, related_document=issue,
+            customer_will_withhold=issue.customer_will_withhold,  # D70
+        )
+        for group in outstanding:
+            DocumentLine.objects.create(
+                document=doc,
+                item=group["item"],
+                batch=group["batch"],
+                unit_label=group["item"].base_unit,
+                factor=1,
+                qty_entered=group["outstanding"],
+                qty_base=group["outstanding"],
+            )
+    messages.success(request, _(
+        "Settlement draft for %(no)s — enter how much was sold, returned, or "
+        "expired/damaged per line.") % {"no": issue.doc_no})
+    return redirect("document_edit", pk=doc.pk)
 
 
 def _start_stock_count(request):
@@ -101,13 +140,26 @@ def document_edit(request, pk):
     return _draft_form(request, doc)
 
 
-def _totals_preview_context(config) -> dict | None:
+def _totals_preview_context(config, doc: Document) -> dict | None:
     """Client-side preview data for priced documents. Display only — the
     posting handlers recompute everything through docs/tax.py (D32)."""
     if config.get("allocations"):
         # RC/PV: live "paid vs allocated" check mirroring D44
         return {"mode": "payment", "regime": "NONE", "rate": 0,
                 "wht_rate": 0, "wht_enabled": "0"}
+    if doc.doc_type == DocType.CONSIGNMENT_SETTLEMENT:
+        if not doc.related_document_id:
+            return None  # blank-form path: prices unknown until posting
+        settings = CompanySettings.load()
+        rate = doc.related_document.tax_rate_snapshot
+        return {
+            "mode": "settlement",
+            "regime": "VAT" if rate else "NONE",  # rate frozen on the issue
+            "rate": rate,
+            "wht_rate": settings.withholding_rate,
+            "wht_enabled": "1" if settings.withholding_on_sales else "0",
+            "will_withhold": "1" if doc.customer_will_withhold else "0",  # D70
+        }
     lines = config.get("lines", ())
     if ("unit_cost_entered" in lines and "qty_entered" in lines
             and "unit_price" not in lines):
@@ -155,7 +207,8 @@ def _draft_form(request, doc: Document):
         "title": config["title"],
         "form": form,
         "formsets": formsets,
-        "totals_preview": _totals_preview_context(config),
+        "totals_preview": _totals_preview_context(config, doc),
+        "common_units": COMMON_UNITS,
     })
 
 

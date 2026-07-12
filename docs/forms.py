@@ -1,14 +1,28 @@
 """Document forms for the implemented posting handlers."""
 
 from django import forms
-from django.db.models import F, Q, Sum
+from django.db.models import F, OuterRef, Q, Subquery, Sum
 from django.db.models.functions import Coalesce
 from django.forms import inlineformset_factory
 from django.utils.translation import gettext_lazy as _
 
+from catalog.models import Item
+from docs.handlers_sales import issue_line_value
 from docs.models import DocType, Document, DocumentCharge, DocumentLine
+from docs.tax import round2
 from money.models import PaymentAllocation, PaymentLine
-from stock.models import Batch, Zone
+from stock.models import Batch, CostLot, Zone
+
+
+def _selling_price(item: Item):
+    """D23: maintained price, or latest lot cost × (1 + margin%) for AUTO
+    items. Prefill hint only — the clerk's entered price is what posts."""
+    if (item.pricing_mode == Item.PricingMode.AUTO
+            and item.auto_margin_pct is not None):
+        latest_cost = getattr(item, "latest_cost", None)
+        if latest_cost:
+            return round2(latest_cost * (1 + item.auto_margin_pct / 100))
+    return item.maintained_price
 
 
 class ItemSelect(forms.Select):
@@ -23,8 +37,26 @@ class ItemSelect(forms.Select):
         if item is not None:
             option["attrs"]["data-vat-exempt"] = "1" if item.vat_exempt else "0"
             option["attrs"]["data-base-unit"] = item.base_unit
-            if item.maintained_price is not None:
-                option["attrs"]["data-price"] = str(item.maintained_price)
+            price = _selling_price(item)
+            if price is not None:
+                option["attrs"]["data-price"] = str(price)
+        return option
+
+
+class BatchSelect(forms.Select):
+    """Batch options carry item id (for dependent filtering), expiry, and
+    warehouse on-hand so the picked batch's context stays visible."""
+
+    def create_option(self, name, value, label, selected, index,
+                      subindex=None, attrs=None):
+        option = super().create_option(name, value, label, selected, index,
+                                       subindex=subindex, attrs=attrs)
+        batch = getattr(value, "instance", None)
+        if batch is not None:
+            option["attrs"]["data-item"] = str(batch.item_id)
+            if batch.expiry_date:
+                option["attrs"]["data-expiry"] = batch.expiry_date.isoformat()
+            option["attrs"]["data-onhand"] = str(getattr(batch, "warehouse_qty", None) or 0)
         return option
 
 
@@ -64,18 +96,24 @@ DOC_CONFIG = {
     },
     DocType.CONSIGNMENT_ISSUE: {
         "title": _("Consignment issue"),
-        "fields": ["customer", "due_date", "doc_discount", "notes"],
+        # D70: the withholding decision is made here, not at settlement —
+        # it depends on who the buyer is (PLC), known when goods go out.
+        "fields": ["customer", "due_date", "doc_discount",
+                   "customer_will_withhold", "notes"],
         "lines": ["item", "batch", "unit_label", "factor", "qty_entered",
                   "unit_price", "line_discount"],
     },
     DocType.CONSIGNMENT_SETTLEMENT: {
         "title": _("Consignment settlement"),
+        # No withholding checkbox: inherited from the issue at posting (D70)
         "fields": [
             "customer", "related_document", "sale_kind", "due_date", "doc_discount",
-            "customer_will_withhold", "fiscal_receipt_no", "machine_total", "notes",
+            "fiscal_receipt_no", "machine_total", "notes",
         ],
+        # No unit/factor/price: settlement quantities are base units and the
+        # money comes from the issue's own prices (§7.5).
         "lines": [
-            "item", "batch", "unit_label", "factor", "qty_entered",
+            "item", "batch", "qty_entered",
             "qty_sold", "qty_returned", "qty_expired_unfit", "target_zone",
         ],
         "payments": True,
@@ -196,7 +234,21 @@ class DocumentForm(forms.ModelForm):
             "due_date": forms.DateInput(attrs={"type": "date"}),
             "document_date": forms.DateTimeInput(attrs={"type": "datetime-local"}),
             "supplier_invoice_date": forms.DateInput(attrs={"type": "date"}),
-            "notes": forms.Textarea(attrs={"rows": 3}),
+            "notes": forms.Textarea(attrs={
+                "rows": 3, "placeholder": _("Optional notes for this transaction…"),
+            }),
+            "payee": forms.TextInput(attrs={
+                "placeholder": _("Who received the money, e.g. Ethio Telecom"),
+            }),
+            "fiscal_receipt_no": forms.TextInput(attrs={
+                "placeholder": _("Number printed on the fiscal receipt"),
+            }),
+            "machine_total": forms.NumberInput(attrs={
+                "placeholder": _("Total shown by the fiscal machine"),
+            }),
+            "withholding_certificate_no": forms.TextInput(attrs={
+                "placeholder": _("Serial no. on the withholding certificate"),
+            }),
         }
         help_texts = {
             "withheld_amount": _(
@@ -267,9 +319,24 @@ class DocumentLineForm(forms.ModelForm):
         widgets = {
             "expiry_entered": forms.DateInput(attrs={"type": "date"}),
             "item": ItemSelect,
+            "batch": BatchSelect,
+            "batch_no_entered": forms.TextInput(attrs={
+                "placeholder": _("batch no, e.g. B0425"),
+            }),
+            "unit_label": forms.TextInput(attrs={
+                "placeholder": _("e.g. box"), "list": "unit-options",
+            }),
+            "qty_entered": forms.NumberInput(attrs={"placeholder": _("qty")}),
+            "unit_cost_entered": forms.NumberInput(attrs={
+                "placeholder": _("what you paid per unit"),
+            }),
+        }
+        labels = {
+            "unit_cost_entered": _("Cost paid / unit"),
+            "unit_price": _("Selling price / unit"),
         }
 
-    def __init__(self, *args, line_fields: list[str], **kwargs):
+    def __init__(self, *args, line_fields: list[str], issue=None, **kwargs):
         super().__init__(*args, **kwargs)
         keep = set(line_fields)
         for name in list(self.fields):
@@ -277,6 +344,36 @@ class DocumentLineForm(forms.ModelForm):
                 del self.fields[name]
         if "qty_base" in self.fields:
             self.fields["qty_base"].disabled = True
+        if "qty_sold" in self.fields:
+            # Settlement split (D6): "still out" is informational; the three
+            # split quantities are what staff enter, in base units.
+            self.fields["qty_entered"].label = _("Still out")
+            self.fields["qty_entered"].widget.attrs["readonly"] = True
+            self.fields["qty_sold"].label = _("Sold")
+            if issue is not None and self.instance.pk:
+                # The issue's frozen price feeds the live money preview (§7.5)
+                value = issue_line_value(issue, self.instance.item_id,
+                                         self.instance.batch_id)
+                if value is not None:
+                    per_base, is_taxable = value
+                    attrs = self.fields["qty_sold"].widget.attrs
+                    attrs["data-value-per-base"] = str(per_base)
+                    attrs["data-taxable"] = "1" if is_taxable else "0"
+            self.fields["qty_returned"].label = _("Returned")
+            self.fields["qty_expired_unfit"].label = _("Expired/damaged")
+            self.fields["target_zone"].label = _("Damaged goes to")
+            self.fields["target_zone"].choices = [
+                ("", "---------"),
+                (Zone.EXPIRED, _("Expired")),
+                (Zone.UNFIT, _("Unfit")),
+            ]
+        if "item" in self.fields:
+            # Latest lot cost feeds the AUTO price prefill (D23)
+            latest = (CostLot.objects.filter(item=OuterRef("pk"))
+                      .order_by("-received_at", "-pk").values("unit_cost")[:1])
+            self.fields["item"].queryset = Item.objects.annotate(
+                latest_cost=Subquery(latest)
+            )
         if "batch" in self.fields:
             # Label shows item · batch no · expiry · warehouse on-hand, so the
             # picker carries the shelf context (display only; D4 still guards).
@@ -313,10 +410,31 @@ def _allocation_label(target: Document) -> str:
     return label
 
 
+class AllocationTargetSelect(forms.Select):
+    """Target options carry the open balance and expected withholding so the
+    client can prefill the allocation amount and the withheld field."""
+
+    def create_option(self, name, value, label, selected, index,
+                      subindex=None, attrs=None):
+        option = super().create_option(name, value, label, selected, index,
+                                       subindex=subindex, attrs=attrs)
+        target = getattr(value, "instance", None)
+        if target is not None:
+            option["attrs"]["data-open"] = str(
+                target.grand_total - (target.settled or 0))
+            if target.withholding_expected > 0:
+                option["attrs"]["data-wht"] = str(target.withholding_expected)
+        return option
+
+
 class PaymentAllocationForm(forms.ModelForm):
     class Meta:
         model = PaymentAllocation
         fields = ["target", "amount"]
+        widgets = {
+            "target": AllocationTargetSelect,
+            "amount": forms.NumberInput(attrs={"placeholder": _("0.00")}),
+        }
 
     def __init__(self, *args, doc_type: str, customer_id=None, supplier_id=None,
                  **kwargs):
@@ -350,14 +468,19 @@ LineFormSet = inlineformset_factory(
 ChargeFormSet = inlineformset_factory(
     Document, DocumentCharge, fields=["label", "amount", "is_taxable"],
     extra=2, can_delete=True,
+    widgets={
+        "label": forms.TextInput(attrs={"placeholder": _("e.g. Delivery fee")}),
+        "amount": forms.NumberInput(attrs={"placeholder": _("0.00")}),
+    },
 )
 PaymentLineFormSet = inlineformset_factory(
     Document, PaymentLine, fields=["account", "method", "amount"],
     extra=3, can_delete=True,
+    widgets={"amount": forms.NumberInput(attrs={"placeholder": _("0.00")})},
 )
 PaymentAllocationFormSet = inlineformset_factory(
     Document, PaymentAllocation, form=PaymentAllocationForm, fk_name="payment",
-    extra=3, can_delete=True
+    extra=3, can_delete=True,
 )
 
 
@@ -365,11 +488,13 @@ def formsets_for(doc: Document, data=None):
     config = DOC_CONFIG[doc.doc_type]
     formsets = []
     if config.get("lines"):
+        line_kwargs = {"line_fields": config["lines"]}
+        if doc.doc_type == DocType.CONSIGNMENT_SETTLEMENT and doc.related_document_id:
+            line_kwargs["issue"] = doc.related_document
         formsets.append((
             "lines", _("Lines"),
             LineFormSet(
-                data, instance=doc, prefix="lines",
-                form_kwargs={"line_fields": config["lines"]},
+                data, instance=doc, prefix="lines", form_kwargs=line_kwargs,
             ),
         ))
     if config.get("charges"):

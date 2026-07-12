@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% load i18n %}
-{% block title %}{% translate "Documents" %} — Narcos{% endblock %}
+{% block title %}{% translate "Transactions" %} — Narcos{% endblock %}
 {% block content %}
 <div class="page-head">
-  <h1>{% translate "Documents" %}</h1>
+  <h1>{% translate "Transactions" %}</h1>
   <div class="actions">
     <a class="btn btn-primary" href="{% url 'document_create' 'SALE' %}">{% translate "New sale" %}</a>
     <a class="btn btn-secondary" href="{% url 'document_create' 'RECEIVING' %}">{% translate "New receiving" %}</a>
@@ -97,7 +97,7 @@
         <td><a href="{% url 'document_detail' doc.pk %}">{% translate "Open" %}</a></td>
       </tr>
       {% empty %}
-      <tr><td colspan="6" class="placeholder">{% translate "No documents yet." %}</td></tr>
+      <tr><td colspan="6" class="placeholder">{% translate "No transactions yet." %}</td></tr>
       {% endfor %}
     </tbody>
   </table>

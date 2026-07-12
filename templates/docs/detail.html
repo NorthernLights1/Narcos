@@ -21,6 +21,11 @@
         <button class="btn" type="submit">{% translate "Convert to sale" %}</button>
       </form>
       {% endif %}
+      {% if doc.doc_type == "CONSIGNMENT_ISSUE" or doc.doc_type == "OPENING_CONSIGNMENT" %}
+      <a class="btn btn-primary"
+         href="{% url 'document_create' 'CONSIGNMENT_SETTLEMENT' %}?from={{ doc.pk }}">
+        {% translate "Settle consignment" %}</a>
+      {% endif %}
     {% endif %}
   </div>
 </div>

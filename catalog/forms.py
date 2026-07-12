@@ -36,7 +36,24 @@ class ItemForm(forms.ModelForm):
             "auto_margin_pct", "min_margin_pct", "reorder_level", "shelf_bin",
             "is_active",
         ]
-        widgets = {"base_unit": forms.TextInput(attrs={"list": "unit-options"})}
+        widgets = {
+            "base_unit": forms.TextInput(attrs={
+                "list": "unit-options", "placeholder": _("pick or type, e.g. tablet"),
+            }),
+            "name": forms.TextInput(attrs={
+                "placeholder": _("e.g. Paracetamol 500mg tablets"),
+            }),
+            "generic_name": forms.TextInput(attrs={"placeholder": _("e.g. paracetamol")}),
+            "dosage_form": forms.TextInput(attrs={"placeholder": _("e.g. tablet, syrup, injection")}),
+            "strength": forms.TextInput(attrs={"placeholder": _("e.g. 500 mg")}),
+            "pack_description": forms.TextInput(attrs={
+                "placeholder": _("e.g. strip of 10, box of 100"),
+            }),
+            "shelf_bin": forms.TextInput(attrs={"placeholder": _("e.g. shelf A3")}),
+            "reorder_level": forms.NumberInput(attrs={
+                "placeholder": _("alert when stock falls below…"),
+            }),
+        }
 
     def __init__(self, *args, is_owner: bool = True, **kwargs):
         super().__init__(*args, **kwargs)
@@ -62,6 +79,13 @@ ItemUnitFormSet = inlineformset_factory(
 )
 
 
+PARTY_PLACEHOLDERS = {
+    "tin": forms.TextInput(attrs={"placeholder": _("10-digit TIN, e.g. 0012345678")}),
+    "phone": forms.TextInput(attrs={"placeholder": _("e.g. 0914 123 456")}),
+    "address": forms.TextInput(attrs={"placeholder": _("city / subcity / street")}),
+}
+
+
 class CustomerForm(forms.ModelForm):
     class Meta:
         model = Customer
@@ -69,12 +93,23 @@ class CustomerForm(forms.ModelForm):
             "name", "tin", "phone", "address", "credit_limit",
             "credit_action", "is_withholding_agent", "is_active",
         ]
+        widgets = {
+            **PARTY_PLACEHOLDERS,
+            "name": forms.TextInput(attrs={"placeholder": _("e.g. Mekelle Clinic")}),
+            "credit_limit": forms.NumberInput(attrs={
+                "placeholder": _("blank = company default"),
+            }),
+        }
 
 
 class SupplierForm(forms.ModelForm):
     class Meta:
         model = Supplier
         fields = ["name", "tin", "phone", "address", "is_active"]
+        widgets = {
+            **PARTY_PLACEHOLDERS,
+            "name": forms.TextInput(attrs={"placeholder": _("e.g. Addis Pharma Import")}),
+        }
 
 
 class AccountForm(forms.ModelForm):

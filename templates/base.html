@@ -4,12 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Narcos{% endblock %}</title>
+  {# bump ?v= whenever app.css/app.js change so browsers refetch #}
   <link rel="stylesheet" href="{% static 'css/choices.min.css' %}">
-  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=20260712d">
   <script src="{% static 'js/htmx.min.js' %}" defer></script>
   <script src="{% static 'js/alpine.min.js' %}" defer></script>
   <script src="{% static 'js/choices.min.js' %}"></script>
-  <script src="{% static 'js/app.js' %}"></script>
+  <script src="{% static 'js/app.js' %}?v=20260712d"></script>
 </head>
 <body>
 <header class="topbar">
@@ -28,7 +29,7 @@
     <nav aria-label="{% translate 'Main navigation' %}">
       <p class="nav-group">{% translate "Work" %}</p>
       <a href="{% url 'dashboard' %}">{% translate "Dashboard" %}</a>
-      <a href="{% url 'document_list' %}">{% translate "Documents" %}</a>
+      <a href="{% url 'document_list' %}">{% translate "Transactions" %}</a>
       <a href="{% url 'report_hub' %}">{% translate "Reports" %}</a>
       <p class="nav-group">{% translate "Master data" %}</p>
       <a href="{% url 'master_list' 'items' %}">{% translate "Items" %}</a>

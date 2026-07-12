@@ -297,6 +297,42 @@ def _settled_by_lot(issue: Document) -> dict[int, int]:
     return settled
 
 
+def outstanding_by_item_batch(issue: Document) -> list[dict]:
+    """What is still out on a consignment issue, grouped per item+batch —
+    feeds the settlement prefill. Same lot arithmetic the handler enforces."""
+    settled = _settled_by_lot(issue)
+    per_lot: dict[int, dict] = {}
+    for line in issue.lines.select_related("item", "batch"):
+        for consumption in line.lot_consumptions.all():
+            row = per_lot.setdefault(consumption.lot_id, {
+                "item": line.item, "batch": line.batch, "issued": 0,
+            })
+            row["issued"] += consumption.qty
+    groups: dict[tuple, dict] = {}
+    for lot_id, row in per_lot.items():
+        remaining = row["issued"] - settled.get(lot_id, 0)
+        if remaining <= 0:
+            continue
+        key = (row["item"].pk, row["batch"].pk if row["batch"] else None)
+        group = groups.setdefault(key, {
+            "item": row["item"], "batch": row["batch"], "outstanding": 0,
+        })
+        group["outstanding"] += remaining
+    return [groups[key] for key in sorted(groups, key=lambda k: (k[0], k[1] or 0))]
+
+
+def issue_line_value(issue: Document, item_id: int,
+                     batch_id: int | None) -> tuple[Decimal, bool] | None:
+    """(value per base unit, is_taxable) from the issue's frozen prices —
+    feeds the settlement previews. None when the issue mixes prices for the
+    same item+batch (the handler will demand split lines at posting)."""
+    try:
+        _pool, value_per_base, is_taxable = _issue_pool(issue, item_id, batch_id)
+    except PostingError:
+        return None
+    return value_per_base, is_taxable
+
+
 def _issue_pool(issue: Document, item_id: int, batch_id: int | None) -> tuple[list[dict], Decimal, bool]:
     originals = list(issue.lines.filter(item_id=item_id, batch_id=batch_id).order_by("pk"))
     if not originals:
@@ -411,6 +447,9 @@ class ConsignmentSettlementHandler(Handler):
                 parts.append(Part(value=line.line_net, is_taxable=line.is_taxable))
 
         _freeze_totals_at_rate(doc, parts, issue.tax_rate_snapshot)
+        # D70: whether the buyer withholds is a property of the buyer, decided
+        # when the goods go out — the settlement inherits the issue's flag.
+        doc.customer_will_withhold = issue.customer_will_withhold
         if settings.withholding_on_sales and doc.customer_will_withhold:
             doc.withholding_expected = round2(
                 settings.withholding_rate / 100 * (doc.grand_total - doc.tax_total)

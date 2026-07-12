@@ -5,6 +5,11 @@
 <h1>{{ title }}{% if doc.pk %} — {{ doc }}{% endif %}</h1>
 <form method="post" id="doc-form">
   {% csrf_token %}
+  {% if common_units %}
+  <datalist id="unit-options">
+    {% for unit in common_units %}<option value="{{ unit }}"></option>{% endfor %}
+  </datalist>
+  {% endif %}
   <section class="card">
     {% if form.non_field_errors %}<p class="msg msg-error">{{ form.non_field_errors|striptags }}</p>{% endif %}
     <div class="form-grid">
@@ -44,7 +49,8 @@
            data-regime="{{ totals_preview.regime }}"
            data-rate="{{ totals_preview.rate }}"
            data-wht-rate="{{ totals_preview.wht_rate }}"
-           data-wht-enabled="{{ totals_preview.wht_enabled }}">
+           data-wht-enabled="{{ totals_preview.wht_enabled }}"
+           data-will-withhold="{{ totals_preview.will_withhold|default:'' }}">
     <div class="card-head">
       <h2>{% translate "Totals preview" %}</h2>
       <span class="hint">{% translate "Final totals are computed by the server at save/post." %}</span>
