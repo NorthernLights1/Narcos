@@ -40,11 +40,113 @@
     <div><dt>{% translate "Tax" %}</dt><dd>{{ doc.tax_total }}</dd></div>
     <div><dt>{% translate "Grand total" %}</dt><dd>{{ doc.grand_total }}</dd></div>
     <div><dt>{% translate "Fiscal receipt" %}</dt><dd>{{ doc.fiscal_receipt_no|default:"—" }}</dd></div>
+    {% if doc.related_document %}
+    <div><dt>{% translate "Related document" %}</dt>
+      <dd><a href="{% url 'document_detail' doc.related_document.pk %}">{{ doc.related_document }}</a></dd></div>
+    {% endif %}
   </dl>
   {% if doc.status == "DRAFT" %}
   <p class="hint">{% translate "Draft — the document number, date, and totals are computed and frozen when you post." %}</p>
   {% endif %}
 </section>
+
+{% if settlement %}
+<section class="card">
+  <div class="card-head">
+    <h2>{% translate "Settlement" %}</h2>
+    {% if settlement.state %}
+    <span class="badge badge-{{ settlement.state.state }}">{{ settlement.state.label }}</span>
+    {% endif %}
+  </div>
+
+  {% if settlement.state.kind == "money" %}
+  <dl class="totals-grid">
+    <div><dt>{% translate "Grand total" %}</dt><dd>{{ settlement.state.total }}</dd></div>
+    <div><dt>{% translate "Settled to date" %}</dt><dd>{{ settlement.state.settled }}</dd></div>
+    <div class="totals-grand"><dt>{% translate "Outstanding" %}</dt><dd>{{ settlement.state.open }}</dd></div>
+  </dl>
+  {% if settlement.received %}
+  <table class="table">
+    <thead>
+      <tr>
+        <th>{% translate "Date" %}</th>
+        <th>{% translate "Payment" %}</th>
+        <th class="num">{% translate "Amount" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for allocation in settlement.received %}
+      <tr>
+        <td>{{ allocation.payment.document_date|date:"Y-m-d" }}</td>
+        <td><a href="{% url 'document_detail' allocation.payment.pk %}">{{ allocation.payment }}</a></td>
+        <td class="num">{{ allocation.amount }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="hint">{% translate "No payments have been allocated to this document yet." %}</p>
+  {% endif %}
+  {% endif %}
+
+  {% if settlement.state.kind == "qty" %}
+  <dl class="totals-grid">
+    <div><dt>{% translate "Issued" %}</dt><dd>{{ settlement.state.issued }}</dd></div>
+    <div><dt>{% translate "Settled" %}</dt><dd>{{ settlement.state.settled }}</dd></div>
+    <div class="totals-grand"><dt>{% translate "Still out" %}</dt><dd>{{ settlement.state.open }}</dd></div>
+  </dl>
+  {% if settlement.groups %}
+  <table class="table">
+    <thead>
+      <tr>
+        <th>{% translate "Item" %}</th>
+        <th>{% translate "Batch" %}</th>
+        <th class="num">{% translate "Still out" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for group in settlement.groups %}
+      <tr>
+        <td>{{ group.item }}</td>
+        <td>{{ group.batch|default:"—" }}</td>
+        <td class="num">{{ group.outstanding }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% if settlement.settlements %}
+  <p class="hint">
+    {% translate "Settled by:" %}
+    {% for cs in settlement.settlements %}
+      <a href="{% url 'document_detail' cs.pk %}">{{ cs }}</a>{% if not forloop.last %}, {% endif %}
+    {% endfor %}
+  </p>
+  {% endif %}
+  {% endif %}
+
+  {% if settlement.made %}
+  <table class="table">
+    <thead>
+      <tr>
+        <th>{% translate "Allocated to" %}</th>
+        <th class="num">{% translate "Amount" %}</th>
+        <th class="num">{% translate "Still open" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in settlement.made %}
+      <tr>
+        <td><a href="{% url 'document_detail' row.allocation.target.pk %}">{{ row.allocation.target }}</a></td>
+        <td class="num">{{ row.allocation.amount }}</td>
+        <td class="num">{{ row.open }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+{% endif %}
 
 {% if expected %}
 <section class="card totals-preview">

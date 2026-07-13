@@ -462,6 +462,13 @@ aging · VAT summary (output tax per period; internal cross-check — D18) ·
 Withholding certificates received per FY (D51) · Withholding
 withheld/remitted/owed (D52) · Expenses by category · Cash/bank book (D11).
 
+**D73 amendment:** AR aging, AP aging, and Consignment outstanding are
+**open-item reports as of today** — they ignore the date-range presets, so an
+unpaid invoice or open issue stays visible no matter how old it is. All other
+reports keep the D19 fiscal-year presets. D73 also adds derived settlement
+states (Unpaid/Partial/Settled, Open/Partial/Closed) to the transactions list
+and a settlement card with allocation history to the document detail page.
+
 ---
 
 ## 11. Permissions

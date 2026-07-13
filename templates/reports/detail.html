@@ -9,6 +9,9 @@
   </div>
 </div>
 
+{% if open_items %}
+<p class="hint">{% blocktranslate with today=today %}Open items as of {{ today }} — everything still outstanding is listed regardless of when it was posted.{% endblocktranslate %}</p>
+{% else %}
 <form method="get" class="card form-grid">
   <div class="field">
     <label for="id_period">{% translate "Period" %}</label>
@@ -31,6 +34,7 @@
     <button class="btn btn-primary" type="submit">{% translate "Apply" %}</button>
   </div>
 </form>
+{% endif %}
 
 <div class="card">
   <table class="table">

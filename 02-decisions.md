@@ -874,3 +874,30 @@ item form shows selling price *or* margin per mode); batch pickers filter to
 the line's item and show `exp · on hand` under the box once picked; receiving
 column renamed **"Cost paid / unit"** vs the sale's **"Selling price / unit"**;
 static assets carry a `?v=` cache-buster (bump when app.css/app.js change).
+
+### D73 — Settlement visibility is derived, never stored
+- **What:** Every posted document that can be settled shows a **derived
+  settlement state** — computed live from posted payment allocations and
+  settlement lines, never written to a column (D11; a stored flag would also
+  collide with I1 immutability and drift on voids). Money targets (credit
+  sales, credit consignment settlements, receivings, opening AR/AP) walk
+  **Unpaid → Partial → Settled**; consignment issues walk
+  **Open → Partial → Closed** on base-unit quantities. Cash sales/settlements
+  show nothing — their auto payment settles them at posting. Surfaces:
+  - **Transactions list:** a Settlement column (badge + `open X of Y` /
+    `N of M out` for partials) and a filter (**Outstanding / Settled**) that
+    runs in SQL via three subquery annotations — no per-row queries.
+  - **Document detail:** a Settlement card — grand total / settled to date /
+    outstanding with the **allocation history** (each payment linked);
+    payments show the mirror table (allocated to which invoice, still open);
+    issues show what is still out per item+batch and which settlements
+    closed them. The summary grid links `related_document` (CS→CN, CR→SI).
+  - **Reports:** AR aging, AP aging, and Consignment outstanding are now
+    **open-item reports as of today** — they deliberately ignore the period
+    filter, because an unpaid invoice from last fiscal year must not vanish
+    under a "this FY" default. Aging gained a **Settled** column.
+- **Why:** Owner: knowing which credits, consignments, and supplier payments
+  are still outstanding required opening each customer/supplier. The engine
+  already knew (open_balance, settlement-line sums); the screens now say it,
+  and voiding a payment reopens the target automatically because nothing is
+  cached.

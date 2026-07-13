@@ -65,6 +65,15 @@
     </select>
   </div>
   <div class="field">
+    <label for="id_settlement">{% translate "Settlement" %}</label>
+    <select name="settlement" id="id_settlement">
+      <option value="">{% translate "All" %}</option>
+      {% for value, label in settlement_filters %}
+        <option value="{{ value }}"{% if selected_settlement == value %} selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="field">
     <label for="id_q">{% translate "Search" %}</label>
     <input id="id_q" type="search" name="q" value="{{ query }}"
            placeholder="{% translate 'Doc no, customer, supplier…' %}">
@@ -83,21 +92,32 @@
         <th>{% translate "Status" %}</th>
         <th>{% translate "Party" %}</th>
         <th class="num">{% translate "Total" %}</th>
+        <th>{% translate "Settlement" %}</th>
         <th></th>
       </tr>
     </thead>
     <tbody>
-      {% for doc in rows %}
+      {% for doc, settlement in rows %}
       <tr>
         <td><a href="{% url 'document_detail' doc.pk %}">{{ doc.doc_no|default:doc.pk }}</a></td>
         <td>{{ doc.get_doc_type_display }}</td>
         <td><span class="badge badge-{{ doc.status }}">{{ doc.get_status_display }}</span></td>
         <td>{{ doc.customer|default:doc.supplier|default:doc.payee }}</td>
         <td class="num">{{ doc.grand_total }}</td>
+        <td>
+          {% if settlement %}
+            <span class="badge badge-{{ settlement.state }}">{{ settlement.label }}</span>
+            {% if settlement.kind == "money" and settlement.state == "PARTIAL" %}
+              <span class="settle-note">{% blocktranslate with open=settlement.open total=settlement.total %}open {{ open }} of {{ total }}{% endblocktranslate %}</span>
+            {% elif settlement.kind == "qty" and settlement.open > 0 %}
+              <span class="settle-note">{% blocktranslate with open=settlement.open total=settlement.issued %}{{ open }} of {{ total }} out{% endblocktranslate %}</span>
+            {% endif %}
+          {% else %}—{% endif %}
+        </td>
         <td><a href="{% url 'document_detail' doc.pk %}">{% translate "Open" %}</a></td>
       </tr>
       {% empty %}
-      <tr><td colspan="6" class="placeholder">{% translate "No transactions yet." %}</td></tr>
+      <tr><td colspan="7" class="placeholder">{% translate "No transactions yet." %}</td></tr>
       {% endfor %}
     </tbody>
   </table>

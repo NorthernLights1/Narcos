@@ -22,6 +22,13 @@ from docs.handlers_sales import outstanding_by_item_batch
 from docs.models import POST_EDITABLE_FIELDS, DocType, Document, DocumentCharge, DocumentLine
 from docs.posting import PostingError, post, void
 from docs.preview import draft_expected_totals
+from docs.settlement import (
+    SETTLEMENT_FILTERS,
+    annotate_settlement,
+    filter_settlement,
+    settlement_context,
+    settlement_state,
+)
 from stock.models import StockBalance, Zone
 
 
@@ -33,14 +40,19 @@ def _config(doc_type: str):
 
 @login_required
 def document_list(request):
-    rows = Document.objects.select_related("customer", "supplier").order_by("-created_at")
+    rows = annotate_settlement(
+        Document.objects.select_related("customer", "supplier")
+    ).order_by("-created_at")
     doc_type = request.GET.get("type", "")
     status = request.GET.get("status", "")
+    settlement = request.GET.get("settlement", "")
     query = request.GET.get("q", "").strip()
     if doc_type:
         rows = rows.filter(doc_type=doc_type)
     if status:
         rows = rows.filter(status=status)
+    if settlement:
+        rows = filter_settlement(rows, settlement)
     if query:
         rows = rows.filter(
             Q(doc_no__icontains=query)
@@ -49,11 +61,13 @@ def document_list(request):
             | Q(payee__icontains=query)
         )
     return render(request, "docs/list.html", {
-        "rows": rows[:200],
+        "rows": [(doc, settlement_state(doc)) for doc in rows[:200]],
         "doc_types": [(t, DOC_CONFIG[t]["title"]) for t in IMPLEMENTED_DOC_TYPES],
         "statuses": Document.Status.choices,
+        "settlement_filters": SETTLEMENT_FILTERS,
         "selected_type": doc_type,
         "selected_status": status,
+        "selected_settlement": settlement,
         "query": query,
     })
 
@@ -252,6 +266,7 @@ def document_detail(request, pk):
         "doc": doc,
         "config": DOC_CONFIG.get(doc.doc_type),
         "expected": draft_expected_totals(doc),
+        "settlement": settlement_context(doc),
     })
 
 

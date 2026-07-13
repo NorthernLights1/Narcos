@@ -253,12 +253,19 @@ def _losses(start, end, _user):
     return columns, rows, [_("Total"), "", "", "", "", "", _money(total)]
 
 
-def _aging(doc_types, party_label, start, end):
+def _aging(doc_types, party_label, _start, _end):
+    """Open items as of today — deliberately ignores the period filter (D73):
+    an unpaid invoice stays visible no matter how old it is."""
     columns = [_("Date"), _("Due"), _("Document"), party_label,
-               _("Original"), _("Open"), _("Days")]
+               _("Original"), _("Settled"), _("Open"), _("Days")]
     rows = []
     today = timezone.localdate()
-    for doc in _posted_documents(doc_types, start, end):
+    docs = (
+        Document.objects.filter(doc_type__in=doc_types, status=Document.Status.POSTED)
+        .select_related("customer", "supplier")
+        .order_by("document_date", "pk")
+    )
+    for doc in docs:
         if doc.doc_type == DocType.SALE and doc.sale_kind != Document.SaleKind.CREDIT:
             continue
         if doc.doc_type == DocType.CONSIGNMENT_SETTLEMENT \
@@ -271,7 +278,8 @@ def _aging(doc_types, party_label, start, end):
         rows.append([
             _day(doc.document_date), doc.due_date or "", doc.doc_no,
             doc.customer.name if doc.customer_id else doc.supplier.name,
-            doc.grand_total, balance, max((today - anchor).days, 0),
+            doc.grand_total, _money(doc.grand_total - balance), balance,
+            max((today - anchor).days, 0),
         ])
     return columns, rows, []
 
@@ -287,7 +295,8 @@ def _ap_aging(start, end, _user):
     return _aging([DocType.RECEIVING, DocType.OPENING_AP], _("Supplier"), start, end)
 
 
-def _consignment(start, end, _user):
+def _consignment(_start, _end, _user):
+    """Open consignments as of today — ignores the period filter (D73)."""
     columns = [_("Date"), _("Due"), _("Document"), _("Customer"),
                _("Remaining qty"), _("Exposure"), _("Days overdue")]
     rows = []
@@ -302,8 +311,6 @@ def _consignment(start, end, _user):
         .order_by("document_date", "pk")
     )
     for issue in issues:
-        if not _in_range(issue.document_date, start, end):
-            continue
         issued_qty = sum(line.qty_base for line in issue.lines.all())
         issued_value = sum((line.line_net for line in issue.lines.all()), Decimal("0.00"))
         settled = 0
@@ -413,9 +420,10 @@ REPORTS = {
     "profit": {"title": _("Profit"), "builder": _profit, "owner_only": True},
     "losses": {"title": _("Losses at lot cost"), "builder": _losses,
                "owner_only": True},
-    "ar-aging": {"title": _("AR aging"), "builder": _ar_aging},
-    "ap-aging": {"title": _("AP aging"), "builder": _ap_aging},
-    "consignment": {"title": _("Consignment outstanding"), "builder": _consignment},
+    "ar-aging": {"title": _("AR aging"), "builder": _ar_aging, "open_items": True},
+    "ap-aging": {"title": _("AP aging"), "builder": _ap_aging, "open_items": True},
+    "consignment": {"title": _("Consignment outstanding"), "builder": _consignment,
+                    "open_items": True},
     "vat": {"title": _("VAT summary"), "builder": _vat},
     "withholding-received": {
         "title": _("Withholding certificates received"), "builder": _withholding_received,
@@ -453,6 +461,8 @@ def report_detail(request, slug):
         "period": period,
         "start": start,
         "end": end,
+        "open_items": config.get("open_items", False),
+        "today": timezone.localdate(),
     })
 
 
