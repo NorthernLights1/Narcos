@@ -90,6 +90,10 @@
   .badge-UNPAID, .badge-OPEN { @apply bg-rose-100 text-rose-800; }
   .badge-PARTIAL { @apply bg-amber-100 text-amber-800; }
   .badge-SETTLED, .badge-CLOSED { @apply bg-emerald-100 text-emerald-800; }
+  /* inventory badges (D75) */
+  .badge-OUT { @apply bg-rose-100 text-rose-800; }
+  .badge-LOW { @apply bg-amber-100 text-amber-800; }
+  .badge-OK { @apply bg-emerald-100 text-emerald-800; }
   .settle-note { @apply block text-xs text-slate-500 tabular-nums whitespace-nowrap; }
 
   /* ---- totals preview ---- */

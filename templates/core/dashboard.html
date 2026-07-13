@@ -20,12 +20,17 @@
     {% if low_stock %}
       <ul class="compact-list">
         {% for row in low_stock %}
-          <li>{{ row.item.code }} - {{ row.item.name }} - {{ row.qty }}</li>
+          <li>
+            <a href="{% url 'inventory_item' row.item.pk %}">{{ row.item.code }}</a>
+            - {{ row.item.name }} -
+            {% blocktranslate with qty=row.qty level=row.item.reorder_level %}{{ qty }} in warehouse (reorder at {{ level }}){% endblocktranslate %}
+          </li>
         {% endfor %}
       </ul>
     {% else %}
       <p class="placeholder">{% translate "No low-stock items." %}</p>
     {% endif %}
+    <p class="hint"><a href="{% url 'inventory_list' %}?show=low">{% translate "Open inventory" %}</a></p>
   </div>
   <div class="card">
     <h2>{% translate "Expiry" %}</h2>

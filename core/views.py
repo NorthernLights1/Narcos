@@ -81,6 +81,8 @@ def dashboard(request):
         )
         if qty <= item.reorder_level:
             low_stock.append({"item": item, "qty": qty})
+    # Worst shortfall first — the card only shows the top 10
+    low_stock.sort(key=lambda row: row["qty"] - row["item"].reorder_level)
 
     expiry_alerts = []
     balances = (

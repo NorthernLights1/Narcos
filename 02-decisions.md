@@ -929,3 +929,24 @@ static assets carry a `?v=` cache-buster (bump when app.css/app.js change).
   having every knowable number already in the boxes — beats retyping what
   the engine can compute. Same principle as D71/D72: the engine already
   knows; the screen should say it.
+
+### D75 — Dedicated Inventory page; the low-stock rule made visible
+- **What:** A read-only **Inventory** page (nav: Work → Inventory) showing
+  every active item with its **Warehouse · Consigned · Expired/Unfit · Total**
+  quantities, reorder level, and an **OK / Low / Out of stock** badge, with
+  search and Low/Out filters. Each item drills into a detail page: stock per
+  batch (expiry status flagged), who holds the consigned quantity, and the
+  last 15 stock movements linked to their documents. Quantities only — no
+  costs or margins, so both roles may look (D33 untouched).
+  The **low-stock rule is unchanged but now stated on screen**: an item is
+  low when its *warehouse* quantity is at or below the reorder level. Goods
+  sold and goods out on consignment are both already outside the warehouse,
+  so both push an item toward low — no change needed there. The dashboard
+  card now shows *qty in warehouse (reorder at N)* per item, links each item
+  to its inventory page, and sorts worst shortfall first (it caps at 10).
+- **Why:** Owner set a reorder level and could not tell why the dashboard
+  didn't react (the item's warehouse stock was above the threshold, but no
+  screen showed the two numbers side by side), and had no convenient view of
+  available stock beyond the transactions register and the CSV-style
+  stock-on-hand report. The inventory page shows the numbers the engine
+  already keeps.

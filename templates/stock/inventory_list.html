@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% translate "Inventory" %} — Narcos{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{% translate "Inventory" %}</h1>
+  <div class="actions">
+    <a class="btn btn-primary" href="{% url 'document_create' 'RECEIVING' %}">{% translate "New receiving" %}</a>
+    <a class="btn btn-secondary" href="{% url 'document_create' 'STOCK_COUNT' %}">{% translate "Stock count" %}</a>
+    <a class="btn btn-secondary" href="{% url 'report_detail' 'stock-on-hand' %}">{% translate "Stock on hand report" %}</a>
+  </div>
+</div>
+
+<form method="get" class="card filterbar">
+  <div class="field">
+    <label for="id_show">{% translate "Show" %}</label>
+    <select name="show" id="id_show">
+      <option value="">{% translate "All items" %}</option>
+      <option value="low"{% if show == "low" %} selected{% endif %}>{% translate "Low or out of stock" %}</option>
+      <option value="out"{% if show == "out" %} selected{% endif %}>{% translate "Out of stock" %}</option>
+    </select>
+  </div>
+  <div class="field">
+    <label for="id_q">{% translate "Search" %}</label>
+    <input id="id_q" type="search" name="q" value="{{ query }}"
+           placeholder="{% translate 'Item code or name…' %}">
+  </div>
+  <div class="field field-submit">
+    <button type="submit" class="btn btn-primary">{% translate "Filter" %}</button>
+  </div>
+</form>
+
+<div class="card">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>{% translate "Code" %}</th>
+        <th>{% translate "Item" %}</th>
+        <th>{% translate "Unit" %}</th>
+        <th class="num">{% translate "Warehouse" %}</th>
+        <th class="num">{% translate "Consigned" %}</th>
+        <th class="num">{% translate "Expired/Unfit" %}</th>
+        <th class="num">{% translate "Total" %}</th>
+        <th class="num">{% translate "Reorder level" %}</th>
+        <th>{% translate "Status" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td><a href="{% url 'inventory_item' row.item.pk %}">{{ row.item.code }}</a></td>
+        <td><a href="{% url 'inventory_item' row.item.pk %}">{{ row.item.name }}</a></td>
+        <td>{{ row.item.base_unit }}</td>
+        <td class="num">{{ row.warehouse }}</td>
+        <td class="num">{{ row.consigned }}</td>
+        <td class="num">{{ row.damaged }}</td>
+        <td class="num">{{ row.total }}</td>
+        <td class="num">{{ row.item.reorder_level|default:"—" }}</td>
+        <td><span class="badge badge-{{ row.status }}">
+          {% if row.status == "OUT" %}{% translate "Out of stock" %}{% elif row.status == "LOW" %}{% translate "Low" %}{% else %}{% translate "OK" %}{% endif %}
+        </span></td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="9" class="placeholder">{% translate "No items match." %}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="hint">{% translate "Low stock compares the warehouse quantity against the item's reorder level — goods already sold or out on consignment are not in the warehouse, so both count toward going low." %}</p>
+{% endblock %}

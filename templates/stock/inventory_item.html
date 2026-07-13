@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{{ item.code }} — {% translate "Inventory" %} — Narcos{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ item.name }}</h1>
+    <p class="today">{{ item.code }} · {{ item.base_unit }}</p>
+  </div>
+  <div class="actions">
+    <a class="btn btn-primary" href="{% url 'document_create' 'RECEIVING' %}">{% translate "New receiving" %}</a>
+    <a class="btn" href="{% url 'master_edit' 'items' item.pk %}">{% translate "Edit item" %}</a>
+    <a class="btn" href="{% url 'inventory_list' %}">{% translate "Back to inventory" %}</a>
+  </div>
+</div>
+
+<section class="card">
+  <div class="card-head">
+    <h2>{% translate "Stock" %}</h2>
+    <span class="badge badge-{{ status }}">
+      {% if status == "OUT" %}{% translate "Out of stock" %}{% elif status == "LOW" %}{% translate "Low" %}{% else %}{% translate "OK" %}{% endif %}
+    </span>
+  </div>
+  <dl class="summary-grid">
+    <div><dt>{% translate "Warehouse" %}</dt><dd>{{ warehouse }}</dd></div>
+    <div><dt>{% translate "On consignment" %}</dt><dd>{{ consigned }}</dd></div>
+    <div><dt>{% translate "Expired" %}</dt><dd>{{ expired }}</dd></div>
+    <div><dt>{% translate "Unfit" %}</dt><dd>{{ unfit }}</dd></div>
+    <div><dt>{% translate "Total held" %}</dt><dd>{{ held_total }}</dd></div>
+    <div><dt>{% translate "Reorder level" %}</dt><dd>{{ item.reorder_level|default:"—" }}</dd></div>
+  </dl>
+  {% if item.reorder_level is not None %}
+  <p class="hint">{% blocktranslate with level=item.reorder_level %}Flagged low when the warehouse quantity is at or below {{ level }}.{% endblocktranslate %}</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>{% translate "On hand by batch" %}</h2>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>{% translate "Batch" %}</th>
+        <th>{% translate "Expiry" %}</th>
+        <th>{% translate "Zone" %}</th>
+        <th>{% translate "Customer" %}</th>
+        <th class="num">{% translate "Qty" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in batch_rows %}
+      <tr>
+        <td>{{ row.balance.batch.batch_no|default:"—" }}</td>
+        <td>
+          {{ row.balance.batch.expiry_date|default:"—" }}
+          {% if row.expiry_status == "EXPIRED" %}<span class="badge badge-OUT">{% translate "Expired" %}</span>
+          {% elif row.expiry_status == "NEAR" %}<span class="badge badge-LOW">{% translate "Near expiry" %}</span>{% endif %}
+        </td>
+        <td>{{ row.balance.get_zone_display }}</td>
+        <td>{{ row.balance.consignment_customer.name|default:"—" }}</td>
+        <td class="num">{{ row.balance.qty }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" class="placeholder">{% translate "Nothing on hand." %}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="card">
+  <h2>{% translate "Recent movements" %}</h2>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>{% translate "Date" %}</th>
+        <th>{% translate "Document" %}</th>
+        <th>{% translate "Type" %}</th>
+        <th>{% translate "Zone" %}</th>
+        <th>{% translate "Customer" %}</th>
+        <th class="num">{% translate "Qty" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for move in moves %}
+      <tr>
+        <td>{{ move.at|date:"Y-m-d" }}</td>
+        <td><a href="{% url 'document_detail' move.document.pk %}">{{ move.document }}</a></td>
+        <td>{{ move.document.get_doc_type_display }}</td>
+        <td>{{ move.get_zone_display }}</td>
+        <td>{{ move.consignment_customer.name|default:"—" }}</td>
+        <td class="num">{{ move.qty_delta }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" class="placeholder">{% translate "No movements yet." %}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

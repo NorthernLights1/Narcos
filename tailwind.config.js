@@ -7,6 +7,7 @@ module.exports = {
   safelist: [
     "badge-DRAFT", "badge-POSTED", "badge-VOIDED",
     "badge-UNPAID", "badge-OPEN", "badge-PARTIAL", "badge-SETTLED", "badge-CLOSED",
+    "badge-OUT", "badge-LOW", "badge-OK",
   ],
   theme: {
     extend: {
