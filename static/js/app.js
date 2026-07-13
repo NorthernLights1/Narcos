@@ -182,6 +182,18 @@
              round2(Math.max(allocated - withheld, 0)).toFixed(2));
   }
 
+  /* Picking an invoice on a payment with no party yet also fills the
+   * customer/supplier box (D74). A party the user already chose is kept. */
+  function fillEmptyParty(data) {
+    var field = data.customer ? "customer" : (data.supplier ? "supplier" : null);
+    if (!field) return;
+    var select = document.querySelector('select[name="' + field + '"]');
+    if (!select || select.value) return;
+    var value = data.customer || data.supplier;
+    select.value = value;
+    if (select._choices) select._choices.setChoiceByValue(String(value));
+  }
+
   document.addEventListener("change", function (event) {
     var el = event.target;
     if (el.matches && el.matches('select[name$="-item"]')) {
@@ -199,7 +211,17 @@
         autofill(rowInput(row, "amount"), data.open || "");
         var withheldInput = document.querySelector('input[name="withheld_amount"]');
         if (withheldInput && data.wht) autofill(withheldInput, data.wht);
+        fillEmptyParty(data);
         prefillPaymentFromAllocations();
+      }
+    }
+    /* Blank settlement form: picking the issue jumps to the guided,
+     * server-prefilled draft (D71/D74) — one line per item+batch still out. */
+    if (el.matches && el.matches('select[name="related_document"]') && el.value) {
+      var form = el.closest("form");
+      if (form && form.action.indexOf("/new/CONSIGNMENT_SETTLEMENT/") !== -1) {
+        window.location.href = "?from=" + encodeURIComponent(el.value);
+        return;
       }
     }
     if (el.matches && el.matches('select[name="sale_kind"]') && el.value !== "CASH") {
@@ -423,6 +445,8 @@
     initPricingToggle();
     document.querySelectorAll("#lines-rows tr").forEach(filterBatches);
     document.querySelectorAll('select[name$="-batch"]').forEach(updateBatchHint);
+    /* Server-prefilled payment drafts (D74): compute the cash line on load */
+    prefillPaymentFromAllocations();
     recomputeTotals();
   });
 })();

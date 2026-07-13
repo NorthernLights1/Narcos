@@ -26,6 +26,17 @@
          href="{% url 'document_create' 'CONSIGNMENT_SETTLEMENT' %}?from={{ doc.pk }}">
         {% translate "Settle consignment" %}</a>
       {% endif %}
+      {% if settlement.state.kind == "money" and settlement.state.open > 0 %}
+        {% if doc.customer_id %}
+        <a class="btn btn-primary"
+           href="{% url 'document_create' 'CUSTOMER_PAYMENT' %}?from={{ doc.pk }}">
+          {% translate "Record payment" %}</a>
+        {% elif doc.supplier_id %}
+        <a class="btn btn-primary"
+           href="{% url 'document_create' 'SUPPLIER_PAYMENT' %}?from={{ doc.pk }}">
+          {% translate "Pay supplier" %}</a>
+        {% endif %}
+      {% endif %}
     {% endif %}
   </div>
 </div>

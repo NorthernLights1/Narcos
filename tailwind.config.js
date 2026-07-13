@@ -2,9 +2,12 @@
  * (Windows) or scripts/build_css.sh (Linux/dev). */
 module.exports = {
   content: ["./templates/**/*.html", "./*/templates/**/*.html", "./static/js/app.js"],
-  // Classes composed at render time (badge-{{ doc.status }}) that the content
-  // scan cannot see:
-  safelist: ["badge-DRAFT", "badge-POSTED", "badge-VOIDED"],
+  // Classes composed at render time (badge-{{ doc.status }},
+  // badge-{{ settlement.state }}) that the content scan cannot see:
+  safelist: [
+    "badge-DRAFT", "badge-POSTED", "badge-VOIDED",
+    "badge-UNPAID", "badge-OPEN", "badge-PARTIAL", "badge-SETTLED", "badge-CLOSED",
+  ],
   theme: {
     extend: {
       colors: {

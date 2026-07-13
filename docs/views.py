@@ -11,6 +11,7 @@ from django.views.decorators.http import require_POST
 from catalog.forms import COMMON_UNITS
 from core.audit import log_change, snapshot
 from core.models import CompanySettings
+from docs.handlers_payments import AP_TARGET_TYPES, AR_TARGET_TYPES
 from docs.forms import (
     DOC_CONFIG,
     IMPLEMENTED_DOC_TYPES,
@@ -29,6 +30,7 @@ from docs.settlement import (
     settlement_context,
     settlement_state,
 )
+from money.models import PaymentAllocation
 from stock.models import StockBalance, Zone
 
 
@@ -77,11 +79,49 @@ def document_create(request, doc_type):
     _config(doc_type)
     if doc_type == DocType.STOCK_COUNT and request.method == "GET":
         return _start_stock_count(request)
-    if (doc_type == DocType.CONSIGNMENT_SETTLEMENT and request.method == "GET"
-            and request.GET.get("from")):
-        return _start_consignment_settlement(request, request.GET["from"])
+    if request.method == "GET" and request.GET.get("from"):
+        if doc_type == DocType.CONSIGNMENT_SETTLEMENT:
+            return _start_consignment_settlement(request, request.GET["from"])
+        if doc_type in (DocType.CUSTOMER_PAYMENT, DocType.SUPPLIER_PAYMENT):
+            return _start_payment(request, doc_type, request.GET["from"])
     doc = Document(doc_type=doc_type, created_by=request.user)
     return _draft_form(request, doc)
+
+
+def _start_payment(request, doc_type, target_pk):
+    """Record payment / Pay supplier button on a posted invoice (D74): draft
+    RC/PV with the party, an allocation at the invoice's open balance, and
+    the expected withholding prefilled — staff pick the account and post.
+    Display convenience only: the handler re-checks everything under lock."""
+    is_customer = doc_type == DocType.CUSTOMER_PAYMENT
+    target = get_object_or_404(
+        Document, pk=target_pk, status=Document.Status.POSTED,
+        doc_type__in=AR_TARGET_TYPES if is_customer else AP_TARGET_TYPES,
+    )
+    state = settlement_state(target)
+    if state is None or state["kind"] != "money" or state["open"] <= 0:
+        messages.info(request, _("%(no)s has nothing left to settle.")
+                      % {"no": target.doc_no})
+        return redirect("document_detail", pk=target.pk)
+    settings = CompanySettings.load()
+    withholding_enabled = (settings.withholding_on_sales if is_customer
+                           else settings.withholding_on_purchases)
+    withheld = 0
+    if withholding_enabled and target.withholding_expected > 0:
+        withheld = min(target.withholding_expected, state["open"])
+    with transaction.atomic():
+        doc = Document.objects.create(
+            doc_type=doc_type, created_by=request.user,
+            customer=target.customer if is_customer else None,
+            supplier=None if is_customer else target.supplier,
+            withheld_amount=withheld,
+        )
+        PaymentAllocation.objects.create(payment=doc, target=target,
+                                         amount=state["open"])
+    messages.success(request, _(
+        "Payment draft for %(no)s — the open balance is allocated; pick the "
+        "account and post.") % {"no": target.doc_no})
+    return redirect("document_edit", pk=doc.pk)
 
 
 def _start_consignment_settlement(request, issue_pk):

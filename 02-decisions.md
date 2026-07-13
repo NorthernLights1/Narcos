@@ -901,3 +901,31 @@ static assets carry a `?v=` cache-buster (bump when app.css/app.js change).
   already knew (open_balance, settlement-line sums); the screens now say it,
   and voiding a payment reopens the target automatically because nothing is
   cached.
+
+### D74 — One-click settlement entry: buttons and pickers prefill the whole document
+- **What:** Three workflow closures on top of D71/D72/D73:
+  1. **Record payment / Pay supplier button** on any posted invoice that still
+     has an open balance (credit sale, credit consignment settlement,
+     receiving, opening AR/AP). It creates the payment draft server-side with
+     the party set, the allocation at the invoice's **current open balance**,
+     and the **expected withholding** prefilled (when the direction's
+     withholding setting is on, capped at the open balance). Staff pick the
+     account and post; the cash line computes itself on page load
+     (allocations − withheld). The posting handler still re-checks everything
+     under lock (I13) — the prefill is display convenience only (D68).
+  2. **Picking an invoice on a blank payment fills the party too**: target
+     options now carry `data-customer`/`data-supplier`, and an empty
+     customer/supplier box is set from the picked invoice. A party the user
+     chose is never overwritten.
+  3. **Picking an issue on a blank consignment settlement jumps to the guided
+     draft**: selecting `related_document` on the *create* form redirects to
+     the D71 `?from=` flow, so the lines arrive prefilled with what is still
+     out per item+batch. Editing an existing draft never redirects.
+  Settlement badges are also color coded now — Unpaid/Open rose, Partial
+  amber, Settled/Closed emerald (the D73 classes were being purged by the
+  Tailwind content scan because `badge-{{ state }}` is composed at render
+  time; they joined the safelist alongside the status badges).
+- **Why:** Owner: reaching a settlement screen from the document — and
+  having every knowable number already in the boxes — beats retyping what
+  the engine can compute. Same principle as D71/D72: the engine already
+  knows; the screen should say it.

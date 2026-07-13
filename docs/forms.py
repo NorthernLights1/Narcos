@@ -411,8 +411,9 @@ def _allocation_label(target: Document) -> str:
 
 
 class AllocationTargetSelect(forms.Select):
-    """Target options carry the open balance and expected withholding so the
-    client can prefill the allocation amount and the withheld field."""
+    """Target options carry the open balance, expected withholding, and party
+    so the client can prefill the allocation amount, the withheld field, and
+    an empty customer/supplier box (D72/D74)."""
 
     def create_option(self, name, value, label, selected, index,
                       subindex=None, attrs=None):
@@ -424,6 +425,10 @@ class AllocationTargetSelect(forms.Select):
                 target.grand_total - (target.settled or 0))
             if target.withholding_expected > 0:
                 option["attrs"]["data-wht"] = str(target.withholding_expected)
+            if target.customer_id:
+                option["attrs"]["data-customer"] = str(target.customer_id)
+            elif target.supplier_id:
+                option["attrs"]["data-supplier"] = str(target.supplier_id)
         return option
 
 
