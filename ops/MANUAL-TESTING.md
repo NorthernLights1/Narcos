@@ -25,6 +25,27 @@ Written for a dev machine (Linux, `.venv`, PostgreSQL on localhost).
 > consignment" button** on the posted issue — the split lines and the money
 > due compute themselves.
 
+> **2026-07-15 finance & reconciliation package (D76–D79):**
+> - **Reports → Statement**: pick a customer *or* supplier + period →
+>   opening balance, every movement with a running balance, closing
+>   balance. CSV + Print. This is the reconciliation page to walk through
+>   with the other business. If the party shares a TIN with a record on
+>   the other side (vendor who both buys and sells), a note links to
+>   their other statement — books stay separate, no netting.
+> - **Transactions list** now filters by **Customer / Supplier / From / To**.
+> - **Attachments** on every document (bottom of the detail page): scan of
+>   the supplier invoice, delivery note… PDF/JPG/PNG/WebP, 10 MB. Delete
+>   only while draft; after posting the owner can *void* one with a reason
+>   (hidden + audited, never destroyed). 📎 count shows on the list.
+> - **Print → Cash sales attachment** on any sale: the trade's paper form
+>   (20-row table, buyer TIN/license, signature lines). Fill company
+>   phones in Settings and the buyer's license/city/mobile on the customer
+>   for a complete header.
+> - **Work → Finance** (owner only): net position, cash/bank per account,
+>   AR/AP with overdue slices, stock at cost vs at price, month P&L,
+>   withholding. **Receivings now take a due date** — set it and overdue
+>   payables surface on the dashboard (new **AP overdue** card).
+
 ---
 
 ## 0. One-time setup
