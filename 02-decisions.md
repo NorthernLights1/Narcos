@@ -950,3 +950,23 @@ static assets carry a `?v=` cache-buster (bump when app.css/app.js change).
   available stock beyond the transactions register and the CSV-style
   stock-on-hand report. The inventory page shows the numbers the engine
   already keeps.
+
+## Round 10 (2026-07-15) — reconciliation & finance visibility package
+
+### D76 — Party statement, built on PartyLedger; party+date filters on Transactions
+- **What:** **Reports → Statement**: pick customer or supplier plus a date
+  range and get *opening balance → every AR/AP movement with a running
+  balance → closing balance*, with CSV export and a print view. Rows come
+  from **PartyLedger only** (the append-only AR/AP ledger), so the statement
+  inherits the engine's exactness: cash documents never appear (they create
+  no debt — the auto payment settles them at posting), and voided documents
+  show as explicit reversal rows that net to zero instead of silently
+  disappearing. Date basis is `document_date` (consistent with every other
+  report, and correct for backdated opening docs). The Transactions list
+  also gained **Customer / Supplier / From / To** filters; drafts use
+  `created_at` as their date fallback so a date filter can't hide them.
+- **Why:** Owner: when reconciling with a customer (often a fellow vendor)
+  he needs "everything for this party in this period" on one printable page
+  both sides can walk through line by line — not a mental assembly from the
+  transactions register. Debit = they owe more (customer view) / we owe
+  more (supplier view); the header states which reading applies.

@@ -9,13 +9,13 @@ from django.shortcuts import render
 from django.utils import timezone
 from django.utils.translation import gettext as _
 
-from catalog.models import Item
+from catalog.models import Customer, Item, Supplier
 from core.ethiopian_calendar import fiscal_year_bounds
 from core.models import CompanySettings
 from docs.checks import ExpiryStatus, expiry_status
 from docs.handlers_payments import open_balance
 from docs.models import DocType, Document, DocumentLine
-from money.models import MoneyLedger, WithholdingLedger
+from money.models import MoneyLedger, PartyLedger, WithholdingLedger
 from stock.models import StockBalance, StockLedger, Zone
 
 
@@ -464,6 +464,94 @@ def report_detail(request, slug):
         "open_items": config.get("open_items", False),
         "today": timezone.localdate(),
     })
+
+
+@login_required
+def statement(request):
+    """Party statement for reconciliation (owner request): opening balance,
+    every AR/AP movement in the period with a running balance, closing
+    balance. Reads PartyLedger only, so cash documents (which never create
+    debt) stay out and voids show up as explicit reversal rows."""
+    period, start, end = _selected_range(request)
+    party_type = request.GET.get("party_type", "customer")
+    if party_type not in ("customer", "supplier"):
+        party_type = "customer"
+    is_customer = party_type == "customer"
+    model = Customer if is_customer else Supplier
+    try:
+        party = model.objects.filter(pk=request.GET.get("party")).first()
+    except (TypeError, ValueError):
+        party = None
+
+    context = {
+        "party_type": party_type,
+        "party": party,
+        "parties": model.objects.filter(is_active=True).order_by("code"),
+        "period": period,
+        "start": start,
+        "end": end,
+    }
+    if party is None:
+        return render(request, "reports/statement.html", context)
+
+    ledger_rows = (
+        PartyLedger.objects.filter(
+            party_type=(PartyLedger.PartyType.CUSTOMER if is_customer
+                        else PartyLedger.PartyType.SUPPLIER),
+            party_id=party.pk,
+        )
+        .select_related("document")
+        .order_by("document__document_date", "pk")
+    )
+    opening = Decimal("0.00")
+    running = Decimal("0.00")
+    entries = []
+    for row in ledger_rows:
+        day = _day(row.document.document_date)
+        if day is None or day > end:
+            continue
+        if day < start:
+            opening += row.amount_delta
+            continue
+        entries.append({
+            "date": day,
+            "doc": row.document,
+            "type": row.document.get_doc_type_display(),
+            "is_reversal": row.is_reversal,
+            "delta": row.amount_delta,
+            "debit": row.amount_delta if row.amount_delta > 0 else None,
+            "credit": -row.amount_delta if row.amount_delta < 0 else None,
+            "balance": Decimal("0.00"),  # filled below, after opening is known
+        })
+    running = opening
+    for entry in entries:
+        running += entry["delta"]
+        entry["balance"] = running
+    context.update({"opening": opening, "entries": entries, "closing": running})
+    if request.GET.get("format") == "csv":
+        return _statement_csv(party, opening, entries, running)
+    return render(request, "reports/statement.html", context)
+
+
+def _statement_csv(party, opening, entries, closing):
+    response = HttpResponse(content_type="text/csv")
+    response["Content-Disposition"] = 'attachment; filename="statement.csv"'
+    writer = csv.writer(response)
+    writer.writerow([_("Statement for"), f"{party.code} — {party.name}"])
+    writer.writerow([_("Date"), _("Document"), _("Type"),
+                     _("Debit"), _("Credit"), _("Balance")])
+    writer.writerow(["", _("Opening balance"), "", "", "", opening])
+    for entry in entries:
+        writer.writerow([
+            entry["date"].isoformat(),
+            entry["doc"].doc_no + (f" ({_('void reversal')})" if entry["is_reversal"] else ""),
+            entry["type"],
+            entry["debit"] if entry["debit"] is not None else "",
+            entry["credit"] if entry["credit"] is not None else "",
+            entry["balance"],
+        ])
+    writer.writerow(["", _("Closing balance"), "", "", "", closing])
+    return response
 
 
 def _csv_response(slug, columns, rows, total):

@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% translate "Statement" %} - Narcos{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{% translate "Statement" %}</h1>
+  {% if party %}
+  <div class="actions">
+    <a class="btn" href="?party_type={{ party_type }}&party={{ party.pk }}&period={{ period }}&start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&format=csv">{% translate "CSV" %}</a>
+    <button class="btn" type="button" onclick="window.print()">{% translate "Print" %}</button>
+  </div>
+  {% endif %}
+</div>
+
+<form method="get" class="card form-grid no-print">
+  <div class="field">
+    <label for="id_party_type">{% translate "Party" %}</label>
+    <select id="id_party_type" name="party_type" onchange="this.form.party.value=''; this.form.submit()">
+      <option value="customer"{% if party_type == "customer" %} selected{% endif %}>{% translate "Customer" %}</option>
+      <option value="supplier"{% if party_type == "supplier" %} selected{% endif %}>{% translate "Supplier" %}</option>
+    </select>
+  </div>
+  <div class="field">
+    <label for="id_party">{% translate "Name" %}</label>
+    <select id="id_party" name="party" data-search>
+      <option value="">{% translate "Choose…" %}</option>
+      {% for candidate in parties %}
+      <option value="{{ candidate.pk }}"{% if party and party.pk == candidate.pk %} selected{% endif %}>{{ candidate.code }} — {{ candidate.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="field">
+    <label for="id_period">{% translate "Period" %}</label>
+    <select id="id_period" name="period">
+      <option value="this_fy"{% if period == "this_fy" %} selected{% endif %}>{% translate "This fiscal year" %}</option>
+      <option value="last_fy"{% if period == "last_fy" %} selected{% endif %}>{% translate "Last fiscal year" %}</option>
+      <option value="custom"{% if period == "custom" %} selected{% endif %}>{% translate "Custom" %}</option>
+    </select>
+  </div>
+  <div class="field">
+    <label for="id_start">{% translate "Start" %}</label>
+    <input id="id_start" type="date" name="start" value="{{ start|date:'Y-m-d' }}">
+  </div>
+  <div class="field">
+    <label for="id_end">{% translate "End" %}</label>
+    <input id="id_end" type="date" name="end" value="{{ end|date:'Y-m-d' }}">
+  </div>
+  <div class="field">
+    <label>&nbsp;</label>
+    <button class="btn btn-primary" type="submit">{% translate "Show statement" %}</button>
+  </div>
+</form>
+
+{% if party %}
+<div class="card statement">
+  <div class="card-head">
+    <h2>{{ party.code }} — {{ party.name }}</h2>
+    <span class="hint">{{ start|date:'Y-m-d' }} → {{ end|date:'Y-m-d' }}</span>
+  </div>
+  <p class="hint">
+    {% if party_type == "customer" %}
+      {% translate "Balance = what this customer owes you. Cash sales settle instantly and never appear here." %}
+    {% else %}
+      {% translate "Balance = what you owe this supplier." %}
+    {% endif %}
+  </p>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>{% translate "Date" %}</th>
+        <th>{% translate "Document" %}</th>
+        <th>{% translate "Type" %}</th>
+        <th class="num">{% translate "Debit" %}</th>
+        <th class="num">{% translate "Credit" %}</th>
+        <th class="num">{% translate "Balance" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="opening-row">
+        <td></td>
+        <td colspan="4">{% translate "Opening balance" %}</td>
+        <td class="num">{{ opening }}</td>
+      </tr>
+      {% for entry in entries %}
+      <tr{% if entry.is_reversal %} class="row-reversal"{% endif %}>
+        <td>{{ entry.date|date:'Y-m-d' }}</td>
+        <td>
+          <a href="{% url 'document_detail' entry.doc.pk %}">{{ entry.doc.doc_no }}</a>
+          {% if entry.is_reversal %}<span class="hint">({% translate "void reversal" %})</span>{% endif %}
+        </td>
+        <td>{{ entry.type }}</td>
+        <td class="num">{% if entry.debit is not None %}{{ entry.debit }}{% endif %}</td>
+        <td class="num">{% if entry.credit is not None %}{{ entry.credit }}{% endif %}</td>
+        <td class="num">{{ entry.balance }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6">{% translate "No movement in this period." %}</td></tr>
+      {% endfor %}
+      <tr class="total-row">
+        <th></th>
+        <th colspan="4">{% translate "Closing balance" %}</th>
+        <th class="num">{{ closing }}</th>
+      </tr>
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

@@ -9,6 +9,10 @@
 <div class="card">
   <table class="table">
     <tbody>
+      <tr>
+        <td>{% translate "Statement (customer/supplier reconciliation)" %}</td>
+        <td><a href="{% url 'statement' %}">{% translate "Open" %}</a></td>
+      </tr>
       {% for slug, report in reports.items %}
       <tr>
         <td>{{ report.title }}</td>

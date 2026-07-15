@@ -74,6 +74,32 @@
     </select>
   </div>
   <div class="field">
+    <label for="id_customer">{% translate "Customer" %}</label>
+    <select name="customer" id="id_customer" data-search>
+      <option value="">{% translate "All" %}</option>
+      {% for candidate in customers %}
+        <option value="{{ candidate.pk }}"{% if selected_customer == candidate.pk|stringformat:"s" %} selected{% endif %}>{{ candidate.code }} — {{ candidate.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="field">
+    <label for="id_supplier">{% translate "Supplier" %}</label>
+    <select name="supplier" id="id_supplier" data-search>
+      <option value="">{% translate "All" %}</option>
+      {% for candidate in suppliers %}
+        <option value="{{ candidate.pk }}"{% if selected_supplier == candidate.pk|stringformat:"s" %} selected{% endif %}>{{ candidate.code }} — {{ candidate.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="field">
+    <label for="id_start">{% translate "From" %}</label>
+    <input id="id_start" type="date" name="start" value="{{ start|date:'Y-m-d' }}">
+  </div>
+  <div class="field">
+    <label for="id_end">{% translate "To" %}</label>
+    <input id="id_end" type="date" name="end" value="{{ end|date:'Y-m-d' }}">
+  </div>
+  <div class="field">
     <label for="id_q">{% translate "Search" %}</label>
     <input id="id_q" type="search" name="q" value="{{ query }}"
            placeholder="{% translate 'Doc no, customer, supplier…' %}">

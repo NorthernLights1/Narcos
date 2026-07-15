@@ -78,6 +78,9 @@
   .table-input input, .table-input select { @apply px-2 py-1.5; }
   .col-del { @apply w-8 text-center; }
   .col-del input[type="checkbox"] { @apply mt-2.5; }
+  .total-row th { @apply border-t-2 border-slate-300 text-sm normal-case tracking-normal text-ink; }
+  .opening-row td { @apply font-semibold text-slate-600; }
+  .row-reversal td { @apply text-rose-700; }
 
   /* ---- badges ---- */
   .badge {
@@ -145,4 +148,14 @@
   .is-focused .choices__inner, .is-open .choices__inner {
     @apply border-accent ring-2 ring-accent/40;
   }
+}
+
+/* Browser print (statement, reports): chrome off, content full-width */
+@media print {
+  .topbar, .sidebar, .no-print, .actions, .messages, .filterbar {
+    display: none !important;
+  }
+  .shell { display: block; }
+  .page { padding: 0; max-width: none; }
+  .card { box-shadow: none; border: 1px solid #e2e8f0; }
 }

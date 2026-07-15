@@ -1,14 +1,18 @@
+import datetime as dt
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Q
+from django.db.models.functions import Coalesce
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.translation import gettext as _
 from django.views.decorators.http import require_POST
 
 from catalog.forms import COMMON_UNITS
+from catalog.models import Customer, Supplier
 from core.audit import log_change, snapshot
 from core.models import CompanySettings
 from docs.handlers_payments import AP_TARGET_TYPES, AR_TARGET_TYPES
@@ -40,6 +44,13 @@ def _config(doc_type: str):
     return DOC_CONFIG[doc_type]
 
 
+def _parse_date(value):
+    try:
+        return dt.date.fromisoformat(value or "")
+    except ValueError:
+        return None
+
+
 @login_required
 def document_list(request):
     rows = annotate_settlement(
@@ -49,12 +60,28 @@ def document_list(request):
     status = request.GET.get("status", "")
     settlement = request.GET.get("settlement", "")
     query = request.GET.get("q", "").strip()
+    customer_id = request.GET.get("customer", "")
+    supplier_id = request.GET.get("supplier", "")
+    start = _parse_date(request.GET.get("start"))
+    end = _parse_date(request.GET.get("end"))
     if doc_type:
         rows = rows.filter(doc_type=doc_type)
     if status:
         rows = rows.filter(status=status)
     if settlement:
         rows = filter_settlement(rows, settlement)
+    if customer_id.isdigit():
+        rows = rows.filter(customer_id=customer_id)
+    if supplier_id.isdigit():
+        rows = rows.filter(supplier_id=supplier_id)
+    if start or end:
+        # Drafts have no document_date yet — fall back to creation time so
+        # they don't vanish from a date-filtered view.
+        rows = rows.annotate(effective_at=Coalesce("document_date", "created_at"))
+        if start:
+            rows = rows.filter(effective_at__date__gte=start)
+        if end:
+            rows = rows.filter(effective_at__date__lte=end)
     if query:
         rows = rows.filter(
             Q(doc_no__icontains=query)
@@ -67,9 +94,15 @@ def document_list(request):
         "doc_types": [(t, DOC_CONFIG[t]["title"]) for t in IMPLEMENTED_DOC_TYPES],
         "statuses": Document.Status.choices,
         "settlement_filters": SETTLEMENT_FILTERS,
+        "customers": Customer.objects.filter(is_active=True).order_by("code"),
+        "suppliers": Supplier.objects.filter(is_active=True).order_by("code"),
         "selected_type": doc_type,
         "selected_status": status,
         "selected_settlement": settlement,
+        "selected_customer": customer_id,
+        "selected_supplier": supplier_id,
+        "start": start,
+        "end": end,
         "query": query,
     })
 
