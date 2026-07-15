@@ -4,7 +4,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.db.models.functions import Coalesce
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
@@ -55,6 +55,9 @@ def _parse_date(value):
 def document_list(request):
     rows = annotate_settlement(
         Document.objects.select_related("customer", "supplier")
+    ).annotate(
+        attachment_count=Count("attachments",
+                               filter=Q(attachments__is_voided=False)),
     ).order_by("-created_at")
     doc_type = request.GET.get("type", "")
     status = request.GET.get("status", "")
@@ -335,11 +338,14 @@ def document_detail(request, pk):
         ),
         pk=pk,
     )
+    attachments = list(doc.attachments.select_related("uploaded_by", "voided_by"))
     return render(request, "docs/detail.html", {
         "doc": doc,
         "config": DOC_CONFIG.get(doc.doc_type),
         "expected": draft_expected_totals(doc),
         "settlement": settlement_context(doc),
+        "attachments": [a for a in attachments if not a.is_voided],
+        "voided_attachments": [a for a in attachments if a.is_voided],
     })
 
 
@@ -355,6 +361,16 @@ def document_print(request, pk):
     layout = request.GET.get("layout") or settings.print_layout
     if layout not in CompanySettings.PrintLayout.values:
         layout = settings.print_layout
+    if layout == CompanySettings.PrintLayout.SALES_ATTACHMENT:
+        lines = list(doc.lines.select_related("item", "batch"))
+        return render(request, "docs/print_sales_attachment.html", {
+            "company": settings,
+            "doc": doc,
+            "lines": lines,
+            # The paper form is a fixed 20-row table; keep the shape so the
+            # printout matches what the trade expects.
+            "pad_range": range(len(lines) + 1, 21),
+        })
     return render(request, "docs/print.html", {
         "company": settings,
         "doc": doc,

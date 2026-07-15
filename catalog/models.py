@@ -127,8 +127,11 @@ class Customer(AutoCodeModel):
     code = models.CharField(_("Code"), max_length=30, unique=True)
     name = models.CharField(_("Name"), max_length=200)
     tin = models.CharField(_("TIN"), max_length=30, blank=True)
+    license_no = models.CharField(_("License no."), max_length=50, blank=True)
     phone = models.CharField(_("Phone"), max_length=30, blank=True)
+    mobile = models.CharField(_("Mobile"), max_length=30, blank=True)
     address = models.CharField(_("Address"), max_length=300, blank=True)
+    city = models.CharField(_("City"), max_length=100, blank=True)
     credit_limit = models.DecimalField(
         _("Credit limit"), max_digits=14, decimal_places=2, null=True, blank=True,
         help_text=_("Blank = company default."),
@@ -144,8 +147,9 @@ class Customer(AutoCodeModel):
     is_active = models.BooleanField(_("Active"), default=True)
 
     AUDITED_FIELDS = [
-        "code", "name", "tin", "phone", "address", "credit_limit",
-        "credit_action", "is_withholding_agent", "is_active",
+        "code", "name", "tin", "license_no", "phone", "mobile", "address",
+        "city", "credit_limit", "credit_action", "is_withholding_agent",
+        "is_active",
     ]
 
     class Meta:

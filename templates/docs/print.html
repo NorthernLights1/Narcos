@@ -28,6 +28,7 @@
     <button onclick="window.print()">{% translate "Print" %}</button>
     <a href="?layout=COMPACT">{% translate "Compact" %}</a>
     <a href="?layout=DETAILED">{% translate "Detailed" %}</a>
+    {% if doc.doc_type == "SALE" %}<a href="?layout=SALES_ATT">{% translate "Cash sales attachment" %}</a>{% endif %}
   </div>
 
   <div class="top">

@@ -43,12 +43,15 @@ class CompanySettings(models.Model):
     class PrintLayout(models.TextChoices):
         COMPACT = "COMPACT", _("Compact")
         DETAILED = "DETAILED", _("Detailed")
+        SALES_ATTACHMENT = "SALES_ATT", _("Cash sales attachment")
 
     FISCAL_MONTH_CHOICES = [(i + 1, name) for i, name in enumerate(MONTHS[:12])]
 
     name = models.CharField(_("Company name"), max_length=200, blank=True)
     address = models.CharField(_("Address"), max_length=300, blank=True)
     tin = models.CharField(_("TIN"), max_length=30, blank=True)
+    phone = models.CharField(_("Phone numbers"), max_length=100, blank=True,
+                             help_text=_("Shown on printed documents."))
 
     tax_regime = models.CharField(  # D7
         _("Tax regime"), max_length=4, choices=TaxRegime.choices, default=TaxRegime.VAT
@@ -84,12 +87,12 @@ class CompanySettings(models.Model):
         default=DateDisplay.GREGORIAN,
     )
     print_layout = models.CharField(
-        _("Print layout"), max_length=8, choices=PrintLayout.choices,
+        _("Print layout"), max_length=9, choices=PrintLayout.choices,
         default=PrintLayout.COMPACT,
     )
 
     AUDITED_FIELDS = [
-        "name", "address", "tin", "tax_regime", "vat_rate", "tot_rate",
+        "name", "address", "tin", "phone", "tax_regime", "vat_rate", "tot_rate",
         "prices_tax_exclusive", "withholding_on_sales", "withholding_on_purchases",
         "withholding_rate", "near_expiry_months", "consignment_term_months",
         "default_credit_limit", "default_credit_action",

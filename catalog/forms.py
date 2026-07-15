@@ -90,12 +90,17 @@ class CustomerForm(forms.ModelForm):
     class Meta:
         model = Customer
         fields = [
-            "name", "tin", "phone", "address", "credit_limit",
-            "credit_action", "is_withholding_agent", "is_active",
+            "name", "tin", "license_no", "phone", "mobile", "address", "city",
+            "credit_limit", "credit_action", "is_withholding_agent", "is_active",
         ]
         widgets = {
             **PARTY_PLACEHOLDERS,
             "name": forms.TextInput(attrs={"placeholder": _("e.g. Mekelle Clinic")}),
+            "license_no": forms.TextInput(attrs={
+                "placeholder": _("trade/pharmacy license, e.g. PH-MK-0042"),
+            }),
+            "mobile": forms.TextInput(attrs={"placeholder": _("e.g. 0912 345 678")}),
+            "city": forms.TextInput(attrs={"placeholder": _("e.g. Mekelle")}),
             "credit_limit": forms.NumberInput(attrs={
                 "placeholder": _("blank = company default"),
             }),

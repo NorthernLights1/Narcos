@@ -1,0 +1,148 @@
+{% load i18n %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{ doc }} - {% translate "Cash Sales Attachment" %}</title>
+  <style>
+    @page { size: A4; margin: 12mm; }
+    body { color: #111827; font: 11px/1.4 Arial, sans-serif; margin: 0; }
+    h1, h2, p { margin: 0; }
+    .center { text-align: center; }
+    .head h1 { font-size: 18px; }
+    .head p { font-size: 11px; color: #374151; }
+    .doc-title { font-size: 14px; font-weight: 700; text-decoration: underline; margin: 14px 0 10px; }
+    .meta, .buyer { margin-bottom: 8px; }
+    .meta span, .buyer span { display: inline-block; margin-right: 24px; }
+    .meta b, .buyer b { font-weight: 700; }
+    .fill { border-bottom: 1px solid #6b7280; display: inline-block; min-width: 120px; padding: 0 4px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 6px; }
+    th, td { border: 1px solid #6b7280; padding: 3px 5px; text-align: left; }
+    th { background: #f3f4f6; font-size: 10px; }
+    td { height: 15px; }
+    .sno { width: 34px; text-align: center; }
+    .qty, .price, .total { text-align: right; width: 70px; }
+    .subtotal-row td { border: none; }
+    .subtotal-box { border: 1px solid #111827; font-weight: 700; text-align: right; }
+    .received { margin: 12px 0 18px; }
+    .sigs { display: flex; justify-content: space-between; gap: 24px; margin-top: 24px; }
+    .sigs div { flex: 1; }
+    .sig-line { border-bottom: 1px solid #111827; height: 28px; }
+    .fiscal-note { font-style: italic; margin-top: 18px; }
+    .copies { margin-top: 14px; font-size: 10px; }
+    .copies span { margin-right: 18px; }
+    .footer { color: #6b7280; display: flex; font-size: 9px; justify-content: space-between; margin-top: 16px; }
+    .screen-actions { margin-bottom: 16px; }
+    .screen-actions a, .screen-actions button { margin-right: 8px; }
+    @media print { .screen-actions { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="screen-actions">
+    <button onclick="window.print()">{% translate "Print" %}</button>
+    <a href="?layout=COMPACT">{% translate "Compact" %}</a>
+    <a href="?layout=DETAILED">{% translate "Detailed" %}</a>
+  </div>
+
+  <div class="head center">
+    <h1>{{ company.name|default:"Narcos" }}</h1>
+    <p>{% translate "TIN" %}: {{ company.tin|default:"—" }}</p>
+    {% if company.phone %}<p>{% translate "Tel" %}: {{ company.phone }}</p>{% endif %}
+    <p class="doc-title">{% translate "Cash Sales Attachment" %}</p>
+  </div>
+
+  <div class="meta">
+    <span><b>{% translate "Sales Date" %}:</b> {{ doc.document_date|date:"Y-m-d" }}</span>
+    <span><b>{% translate "FS Receipt No" %}:</b> <span class="fill">{{ doc.fiscal_receipt_no }}</span></span>
+    <span><b>{% translate "CSI No." %}:</b> {{ doc.doc_no }}</span>
+  </div>
+
+  <div class="buyer">
+    <p><b>{% translate "Customer/Buyer" %}</b></p>
+    <span><b>{% translate "Buyer's Trade Name" %}:</b> {{ doc.customer.name|default:"—" }}</span>
+    <span><b>{% translate "Buyer's TIN" %}:</b> {{ doc.customer.tin|default:"—" }}</span>
+    <br>
+    <span><b>{% translate "License No." %}:</b> {{ doc.customer.license_no|default:"—" }}</span>
+    <span><b>{% translate "Phone No." %}:</b> {{ doc.customer.phone|default:"—" }}</span>
+    <span><b>{% translate "Mobile No." %}:</b> {{ doc.customer.mobile|default:"—" }}</span>
+    <span><b>{% translate "City" %}:</b> {{ doc.customer.city|default:"—" }}</span>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th class="sno">{% translate "S/No" %}</th>
+        <th>{% translate "(Generic) Brand Name, Strength and Dosage" %}</th>
+        <th>{% translate "Unit of Measure" %}</th>
+        <th>{% translate "Batch No" %}</th>
+        <th>{% translate "Expiry Date" %}</th>
+        <th class="qty">{% translate "Quantity" %}</th>
+        <th class="price">{% translate "Unit Price" %}</th>
+        <th class="total">{% translate "Total Price" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for line in lines %}
+      <tr>
+        <td class="sno">{{ forloop.counter }}</td>
+        <td>
+          {{ line.item.name }}{% if line.item.generic_name %} ({{ line.item.generic_name }}){% endif %}{% if line.item.strength %}, {{ line.item.strength }}{% endif %}{% if line.item.dosage_form %}, {{ line.item.dosage_form }}{% endif %}
+        </td>
+        <td>{{ line.unit_label }}</td>
+        <td>{{ line.batch.batch_no|default:line.batch_no_entered }}</td>
+        <td>{{ line.batch.expiry_date|date:"Y-m-d"|default:"—" }}</td>
+        <td class="qty">{{ line.qty_entered }}</td>
+        <td class="price">{{ line.unit_price }}</td>
+        <td class="total">{{ line.line_net }}</td>
+      </tr>
+      {% endfor %}
+      {% for sno in pad_range %}
+      <tr>
+        <td class="sno">{{ sno }}</td>
+        <td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+      </tr>
+      {% endfor %}
+      <tr class="subtotal-row">
+        <td colspan="6"></td>
+        <td><b>{% translate "Sub Total" %}:</b></td>
+        <td class="subtotal-box">{{ doc.grand_total }}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="received">
+    {% translate "I received the above goods in good condition." %}
+    {% translate "Received By" %}: <span class="fill"></span>
+  </p>
+
+  <div class="sigs">
+    <div>
+      <b>{% translate "Prepared By" %}:</b>
+      <div class="sig-line"></div>
+      <p>{{ doc.created_by.get_full_name|default:doc.created_by.username }}</p>
+    </div>
+    <div>
+      <b>{% translate "Delivered By" %}:</b>
+      <div class="sig-line"></div>
+    </div>
+    <div>
+      <b>{% translate "Approved By" %}:</b>
+      <div class="sig-line"></div>
+    </div>
+  </div>
+
+  <p class="fiscal-note center">{% translate "This receipt is not valid unless fiscal receipt is attached." %}</p>
+
+  <div class="copies">
+    <b>{% translate "Copy Distribution" %}:</b>
+    <span>{% translate "1st Copy: Customer" %}</span>
+    <span>{% translate "2nd Copy: Store" %}</span>
+    <span>{% translate "3rd Copy: Finance" %}</span>
+    <span>{% translate "4th Copy: Sales" %}</span>
+  </div>
+
+  <div class="footer">
+    <span>{% translate "Printed Date" %}: {% now "Y-m-d H:i" %}</span>
+    <span>{% translate "Page 1 of 1" %}</span>
+  </div>
+</body>
+</html>

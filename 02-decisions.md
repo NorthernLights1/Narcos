@@ -989,3 +989,21 @@ static assets carry a `?v=` cache-buster (bump when app.css/app.js change).
   no-delete-after-posting rule mirrors documents themselves: fiscal
   evidence must survive; mistakes are annotated, never erased. Backups
   already cover `media/` (RUNBOOK's media.zip).
+
+### D78 — Cash Sales Attachment print layout; the master fields it needs
+- **What:** A third print layout, **Cash sales attachment** (next to
+  Compact/Detailed), modelled line-for-line on the paper form the owner's
+  trade expects: company header (name/TIN/phones), Sales Date + FS Receipt
+  No + CSI No (the document number), buyer block (trade name, TIN, license
+  no, phone, mobile, city), a fixed 20-row line table — *(Generic) Brand
+  Name, Strength and Dosage · UoM · Batch · Expiry · Qty · Unit Price ·
+  Total* — Sub Total, received-in-good-condition line, Prepared/Delivered/
+  Approved signature lines, the "not valid unless fiscal receipt is
+  attached" note, and the 4-copy distribution footer. Reachable from any
+  sale's print page. To feed it, master data gained **CompanySettings.
+  phone** and **Customer.license_no / mobile / city** (all optional, all
+  audited, on the forms with placeholders).
+- **Why:** Owner supplied a competitor's form as the format both sides of
+  the trade recognize; pharma buyers must be licensed, so License No. is a
+  real field, not decoration. FS Receipt No prints as a fill-in line when
+  blank — it is stamped from the fiscal machine after the fact (D18/D43).
