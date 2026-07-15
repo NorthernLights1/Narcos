@@ -6,7 +6,7 @@
   <title>{% block title %}Narcos{% endblock %}</title>
   {# bump ?v= whenever app.css/app.js change so browsers refetch #}
   <link rel="stylesheet" href="{% static 'css/choices.min.css' %}">
-  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=20260715b">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=20260715c">
   <script src="{% static 'js/htmx.min.js' %}" defer></script>
   <script src="{% static 'js/alpine.min.js' %}" defer></script>
   <script src="{% static 'js/choices.min.js' %}"></script>
@@ -32,6 +32,7 @@
       <a href="{% url 'document_list' %}">{% translate "Transactions" %}</a>
       <a href="{% url 'inventory_list' %}">{% translate "Inventory" %}</a>
       <a href="{% url 'report_hub' %}">{% translate "Reports" %}</a>
+      {% if user.is_owner %}<a href="{% url 'finance' %}">{% translate "Finance" %}</a>{% endif %}
       <p class="nav-group">{% translate "Master data" %}</p>
       <a href="{% url 'master_list' 'items' %}">{% translate "Items" %}</a>
       <a href="{% url 'master_list' 'customers' %}">{% translate "Customers" %}</a>

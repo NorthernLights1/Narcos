@@ -9,14 +9,22 @@ from django.shortcuts import render
 from django.utils import timezone
 from django.utils.translation import gettext as _
 
-from catalog.models import Customer, Item, Supplier
+from django.db.models import OuterRef, Subquery
+
+from catalog.models import Account, Customer, Item, Supplier
 from core.ethiopian_calendar import fiscal_year_bounds
 from core.models import CompanySettings
 from docs.checks import ExpiryStatus, expiry_status
-from docs.handlers_payments import open_balance
+from docs.forms import _selling_price
+from docs.handlers_payments import (
+    AP_TARGET_TYPES,
+    AR_TARGET_TYPES,
+    open_balance,
+    withholding_balance,
+)
 from docs.models import DocType, Document, DocumentLine
-from money.models import MoneyLedger, PartyLedger, WithholdingLedger
-from stock.models import StockBalance, StockLedger, Zone
+from money.models import MoneyLedger, PartyLedger, WithholdingLedger, account_balance
+from stock.models import CostLot, StockBalance, StockLedger, Zone
 
 
 def _day(value):
@@ -466,6 +474,115 @@ def report_detail(request, slug):
     })
 
 
+def _party_balance(party_type: str, party_id: int) -> Decimal:
+    """Net PartyLedger position (reconciliation-grade Python sum, D65)."""
+    total = Decimal("0.00")
+    rows = PartyLedger.objects.filter(
+        party_type=party_type, party_id=party_id,
+    ).values_list("amount_delta", flat=True)
+    for amount in rows:
+        total += amount
+    return total
+
+
+def _open_positions(doc_types, today):
+    """(total, overdue, top-3 parties) over posted open documents. Cash
+    documents drop out naturally: their auto payment settles them at post."""
+    total = Decimal("0.00")
+    overdue = Decimal("0.00")
+    per_party: dict = {}
+    docs = Document.objects.filter(
+        doc_type__in=doc_types, status=Document.Status.POSTED,
+    ).select_related("customer", "supplier")
+    for doc in docs:
+        if doc.doc_type in (DocType.SALE, DocType.CONSIGNMENT_SETTLEMENT) \
+                and doc.sale_kind != Document.SaleKind.CREDIT:
+            continue
+        balance = open_balance(doc)
+        if balance <= 0:
+            continue
+        total += balance
+        if doc.due_date and doc.due_date < today:
+            overdue += balance
+        party = doc.customer or doc.supplier
+        if party is not None:
+            per_party[party] = per_party.get(party, Decimal("0.00")) + balance
+    top = sorted(per_party.items(), key=lambda pair: pair[1], reverse=True)[:3]
+    return total, overdue, top
+
+
+SELLABLE_ZONES = (Zone.WAREHOUSE, Zone.CONSIGNED)
+
+
+def _stock_valuations():
+    """(at FIFO cost, at selling price) for sellable stock. Price side uses
+    the same D23 rule as sale prefill: maintained price, or latest cost ×
+    (1 + margin%) for AUTO items."""
+    latest = (CostLot.objects.filter(item=OuterRef("pk"))
+              .order_by("-received_at", "-pk").values("unit_cost")[:1])
+    items = {
+        item.pk: item
+        for item in Item.objects.annotate(latest_cost=Subquery(latest))
+    }
+    at_cost = Decimal("0.00")
+    at_price = Decimal("0.00")
+    balances = (
+        StockBalance.objects.filter(qty__gt=0, zone__in=SELLABLE_ZONES)
+        .select_related("lot")
+    )
+    for balance in balances:
+        at_cost += _money(Decimal(balance.qty) * balance.lot.unit_cost)
+        price = _selling_price(items[balance.item_id]) or Decimal("0.00")
+        at_price += _money(Decimal(balance.qty) * price)
+    return at_cost, at_price
+
+
+@login_required
+def finance(request):
+    """Owner's one-screen money position (D79): everything below is a
+    read-only aggregation over ledgers the engine already keeps."""
+    if not request.user.is_owner:
+        raise PermissionDenied
+    today = timezone.localdate()
+
+    accounts = [(account, account_balance(account))
+                for account in Account.objects.filter(is_active=True).order_by("name")]
+    money_total = sum((balance for _a, balance in accounts), Decimal("0.00"))
+
+    ar_total, ar_overdue, top_debtors = _open_positions(AR_TARGET_TYPES, today)
+    ap_total, ap_overdue, top_creditors = _open_positions(AP_TARGET_TYPES, today)
+    wht_receivable = withholding_balance("RECEIVABLE")
+    wht_payable = withholding_balance("PAYABLE")
+    net_position = money_total + ar_total - ap_total - wht_payable
+
+    stock_cost, stock_price = _stock_valuations()
+
+    month_start = today.replace(day=1)
+    _rows, revenue, cogs = _sales_line_rows(month_start, today, True)
+    expenses = Decimal("0.00")
+    for doc in _posted_documents([DocType.EXPENSE], month_start, today):
+        expenses += doc.grand_total
+
+    return render(request, "reports/finance.html", {
+        "today": today,
+        "accounts": accounts,
+        "money_total": money_total,
+        "ar_total": ar_total,
+        "ar_overdue": ar_overdue,
+        "top_debtors": top_debtors,
+        "ap_total": ap_total,
+        "ap_overdue": ap_overdue,
+        "top_creditors": top_creditors,
+        "wht_receivable": wht_receivable,
+        "wht_payable": wht_payable,
+        "net_position": net_position,
+        "stock_cost": stock_cost,
+        "stock_price": stock_price,
+        "month": {"revenue": revenue, "cogs": cogs, "gross": revenue - cogs,
+                  "expenses": expenses, "net": revenue - cogs - expenses},
+    })
+
+
 @login_required
 def statement(request):
     """Party statement for reconciliation (owner request): opening balance,
@@ -483,10 +600,30 @@ def statement(request):
     except (TypeError, ValueError):
         party = None
 
+    # A fellow vendor can be both customer and supplier (same TIN, D79):
+    # point at the other side's balance so "where do we stand overall" is
+    # one glance, while the books stay strictly separate (no netting).
+    counterpart = None
+    if party is not None and party.tin.strip():
+        other_model = Supplier if is_customer else Customer
+        other = other_model.objects.filter(
+            tin=party.tin.strip(), is_active=True).first()
+        if other is not None:
+            counterpart = {
+                "party": other,
+                "party_type": "supplier" if is_customer else "customer",
+                "balance": _party_balance(
+                    PartyLedger.PartyType.SUPPLIER if is_customer
+                    else PartyLedger.PartyType.CUSTOMER,
+                    other.pk,
+                ),
+            }
+
     context = {
         "party_type": party_type,
         "party": party,
         "parties": model.objects.filter(is_active=True).order_by("code"),
+        "counterpart": counterpart,
         "period": period,
         "start": start,
         "end": end,

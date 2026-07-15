@@ -116,6 +116,17 @@ def dashboard(request):
         if balance > 0:
             ar_overdue.append({"doc": doc, "balance": balance})
 
+    ap_overdue = []
+    ap_targets = Document.objects.filter(
+        doc_type__in=[DocType.RECEIVING, DocType.OPENING_AP],
+        status=Document.Status.POSTED,
+        due_date__lt=today,
+    ).select_related("supplier").order_by("due_date", "pk")
+    for doc in ap_targets:
+        balance = open_balance(doc)
+        if balance > 0:
+            ap_overdue.append({"doc": doc, "balance": balance})
+
     low_margin = []
     if request.user.is_owner:
         seen = set()
@@ -138,6 +149,7 @@ def dashboard(request):
             "consignments_due": consignments_due,
             "fiscal_mismatches": fiscal_mismatches[:10],
             "ar_overdue": ar_overdue[:10],
+            "ap_overdue": ap_overdue[:10],
             "low_margin": low_margin[:10],
         },
     )

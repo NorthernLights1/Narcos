@@ -138,6 +138,17 @@
   .msg { @apply rounded px-4 py-2 text-sm; }
   .msg-success { @apply bg-emerald-50 text-emerald-900 border border-emerald-200; }
   .msg-error { @apply bg-red-50 text-red-900 border border-red-200; }
+  .msg-info { @apply bg-sky-50 text-sky-900 border border-sky-200 rounded px-3 py-2 text-sm; }
+
+  /* ---- finance overview ---- */
+  .net-position { @apply text-center; }
+  .net-label { @apply text-xs uppercase tracking-wide text-slate-400; }
+  .net-amount { @apply text-3xl font-bold tabular-nums text-emerald-700; }
+  .net-negative .net-amount { @apply text-rose-700; }
+  .finance-big { @apply text-2xl font-semibold tabular-nums; }
+  .finance-bad { @apply text-sm text-rose-700 tabular-nums; }
+  .finance-total { @apply border-t border-slate-200 pt-1 mt-1 text-sm; }
+  .compact-list b.num { @apply float-right tabular-nums; }
   .today { @apply text-slate-500; }
   .placeholder { @apply text-slate-400 text-sm; }
   .compact-list { @apply space-y-1 text-sm; }

@@ -1007,3 +1007,27 @@ static assets carry a `?v=` cache-buster (bump when app.css/app.js change).
   the trade recognize; pharma buyers must be licensed, so License No. is a
   real field, not decoration. FS Receipt No prints as a fill-in line when
   blank — it is stamped from the fiscal machine after the fact (D18/D43).
+
+### D79 — Finance overview; AP gets due dates; TIN links the two faces of a vendor
+- **What:** Owner-only **Finance** page (nav: Work → Finance): one screen
+  with net position (money + AR − AP − withholding owed, red when
+  negative), per-account cash/bank balances, AR and AP totals with their
+  overdue slices and top-3 parties, stock at FIFO cost **and** at selling
+  price (D23 rule — the gap is shelf margin), month-to-date revenue/COGS/
+  gross/expenses/net, and both withholding positions. Every block is a
+  read-only sum over existing ledgers and links to its detailed report;
+  no new bookkeeping, no new mutation paths. **Receivings now capture a
+  due date** (supplier credit terms) and the dashboard gained an **AP
+  overdue** card mirroring AR overdue. A **general ledger was considered
+  and deliberately rejected** for v1: the client needs awareness, not
+  double-entry bookkeeping; a journal-entry CSV export for the accountant
+  can come in v1.1 if asked.
+  **Customer-who-is-also-supplier**: no schema merge. The same business
+  gets a Customer and a Supplier record sharing a TIN; the statement view
+  cross-references them ("same TIN as supplier SUP-x — you owe them Y",
+  with a jump link). **No automatic netting** — each side settles with
+  real payment documents, which is what tax filing needs.
+- **Why:** Owner: "I don't want them to do this in their heads — stocks
+  and finances staring them in the face." Estimated revenue = stock at
+  price; estimated tax stays out (Ethiopian profit tax depends on
+  category — showing a wrong estimate is worse than showing gross profit).

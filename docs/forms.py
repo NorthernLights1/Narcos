@@ -69,7 +69,8 @@ def _batch_label(batch: Batch) -> str:
 DOC_CONFIG = {
     DocType.RECEIVING: {
         "title": _("Receiving"),
-        "fields": ["supplier", "supplier_invoice_date", "notes"],
+        # due_date = supplier credit terms; feeds AP overdue on the dashboard
+        "fields": ["supplier", "supplier_invoice_date", "due_date", "notes"],
         "lines": [
             "item", "batch_no_entered", "expiry_entered", "unit_label", "factor",
             "qty_entered", "unit_cost_entered", "free_qty",

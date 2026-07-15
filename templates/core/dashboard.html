@@ -72,6 +72,18 @@
     {% endif %}
   </div>
   <div class="card">
+    <h2>{% translate "AP overdue" %}</h2>
+    {% if ap_overdue %}
+      <ul class="compact-list">
+        {% for row in ap_overdue %}
+          <li><a href="{% url 'document_detail' row.doc.pk %}">{{ row.doc.doc_no }}</a> - {{ row.doc.supplier }} - {{ row.balance }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="placeholder">{% translate "No overdue payables." %}</p>
+    {% endif %}
+  </div>
+  <div class="card">
     <h2>{% translate "Fiscal mismatches" %}</h2>
     {% if fiscal_mismatches %}
       <ul class="compact-list">

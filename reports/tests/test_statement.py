@@ -203,6 +203,31 @@ def test_opening_balance_carries_prior_activity(client, owner, cash, customer,
     assert response.context["closing"] == D("30.00")
 
 
+def test_tin_crossref_shows_counterpart_position(client, owner, cash, supplier,
+                                                 drug):
+    """A fellow vendor is both customer and supplier (same TIN): each
+    statement points at the other side's balance."""
+    receive(owner, supplier, drug, qty=10, cost="10.00")   # we owe 100
+    supplier.tin = "0099887766"
+    supplier.save()
+    twin = Customer.objects.create(code="C009", name="Addis Pharma",
+                                   tin="0099887766")
+    credit_sale(owner, twin, drug, qty=2, price="15.00")   # they owe 30
+    client.force_login(owner)
+    response = client.get(
+        reverse("statement"), _params(party_type="customer", party=twin.pk),
+    )
+    counterpart = response.context["counterpart"]
+    assert counterpart["party"].pk == supplier.pk
+    assert counterpart["balance"] == D("100.00")
+    response = client.get(
+        reverse("statement"), _params(party_type="supplier", party=supplier.pk),
+    )
+    counterpart = response.context["counterpart"]
+    assert counterpart["party"].pk == twin.pk
+    assert counterpart["balance"] == D("30.00")
+
+
 def test_statement_csv_export(client, owner, cash, customer, supplier, drug):
     receive(owner, supplier, drug)
     credit_sale(owner, customer, drug)

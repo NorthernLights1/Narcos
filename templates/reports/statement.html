@@ -57,6 +57,16 @@
     <h2>{{ party.code }} — {{ party.name }}</h2>
     <span class="hint">{{ start|date:'Y-m-d' }} → {{ end|date:'Y-m-d' }}</span>
   </div>
+  {% if counterpart %}
+  <p class="msg msg-info no-print">
+    {% if counterpart.party_type == "supplier" %}
+      {% blocktranslate with code=counterpart.party.code balance=counterpart.balance %}Same TIN as supplier {{ code }} — you owe them {{ balance }}.{% endblocktranslate %}
+    {% else %}
+      {% blocktranslate with code=counterpart.party.code balance=counterpart.balance %}Same TIN as customer {{ code }} — they owe you {{ balance }}.{% endblocktranslate %}
+    {% endif %}
+    <a href="?party_type={{ counterpart.party_type }}&party={{ counterpart.party.pk }}&period={{ period }}&start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">{% translate "View their statement" %} →</a>
+  </p>
+  {% endif %}
   <p class="hint">
     {% if party_type == "customer" %}
       {% translate "Balance = what this customer owes you. Cash sales settle instantly and never appear here." %}

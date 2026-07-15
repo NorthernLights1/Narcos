@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% translate "Finance" %} - Narcos{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{% translate "Finance" %}</h1>
+  <span class="hint">{% translate "Live position as of" %} {{ today|date:"Y-m-d" }}</span>
+</div>
+
+<div class="card net-position {% if net_position < 0 %}net-negative{% endif %}">
+  <p class="net-label">{% translate "Net position" %} <span class="hint">({% translate "money + owed to you − you owe" %})</span></p>
+  <p class="net-amount">{{ net_position }}</p>
+</div>
+
+<div class="cards">
+  <div class="card">
+    <h2>{% translate "Money now" %}</h2>
+    <ul class="compact-list">
+      {% for account, balance in accounts %}
+      <li>{{ account.name }} <b class="num">{{ balance }}</b></li>
+      {% empty %}
+      <li class="placeholder">{% translate "No accounts yet." %}</li>
+      {% endfor %}
+    </ul>
+    <p class="finance-total">{% translate "Total" %}: <b>{{ money_total }}</b></p>
+    <p><a href="{% url 'report_detail' 'cashbook' %}">{% translate "Cash/bank book" %} →</a></p>
+  </div>
+
+  <div class="card">
+    <h2>{% translate "Owed to you (AR)" %}</h2>
+    <p class="finance-big">{{ ar_total }}</p>
+    {% if ar_overdue > 0 %}<p class="finance-bad">{% translate "of which overdue" %}: {{ ar_overdue }}</p>{% endif %}
+    <ul class="compact-list">
+      {% for party, balance in top_debtors %}
+      <li>{{ party.code }} — {{ party.name }} <b class="num">{{ balance }}</b></li>
+      {% endfor %}
+    </ul>
+    <p><a href="{% url 'report_detail' 'ar-aging' %}">{% translate "AR aging" %} →</a></p>
+  </div>
+
+  <div class="card">
+    <h2>{% translate "You owe (AP)" %}</h2>
+    <p class="finance-big">{{ ap_total }}</p>
+    {% if ap_overdue > 0 %}<p class="finance-bad">{% translate "of which overdue" %}: {{ ap_overdue }}</p>{% endif %}
+    <ul class="compact-list">
+      {% for party, balance in top_creditors %}
+      <li>{{ party.code }} — {{ party.name }} <b class="num">{{ balance }}</b></li>
+      {% endfor %}
+    </ul>
+    <p><a href="{% url 'report_detail' 'ap-aging' %}">{% translate "AP aging" %} →</a></p>
+  </div>
+
+  <div class="card">
+    <h2>{% translate "Stock" %}</h2>
+    <ul class="compact-list">
+      <li>{% translate "At cost (FIFO)" %} <b class="num">{{ stock_cost }}</b></li>
+      <li>{% translate "At selling price" %} <b class="num">{{ stock_price }}</b></li>
+    </ul>
+    <p class="hint">{% translate "The gap is the margin sitting on your shelves." %}</p>
+    <p><a href="{% url 'report_detail' 'valuation' %}">{% translate "Valuation detail" %} →</a></p>
+  </div>
+
+  <div class="card">
+    <h2>{% translate "This month" %}</h2>
+    <ul class="compact-list">
+      <li>{% translate "Revenue" %} <b class="num">{{ month.revenue }}</b></li>
+      <li>{% translate "COGS" %} <b class="num">{{ month.cogs }}</b></li>
+      <li>{% translate "Gross profit" %} <b class="num">{{ month.gross }}</b></li>
+      <li>{% translate "Expenses" %} <b class="num">{{ month.expenses }}</b></li>
+      <li>{% translate "Net" %} <b class="num">{{ month.net }}</b></li>
+    </ul>
+    <p><a href="{% url 'report_detail' 'profit' %}">{% translate "Profit report" %} →</a></p>
+  </div>
+
+  <div class="card">
+    <h2>{% translate "Withholding at filing" %}</h2>
+    <ul class="compact-list">
+      <li>{% translate "Certificates you hold (credit)" %} <b class="num">{{ wht_receivable }}</b></li>
+      <li>{% translate "You owe the tax office" %} <b class="num">{{ wht_payable }}</b></li>
+    </ul>
+    <p><a href="{% url 'report_detail' 'withholding-payable' %}">{% translate "Withholding detail" %} →</a></p>
+  </div>
+</div>
+{% endblock %}
