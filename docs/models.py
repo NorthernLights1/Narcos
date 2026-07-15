@@ -1,7 +1,11 @@
 """Document models — spec §3.4. Documents are the only thing that changes
 ledgers. Posted documents are immutable (D28/I1) except §7.12 reference fields."""
 
+from pathlib import Path
+from uuid import uuid4
+
 from django.db import models
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 
@@ -247,3 +251,56 @@ class LotConsumption(models.Model):
             # DRAFT in the DB; anything later is tampering (I1).
             raise ImmutableDocumentError("Cannot attach consumptions to a locked document.")
         super().save(*args, **kwargs)
+
+
+# Attachments: which files we accept and how much. Magic-byte prefixes are
+# checked on upload so a renamed .exe can't sneak in as a "pdf".
+ATTACHMENT_TYPES = {
+    ".pdf": ("application/pdf", (b"%PDF",)),
+    ".jpg": ("image/jpeg", (b"\xff\xd8\xff",)),
+    ".jpeg": ("image/jpeg", (b"\xff\xd8\xff",)),
+    ".png": ("image/png", (b"\x89PNG\r\n\x1a\n",)),
+    ".webp": ("image/webp", (b"RIFF",)),
+}
+MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
+MAX_ATTACHMENTS_PER_DOC = 10
+
+
+def attachment_path(_instance, filename: str) -> str:
+    """Server-generated storage name — the user's filename is metadata only
+    and never touches the filesystem (path traversal)."""
+    ext = Path(filename).suffix.lower()
+    return f"attachments/{timezone.now():%Y/%m}/{uuid4().hex}{ext}"
+
+
+class Attachment(models.Model):
+    """Scanned evidence for a document (supplier invoice, delivery note,
+    certificate). Follows the void pattern: physically deletable only while
+    the parent is a DRAFT; once posted, the owner may void (hide + audit)
+    but the bytes are never destroyed."""
+
+    document = models.ForeignKey(Document, on_delete=models.CASCADE,
+                                 related_name="attachments")
+    file = models.FileField(upload_to=attachment_path)
+    original_name = models.CharField(max_length=200)
+    size = models.PositiveIntegerField()
+    note = models.CharField(_("Note"), max_length=200, blank=True)
+    uploaded_by = models.ForeignKey("core.User", on_delete=models.PROTECT,
+                                    related_name="+")
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    is_voided = models.BooleanField(default=False)
+    voided_by = models.ForeignKey("core.User", on_delete=models.PROTECT,
+                                  null=True, blank=True, related_name="+")
+    voided_at = models.DateTimeField(null=True, blank=True)
+    void_reason = models.CharField(max_length=300, blank=True)
+
+    class Meta:
+        ordering = ["uploaded_at", "pk"]
+
+    def __str__(self) -> str:
+        return self.original_name
+
+    @property
+    def content_type(self) -> str:
+        ext = Path(self.file.name).suffix.lower()
+        return ATTACHMENT_TYPES.get(ext, ("application/octet-stream", ()))[0]

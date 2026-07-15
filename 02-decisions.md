@@ -970,3 +970,22 @@ static assets carry a `?v=` cache-buster (bump when app.css/app.js change).
   both sides can walk through line by line — not a mental assembly from the
   transactions register. Debit = they owe more (customer view) / we owe
   more (supplier view); the header states which reading applies.
+
+### D77 — Attachments: evidence follows the void pattern
+- **What:** Any document can carry **attachments** (scanned supplier
+  invoices, delivery notes, certificates): PDF/JPG/PNG/WebP, 10 MB max,
+  10 per document, magic-byte checked on upload so a renamed executable
+  can't pass as a "pdf". Bytes live on disk under `media/attachments/`
+  with server-generated UUID names (the user's filename is metadata only);
+  the DB row holds the pointer + who/when. Files are served only through a
+  login-required view — `media/` has no public URL. Uploads are allowed on
+  drafts **and posted documents** (paper evidence often arrives after
+  posting; attachments are reference material like `fiscal_receipt_no`,
+  so I1 is untouched). Deletion is allowed only while the parent is a
+  DRAFT (uploader or owner). After posting, nobody deletes — the owner may
+  **void** an attachment with a reason (hidden from staff, visible to the
+  owner, bytes preserved). Every add/delete/void writes an audit row.
+- **Why:** Owner asked for scanned supplier invoices on receivings. The
+  no-delete-after-posting rule mirrors documents themselves: fiscal
+  evidence must survive; mistakes are annotated, never erased. Backups
+  already cover `media/` (RUNBOOK's media.zip).

@@ -82,6 +82,14 @@
   .opening-row td { @apply font-semibold text-slate-600; }
   .row-reversal td { @apply text-rose-700; }
 
+  /* ---- attachments ---- */
+  .attach-form { @apply mt-3 flex flex-wrap items-center gap-2 text-sm; }
+  .attach-form input[type="text"] { @apply w-56; }
+  .inline-void { @apply flex items-center gap-1; }
+  .inline-void input { @apply w-44 px-2 py-1 text-xs; }
+  .voided-attachments { @apply mt-3 text-sm; }
+  .voided-attachments summary { @apply cursor-pointer text-slate-500; }
+
   /* ---- badges ---- */
   .badge {
     @apply inline-block rounded-full px-2.5 py-0.5 text-xs font-medium;

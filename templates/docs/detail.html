@@ -262,4 +262,66 @@
   </table>
 </section>
 {% endif %}
+
+<section class="card">
+  <div class="card-head">
+    <h2>{% translate "Attachments" %}</h2>
+    <span class="hint">{% translate "Scanned invoices, delivery notes… PDF/JPG/PNG/WebP, max 10 MB." %}</span>
+  </div>
+  {% if attachments %}
+  <table class="table">
+    <tbody>
+      {% for attachment in attachments %}
+      <tr>
+        <td><a href="{% url 'attachment_download' attachment.pk %}" target="_blank">{{ attachment.original_name }}</a></td>
+        <td>{{ attachment.note|default:"" }}</td>
+        <td class="num">{{ attachment.size|filesizeformat }}</td>
+        <td>{{ attachment.uploaded_by.username }} · {{ attachment.uploaded_at|date:"Y-m-d H:i" }}</td>
+        <td>
+          {% if doc.status == "DRAFT" %}
+          <form method="post" action="{% url 'attachment_delete' attachment.pk %}"
+                onsubmit="return confirm('{% translate "Delete this attachment?" %}')">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-quiet">{% translate "Delete" %}</button>
+          </form>
+          {% elif user.is_owner %}
+          <form method="post" action="{% url 'attachment_void' attachment.pk %}" class="inline-void">
+            {% csrf_token %}
+            <input name="reason" required
+                   placeholder="{% translate 'Reason (uploaded in error…)' %}">
+            <button type="submit" class="btn btn-quiet">{% translate "Void" %}</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="placeholder">{% translate "No attachments yet." %}</p>
+  {% endif %}
+  <form method="post" action="{% url 'attachment_upload' doc.pk %}"
+        enctype="multipart/form-data" class="attach-form">
+    {% csrf_token %}
+    <input type="file" name="file" accept=".pdf,image/jpeg,image/png,image/webp" required>
+    <input type="text" name="note" maxlength="200" placeholder="{% translate 'Note (optional)' %}">
+    <button type="submit" class="btn btn-secondary">{% translate "Attach" %}</button>
+  </form>
+  {% if user.is_owner and voided_attachments %}
+  <details class="voided-attachments">
+    <summary>{% translate "Voided attachments" %} ({{ voided_attachments|length }})</summary>
+    <table class="table">
+      <tbody>
+        {% for attachment in voided_attachments %}
+        <tr class="row-reversal">
+          <td><a href="{% url 'attachment_download' attachment.pk %}" target="_blank">{{ attachment.original_name }}</a></td>
+          <td>{{ attachment.void_reason }}</td>
+          <td>{{ attachment.voided_by.username }} · {{ attachment.voided_at|date:"Y-m-d H:i" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% endif %}
+</section>
 {% endblock %}

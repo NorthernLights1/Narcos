@@ -1,8 +1,16 @@
 from django.urls import path
 
-from docs import views
+from docs import views, views_attachments
 
 urlpatterns = [
+    path("<int:pk>/attachments/upload/", views_attachments.attachment_upload,
+         name="attachment_upload"),
+    path("attachments/<int:pk>/download/", views_attachments.attachment_download,
+         name="attachment_download"),
+    path("attachments/<int:pk>/delete/", views_attachments.attachment_delete,
+         name="attachment_delete"),
+    path("attachments/<int:pk>/void/", views_attachments.attachment_void,
+         name="attachment_void"),
     path("", views.document_list, name="document_list"),
     path("new/<str:doc_type>/", views.document_create, name="document_create"),
     path("<int:pk>/", views.document_detail, name="document_detail"),
