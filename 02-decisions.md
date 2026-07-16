@@ -1097,3 +1097,8 @@ data. Audit log reconstructed the whole sequence in one query.*
   parties group. Note: the "Withholding remittance" document type in the
   More… menu is dead under the same flag — candidate for the same
   treatment next round.
+- **Finance stock block split by location**: "In your warehouse" vs "At
+  customers on consignment" (both at FIFO cost), then total at cost and
+  at selling price. Money on a consignee's shelf is a different risk
+  than money in your own store — it can't be sold to anyone else and
+  may come back expired. Same ledger, one extra grouping key.

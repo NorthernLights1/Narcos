@@ -105,6 +105,29 @@ def test_finance_stock_valuations(client, owner, scenario):
     # 7 packs left: at cost 7×10, at selling price 7×15
     assert context["stock_cost"] == D("70.00")
     assert context["stock_price"] == D("105.00")
+    assert context["stock_warehouse_cost"] == D("70.00")
+    assert context["stock_consigned_cost"] == D("0.00")
+
+
+def test_finance_splits_consigned_stock(client, owner, scenario):
+    """Money on customers' shelves is shown apart from warehouse money."""
+    item = scenario["item"]
+    issue = Document.objects.create(
+        doc_type=DocType.CONSIGNMENT_ISSUE, created_by=owner,
+        customer=scenario["customer"],
+    )
+    DocumentLine.objects.create(
+        document=issue, item=item, batch=Batch.objects.get(item=item),
+        qty_entered=3, unit_price=D("15.00"),
+        unit_label=item.base_unit, factor=1,
+    )
+    post(issue, owner)
+    client.force_login(owner)
+    context = client.get(reverse("finance")).context
+    assert context["stock_warehouse_cost"] == D("40.00")   # 4 packs left
+    assert context["stock_consigned_cost"] == D("30.00")   # 3 packs out
+    assert context["stock_cost"] == D("70.00")             # total unchanged
+    assert context["stock_price"] == D("105.00")
 
 
 def test_finance_month_snapshot(client, owner, scenario):

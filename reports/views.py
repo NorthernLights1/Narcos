@@ -600,26 +600,29 @@ SELLABLE_ZONES = (Zone.WAREHOUSE, Zone.CONSIGNED)
 
 
 def _stock_valuations():
-    """(at FIFO cost, at selling price) for sellable stock. Price side uses
-    the same D23 rule as sale prefill: maintained price, or latest cost ×
-    (1 + margin%) for AUTO items."""
+    """(cost by zone, at selling price) for sellable stock. Warehouse and
+    consigned cost are kept apart — money on customers' shelves is a
+    different risk than money in your own store. Price side uses the same
+    D23 rule as sale prefill: maintained price, or latest cost × (1 +
+    margin%) for AUTO items."""
     latest = (CostLot.objects.filter(item=OuterRef("pk"))
               .order_by("-received_at", "-pk").values("unit_cost")[:1])
     items = {
         item.pk: item
         for item in Item.objects.annotate(latest_cost=Subquery(latest))
     }
-    at_cost = Decimal("0.00")
+    cost_by_zone = {zone: Decimal("0.00") for zone in SELLABLE_ZONES}
     at_price = Decimal("0.00")
     balances = (
         StockBalance.objects.filter(qty__gt=0, zone__in=SELLABLE_ZONES)
         .select_related("lot")
     )
     for balance in balances:
-        at_cost += _money(Decimal(balance.qty) * balance.lot.unit_cost)
+        cost_by_zone[balance.zone] += _money(
+            Decimal(balance.qty) * balance.lot.unit_cost)
         price = _selling_price(items[balance.item_id]) or Decimal("0.00")
         at_price += _money(Decimal(balance.qty) * price)
-    return at_cost, at_price
+    return cost_by_zone, at_price
 
 
 @login_required
@@ -640,7 +643,10 @@ def finance(request):
     wht_payable = withholding_balance("PAYABLE")
     net_position = money_total + ar_total - ap_total - wht_payable
 
-    stock_cost, stock_price = _stock_valuations()
+    cost_by_zone, stock_price = _stock_valuations()
+    stock_warehouse_cost = cost_by_zone[Zone.WAREHOUSE]
+    stock_consigned_cost = cost_by_zone[Zone.CONSIGNED]
+    stock_cost = stock_warehouse_cost + stock_consigned_cost
 
     month_start = today.replace(day=1)
     _rows, revenue, cogs = _sales_line_rows(month_start, today, True)
@@ -662,6 +668,8 @@ def finance(request):
         "wht_payable": wht_payable,
         "net_position": net_position,
         "stock_cost": stock_cost,
+        "stock_warehouse_cost": stock_warehouse_cost,
+        "stock_consigned_cost": stock_consigned_cost,
         "stock_price": stock_price,
         "month": {"revenue": revenue, "cogs": cogs, "gross": revenue - cogs,
                   "expenses": expenses, "net": revenue - cogs - expenses},

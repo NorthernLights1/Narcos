@@ -53,10 +53,12 @@
   <div class="card">
     <h2>{% translate "Stock" %}</h2>
     <ul class="compact-list">
-      <li>{% translate "At cost (FIFO)" %} <b class="num">{{ stock_cost }}</b></li>
+      <li>{% translate "In your warehouse (at cost)" %} <b class="num">{{ stock_warehouse_cost }}</b></li>
+      <li>{% translate "At customers on consignment (at cost)" %} <b class="num">{{ stock_consigned_cost }}</b></li>
+      <li>{% translate "Total at cost (FIFO)" %} <b class="num">{{ stock_cost }}</b></li>
       <li>{% translate "At selling price" %} <b class="num">{{ stock_price }}</b></li>
     </ul>
-    <p class="hint">{% translate "The gap is the margin sitting on your shelves." %}</p>
+    <p class="hint">{% translate "The gap between cost and price is the margin sitting on shelves — yours and your consignees'." %}</p>
     <p><a href="{% url 'report_detail' 'valuation' %}">{% translate "Valuation detail" %} →</a></p>
   </div>
 
