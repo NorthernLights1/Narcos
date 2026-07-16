@@ -46,6 +46,20 @@ Written for a dev machine (Linux, `.venv`, PostgreSQL on localhost).
 >   withholding. **Receivings now take a due date** — set it and overdue
 >   payables surface on the dashboard (new **AP overdue** card).
 
+> **2026-07-16 pricing rules (D80/D81) — the CN-000002 lesson:**
+> - **Prices are no longer typed on sales, proformas, or consignment
+>   issues.** The price column fills itself from the item when you pick it
+>   and is read-only; the server enforces it too. To charge less, use a
+>   line or document discount. Picking an item with no usable price is
+>   refused with a message to fix the item first.
+> - **Items now require a price**: maintained price > 0, or auto-margin
+>   with a margin %. The CSV import refuses priceless rows. Old items
+>   without a price get caught on their next edit — or immediately if
+>   someone tries to sell them.
+> - Settlement preview: if an item was issued at two different prices, the
+>   preview now says it can't price those rows (before, it silently
+>   under-counted; the posted totals were always correct).
+
 ---
 
 ## 0. One-time setup

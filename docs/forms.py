@@ -16,7 +16,8 @@ from stock.models import Batch, CostLot, Zone
 
 def _selling_price(item: Item):
     """D23: maintained price, or latest lot cost × (1 + margin%) for AUTO
-    items. Prefill hint only — the clerk's entered price is what posts."""
+    items. On master-priced documents (D80) this IS the line price — the
+    browser's value is ignored; elsewhere it is only the prefill hint."""
     if (item.pricing_mode == Item.PricingMode.AUTO
             and item.auto_margin_pct is not None):
         latest_cost = getattr(item, "latest_cost", None)
@@ -87,6 +88,7 @@ DOC_CONFIG = {
                   "unit_price", "line_discount"],
         "charges": True,
         "payments": True,
+        "master_priced": True,  # D80: price comes from the item, not the keyboard
     },
     DocType.PROFORMA: {
         "title": _("Proforma"),
@@ -94,6 +96,7 @@ DOC_CONFIG = {
         "lines": ["item", "batch", "unit_label", "factor", "qty_entered",
                   "unit_price", "line_discount"],
         "charges": True,
+        "master_priced": True,  # D80
     },
     DocType.CONSIGNMENT_ISSUE: {
         "title": _("Consignment issue"),
@@ -103,6 +106,7 @@ DOC_CONFIG = {
                    "customer_will_withhold", "notes"],
         "lines": ["item", "batch", "unit_label", "factor", "qty_entered",
                   "unit_price", "line_discount"],
+        "master_priced": True,  # D80 — the CN-000002 lesson
     },
     DocType.CONSIGNMENT_SETTLEMENT: {
         "title": _("Consignment settlement"),
@@ -337,14 +341,24 @@ class DocumentLineForm(forms.ModelForm):
             "unit_price": _("Selling price / unit"),
         }
 
-    def __init__(self, *args, line_fields: list[str], issue=None, **kwargs):
+    def __init__(self, *args, line_fields: list[str], issue=None,
+                 master_priced: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
+        self._master_priced = master_priced
         keep = set(line_fields)
         for name in list(self.fields):
             if name not in keep:
                 del self.fields[name]
         if "qty_base" in self.fields:
             self.fields["qty_base"].disabled = True
+        if master_priced and "unit_price" in self.fields:
+            # D80: the price is the item's price — shown, never typed. The
+            # server recomputes it in clean(); discounts are how you charge less.
+            self.fields["unit_price"].required = False
+            self.fields["unit_price"].widget.attrs.update({
+                "readonly": True, "tabindex": "-1",
+                "title": _("Comes from the item — use a discount to charge less."),
+            })
         if "qty_sold" in self.fields:
             # Settlement split (D6): "still out" is informational; the three
             # split quantities are what staff enter, in base units.
@@ -390,6 +404,22 @@ class DocumentLineForm(forms.ModelForm):
         for name in ("item", "batch", "lot"):
             if name in self.fields:
                 self.fields[name].widget.attrs["data-search"] = "1"
+
+    def clean(self):
+        data = super().clean()
+        item = data.get("item")
+        if self._master_priced and item is not None:
+            # D80: whatever the browser sent, the line sells at the item's
+            # price. An item without a usable price cannot be sold at all.
+            price = _selling_price(item)
+            if not price or price <= 0:
+                self.add_error("item", _(
+                    "%(name)s has no selling price yet — set a maintained "
+                    "price on the item, or receive stock first for "
+                    "auto-margin items.") % {"name": item.name})
+            else:
+                data["unit_price"] = price
+        return data
 
 
 def _allocation_label(target: Document) -> str:
@@ -494,7 +524,8 @@ def formsets_for(doc: Document, data=None):
     config = DOC_CONFIG[doc.doc_type]
     formsets = []
     if config.get("lines"):
-        line_kwargs = {"line_fields": config["lines"]}
+        line_kwargs = {"line_fields": config["lines"],
+                       "master_priced": config.get("master_priced", False)}
         if doc.doc_type == DocType.CONSIGNMENT_SETTLEMENT and doc.related_document_id:
             line_kwargs["issue"] = doc.related_document
         formsets.append((

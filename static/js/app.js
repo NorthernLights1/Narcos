@@ -303,15 +303,22 @@
 
   function collectSettlementParts() {
     /* Sold quantities × the issue's frozen per-base values (§7.5).
-     * Returned/expired quantities earn nothing. */
+     * Returned/expired quantities earn nothing. Rows sold without a single
+     * frozen price (mixed-price issue) are counted so the preview can warn
+     * instead of silently undercounting. */
     var parts = [];
+    parts.unpriced = 0;
     document.querySelectorAll("#lines-rows tr").forEach(function (row) {
       if (rowIsDeleted(row)) return;
       var soldInput = rowInput(row, "qty_sold");
       if (!soldInput) return;
       var sold = Number(soldInput.value || 0);
+      if (sold <= 0) return;
       var perBase = Number(soldInput.dataset.valuePerBase || 0);
-      if (sold <= 0 || perBase <= 0) return;
+      if (perBase <= 0) {
+        parts.unpriced += 1;
+        return;
+      }
       parts.push({
         value: round2(sold * perBase),
         taxable: soldInput.dataset.taxable === "1",
@@ -414,6 +421,12 @@
     panel.querySelector("[data-out=discount]").textContent = money(docDiscount);
     panel.querySelector("[data-out=tax]").textContent = money(tax);
     panel.querySelector("[data-out=grand]").textContent = money(grand);
+    var previewNote = panel.querySelector("[data-out=preview-note]");
+    if (previewNote) {
+      var unpriced = parts.unpriced || 0;
+      previewNote.hidden = unpriced === 0;
+      if (unpriced > 0) previewNote.textContent = previewNote.dataset.mixedNote;
+    }
     var whtRow = panel.querySelector("[data-out=withholding-row]");
     if (whtRow) {
       whtRow.hidden = withholding <= 0;

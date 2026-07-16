@@ -183,6 +183,13 @@ def import_items(uploaded_file) -> ImportResult:
             result.errors.append(
                 _("row %(n)d: has_expiry requires is_batch_tracked") % {"n": i}
             )
+        if fields["maintained_price"] <= 0:
+            # D81: imported items are maintained-price; a priceless item
+            # would be unsellable (and invites ad-hoc prices on documents).
+            result.errors.append(
+                _("row %(n)d: maintained_price must be greater than 0 — "
+                  "every item needs a selling price") % {"n": i}
+            )
         units = _parse_alt_units(row.get("alt_units", ""), i, result.errors)
         parsed.append((fields, units))
 

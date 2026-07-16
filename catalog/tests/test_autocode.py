@@ -61,7 +61,7 @@ def test_csv_import_with_blank_code_auto_assigns():
 
 def test_csv_import_without_code_column_auto_assigns():
     result = import_items(as_file(
-        "name,category,base_unit\nAmoxicillin,DRUG,pack\n"
+        "name,category,base_unit,maintained_price\nAmoxicillin,DRUG,pack,150.00\n"
     ))
     assert result.errors == []
     assert Item.objects.get(name="Amoxicillin").code == "ITM-0001"

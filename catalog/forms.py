@@ -70,6 +70,16 @@ class ItemForm(forms.ModelForm):
             )
         if data.get("pricing_mode") == Item.PricingMode.AUTO and not data.get("auto_margin_pct"):
             self.add_error("auto_margin_pct", _("Required when pricing is automatic."))
+        # Every item must carry a usable price (D81): a maintained price > 0,
+        # or AUTO mode with a margin. Employees don't see pricing_mode (D33),
+        # so fall back to the instance's mode for their edits.
+        mode = data.get("pricing_mode") or self.instance.pricing_mode
+        if mode == Item.PricingMode.MANUAL:
+            price = data.get("maintained_price")
+            if price is None or price <= 0:
+                self.add_error("maintained_price", _(
+                    "A selling price is required — set one here, or switch "
+                    "to auto-margin pricing."))
         return data
 
 

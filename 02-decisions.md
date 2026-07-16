@@ -1031,3 +1031,48 @@ static assets carry a `?v=` cache-buster (bump when app.css/app.js change).
   and finances staring them in the face." Estimated revenue = stock at
   price; estimated tax stays out (Ethiopian profit tax depends on
   category — showing a wrong estimate is worse than showing gross profit).
+
+## Round 11 (2026-07-16) — the CN-000002 lesson: prices live on items only
+
+*Trigger: consignment CN-000002 was issued at a hand-typed 0.40/pair while
+the item master said 0 (price set to 10.00 only the next morning). The
+settlement then correctly billed 160.00 for 400 pairs — right math on wrong
+data. Audit log reconstructed the whole sequence in one query.*
+
+### D80 — Sale/proforma/consignment-issue prices come from the item master
+- **What:** On SALE, PROFORMA and CONSIGNMENT_ISSUE lines the unit price is
+  **no longer typed**. The input is readonly in the UI (still shown, still
+  live-prefilled when an item is picked), and the server recomputes it from
+  the item master in `DocumentLineForm.clean()` regardless of what the
+  browser submits — maintained price, or latest cost × (1 + margin) for
+  AUTO items (D23). An item with no usable price is refused on those lines
+  with a pointer to fix the item first. **Discounts (line or document) are
+  the only sanctioned way to charge less.** Draft lines re-derive their
+  price on every save, so re-saving a stale draft picks up a master-price
+  fix. CUSTOMER_RETURN and OPENING_CONSIGNMENT keep manual prices (returns
+  honour the original sale's price; opening docs carry pre-system
+  agreements). RECEIVING costs stay typed — costs come from the supplier's
+  invoice, not from us.
+- **Why:** Owner rule after CN-000002: "price should not be edited on sale
+  or consignment — it can only be edited on items; if they want less, they
+  can do a line or doc discount."
+
+### D81 — Every item must carry a usable price
+- **What:** ItemForm and the items CSV import now refuse a MANUAL-mode item
+  without a maintained price > 0; AUTO mode still requires its margin %
+  (existing rule). Employees editing an AUTO item aren't blocked (they
+  can't see pricing_mode, D33) — the instance's mode decides. Existing
+  priceless items are caught on their next edit, and immediately at the
+  sale/issue line by D80's refusal.
+- **Why:** Owner: "on items, setting price should be mandatory — either
+  auto-margin or maintained price." An unpriced item is unsellable under
+  D80, so the gap is closed at both ends.
+
+### Also in this round
+- **Mixed-price settlement preview warns instead of undercounting:** if an
+  item was issued at more than one price, the sold row has no single frozen
+  per-base value; the live preview now says so explicitly ("posting
+  computes the exact total and will ask you to split those lines") instead
+  of silently pricing those rows at zero. Server-side math was always
+  correct — this fixes only the display.
+- app.js cache-buster bumped to 20260715d.
