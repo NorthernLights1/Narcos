@@ -21,9 +21,23 @@
     .screen-actions { margin-bottom: 16px; }
     .screen-actions a, .screen-actions button { margin-right: 8px; }
     @media print { .screen-actions { display: none; } }
+    /* Diagonal ATTACHMENT watermark: the legal invoice is the fiscal pad
+       printed by government-approved vendors (D18) — this page must never
+       be mistaken for it. position:fixed repeats on every printed page. */
+    .watermark {
+      position: fixed; top: 50%; left: 50%;
+      transform: translate(-50%, -50%) rotate(-30deg);
+      font-size: 100px; font-weight: 800; letter-spacing: 10px;
+      color: rgba(107, 114, 128, 0.13); white-space: nowrap;
+      z-index: -1; pointer-events: none;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
   </style>
 </head>
 <body>
+  {% if doc.doc_type == "SALE" or doc.doc_type == "CONSIGNMENT_ISSUE" or doc.doc_type == "CONSIGNMENT_SETTLEMENT" %}
+  <div class="watermark">{% translate "ATTACHMENT" %}</div>
+  {% endif %}
   <div class="screen-actions">
     <button onclick="window.print()">{% translate "Print" %}</button>
     <a href="?layout=COMPACT">{% translate "Compact" %}</a>
@@ -47,7 +61,10 @@
   </div>
 
   <div class="summary">
-    <div class="box"><strong>{% translate "Party" %}</strong><br>{{ doc.customer|default:doc.supplier|default:doc.payee|default:"-" }}</div>
+    {# Name only — internal master codes (CUS-0001…) mean nothing to the
+       other business and clutter a document they file. #}
+    <div class="box"><strong>{% translate "Party" %}</strong><br>
+      {% if doc.customer %}{{ doc.customer.name }}{% elif doc.supplier %}{{ doc.supplier.name }}{% else %}{{ doc.payee|default:"-" }}{% endif %}</div>
     <div class="box"><strong>{% translate "Subtotal" %}</strong><br>{{ doc.subtotal }}</div>
     <div class="box"><strong>{% translate "Tax" %}</strong><br>{{ doc.tax_total }}</div>
     <div class="box total"><strong>{% translate "Total" %}</strong><br>{{ doc.grand_total }}</div>

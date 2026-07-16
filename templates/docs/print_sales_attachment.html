@@ -28,6 +28,16 @@
     .sigs div { flex: 1; }
     .sig-line { border-bottom: 1px solid #111827; height: 28px; }
     .fiscal-note { font-style: italic; margin-top: 18px; }
+    /* Same ATTACHMENT watermark as the generic layouts (D18): this page
+       accompanies the fiscal pad invoice, it never replaces it. */
+    .watermark {
+      position: fixed; top: 50%; left: 50%;
+      transform: translate(-50%, -50%) rotate(-30deg);
+      font-size: 100px; font-weight: 800; letter-spacing: 10px;
+      color: rgba(107, 114, 128, 0.13); white-space: nowrap;
+      z-index: -1; pointer-events: none;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
     .copies { margin-top: 14px; font-size: 10px; }
     .copies span { margin-right: 18px; }
     .footer { color: #6b7280; display: flex; font-size: 9px; justify-content: space-between; margin-top: 16px; }
@@ -37,6 +47,7 @@
   </style>
 </head>
 <body>
+  <div class="watermark">{% translate "ATTACHMENT" %}</div>
   <div class="screen-actions">
     <button onclick="window.print()">{% translate "Print" %}</button>
     <a href="?layout=COMPACT">{% translate "Compact" %}</a>

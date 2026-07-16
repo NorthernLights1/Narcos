@@ -1102,3 +1102,14 @@ data. Audit log reconstructed the whole sequence in one query.*
   at selling price. Money on a consignee's shelf is a different risk
   than money in your own store — it can't be sold to anyone else and
   may come back expired. Same ledger, one extra grouping key.
+- **Print hygiene (owner feedback):** every SALE / CONSIGNMENT_ISSUE /
+  CONSIGNMENT_SETTLEMENT printout now carries a large diagonal
+  **ATTACHMENT** watermark on every page — the legal invoice is the
+  fiscal pad printed by government-approved vendors (D18); our page
+  accompanies it and must never pass for it. Internal master codes
+  (CUS-0001…) no longer print in the party box — the other business
+  files this paper and the code means nothing to them (the Cash Sales
+  Attachment layout already printed name-only). Internal prints
+  (receivings, expenses…) get no watermark. The URL/date line at the
+  page edge is the **browser's** print header/footer, not ours — untick
+  "Headers and footers" in the print dialog once; the browser remembers.
