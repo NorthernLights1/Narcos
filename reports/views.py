@@ -456,46 +456,88 @@ def _cashbook(start, end, _user):
     return columns, rows, [_("Net movement"), "", "", _money(total)]
 
 
+# Group labels — hub order follows first appearance in REPORTS.
+GROUP_STOCK = _("Stock")
+GROUP_SALES = _("Sales & profit")
+GROUP_PARTIES = _("Receivables & payables")
+GROUP_TAX = _("Tax")
+GROUP_MONEY = _("Money")
+
 REPORTS = {
-    "stock-on-hand": {"title": _("Stock on hand"), "builder": _stock_on_hand},
-    "stock-movement": {"title": _("Stock movement"), "builder": _stock_movement},
-    "expiry": {"title": _("Expiry"), "builder": _expiry},
-    "low-stock": {"title": _("Low stock"), "builder": _low_stock},
+    "stock-on-hand": {"title": _("Stock on hand"), "builder": _stock_on_hand,
+                      "group": GROUP_STOCK},
+    "stock-movement": {"title": _("Stock movement"), "builder": _stock_movement,
+                       "group": GROUP_STOCK},
+    "expiry": {"title": _("Expiry"), "builder": _expiry, "group": GROUP_STOCK},
+    "low-stock": {"title": _("Low stock"), "builder": _low_stock,
+                  "group": GROUP_STOCK},
     "valuation": {"title": _("Valuation at lot cost"), "builder": _valuation,
-                  "owner_only": True},
-    "sales": {"title": _("Sales by period/customer/item"), "builder": _sales},
-    "profit": {"title": _("Profit"), "builder": _profit, "owner_only": True},
-    "losses": {"title": _("Losses at lot cost"), "builder": _losses,
-               "owner_only": True},
-    "ar-aging": {"title": _("AR aging"), "builder": _ar_aging, "open_items": True},
-    "ap-aging": {"title": _("AP aging"), "builder": _ap_aging, "open_items": True},
-    "ar-balances": {"title": _("AR balances by customer (as of the end date)"),
-                    "builder": _ar_balances},
-    "ap-balances": {"title": _("AP balances by supplier (as of the end date)"),
-                    "builder": _ap_balances},
+                  "owner_only": True, "group": GROUP_STOCK},
     "consignment": {"title": _("Consignment outstanding"), "builder": _consignment,
-                    "open_items": True},
-    "vat": {"title": _("VAT summary"), "builder": _vat},
+                    "open_items": True, "group": GROUP_STOCK},
+    "sales": {"title": _("Sales by period/customer/item"), "builder": _sales,
+              "group": GROUP_SALES},
+    "profit": {"title": _("Profit"), "builder": _profit, "owner_only": True,
+               "group": GROUP_SALES},
+    "losses": {"title": _("Losses at lot cost"), "builder": _losses,
+               "owner_only": True, "group": GROUP_SALES},
+    "ar-aging": {"title": _("AR aging"), "builder": _ar_aging, "open_items": True,
+                 "group": GROUP_PARTIES},
+    "ap-aging": {"title": _("AP aging"), "builder": _ap_aging, "open_items": True,
+                 "group": GROUP_PARTIES},
+    "ar-balances": {"title": _("AR balances by customer (as of the end date)"),
+                    "builder": _ar_balances, "group": GROUP_PARTIES},
+    "ap-balances": {"title": _("AP balances by supplier (as of the end date)"),
+                    "builder": _ap_balances, "group": GROUP_PARTIES},
+    # Tax reports disappear when the configuration makes them permanently
+    # empty (owner request: no dead reports) — flip the setting, they return.
+    "vat": {"title": _("VAT summary"), "builder": _vat, "group": GROUP_TAX,
+            "enabled": lambda s: s.tax_regime != CompanySettings.TaxRegime.NONE},
     "withholding-received": {
-        "title": _("Withholding certificates received"), "builder": _withholding_received,
+        "title": _("Withholding certificates received"),
+        "builder": _withholding_received, "group": GROUP_TAX,
+        "enabled": lambda s: s.withholding_on_sales,
     },
     "withholding-payable": {
-        "title": _("Withholding withheld/remitted/owed"), "builder": _withholding_payable,
+        "title": _("Withholding withheld/remitted/owed"),
+        "builder": _withholding_payable, "group": GROUP_TAX,
+        "enabled": lambda s: s.withholding_on_purchases,
     },
-    "expenses": {"title": _("Expenses by category"), "builder": _expenses},
-    "cashbook": {"title": _("Cash/bank book"), "builder": _cashbook},
+    "expenses": {"title": _("Expenses by category"), "builder": _expenses,
+                 "group": GROUP_MONEY},
+    "cashbook": {"title": _("Cash/bank book"), "builder": _cashbook,
+                 "group": GROUP_MONEY},
 }
+
+
+def _report_enabled(config, settings) -> bool:
+    enabled = config.get("enabled")
+    return enabled is None or enabled(settings)
 
 
 @login_required
 def report_hub(request):
-    return render(request, "reports/hub.html", {"reports": REPORTS})
+    settings = CompanySettings.load()
+    groups: list[dict] = []
+    for slug, config in REPORTS.items():
+        if not _report_enabled(config, settings):
+            continue
+        label = config["group"]
+        group = next((g for g in groups if g["label"] == label), None)
+        if group is None:
+            group = {"label": label, "statement": label == GROUP_PARTIES,
+                     "entries": []}
+            groups.append(group)
+        group["entries"].append((slug, config))
+    return render(request, "reports/hub.html", {"groups": groups})
 
 
 @login_required
 def report_detail(request, slug):
     config = REPORTS.get(slug)
     if config is None:
+        raise Http404
+    if not _report_enabled(config, CompanySettings.load()):
         raise Http404
     if config.get("owner_only") and not request.user.is_owner:
         raise PermissionDenied

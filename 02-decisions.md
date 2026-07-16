@@ -1084,3 +1084,16 @@ data. Audit log reconstructed the whole sequence in one query.*
   with the party's statement closing balance for the same date and the
   grand total with the Finance page — total → per-client → per-document,
   three views of one ledger.
+- **Report audit — no deletions, settings-aware visibility instead**
+  (owner asked to "remove what is not necessary"): every builder earns
+  its keep for *some* configuration, so nothing was deleted; instead
+  reports that are permanently empty under the company's settings vanish
+  from the hub and 404 directly — VAT summary when tax regime is NONE,
+  withholding-received when withholding-on-sales is off,
+  **withholding-payable when withholding-on-purchases is off (this
+  client's case — it was the one dead report)**. Flip the setting and
+  the report returns. The hub is now grouped (Stock / Sales & profit /
+  Receivables & payables / Tax / Money) with the Statement pinned in the
+  parties group. Note: the "Withholding remittance" document type in the
+  More… menu is dead under the same flag — candidate for the same
+  treatment next round.

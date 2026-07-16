@@ -6,14 +6,20 @@
   <h1>{% translate "Reports" %}</h1>
 </div>
 
+{% for group in groups %}
 <div class="card">
+  <div class="card-head">
+    <h2>{{ group.label }}</h2>
+  </div>
   <table class="table">
     <tbody>
+      {% if group.statement %}
       <tr>
         <td>{% translate "Statement (customer/supplier reconciliation)" %}</td>
         <td><a href="{% url 'statement' %}">{% translate "Open" %}</a></td>
       </tr>
-      {% for slug, report in reports.items %}
+      {% endif %}
+      {% for slug, report in group.entries %}
       <tr>
         <td>{{ report.title }}</td>
         <td><a href="{% url 'report_detail' slug %}">{% translate "Open" %}</a></td>
@@ -22,4 +28,5 @@
     </tbody>
   </table>
 </div>
+{% endfor %}
 {% endblock %}

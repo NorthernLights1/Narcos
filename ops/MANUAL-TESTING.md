@@ -64,6 +64,11 @@ Written for a dev machine (Linux, `.venv`, PostgreSQL on localhost).
 >   CSV. Separate from aging on purpose: no due dates here, just the
 >   snapshot. Each row's figure equals that party's Statement closing
 >   balance for the same date.
+> - **Reports hub is grouped** (Stock / Sales & profit / Receivables &
+>   payables / Tax / Money) and hides reports your settings make
+>   permanently empty — with withholding-on-purchases off you won't see
+>   "Withholding withheld/remitted/owed"; enable the setting and it
+>   returns. Nothing was deleted.
 
 ---
 
