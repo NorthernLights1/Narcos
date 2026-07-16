@@ -1113,3 +1113,15 @@ data. Audit log reconstructed the whole sequence in one query.*
   (receivings, expenses…) get no watermark. The URL/date line at the
   page edge is the **browser's** print header/footer, not ours — untick
   "Headers and footers" in the print dialog once; the browser remembers.
+- **Backup/restore goes Linux-first (deployment: Linux server, Docker
+  planned):** `scripts/backup.sh` + `scripts/restore.sh` are canonical;
+  the PowerShell pair stays only as a Windows fallback. New in both:
+  **media restore** (the gap — restored attachment rows pointed at
+  nothing), dump verification at backup time (`pg_restore --list`), and
+  a refuse-existing-target guard so a typo can never overwrite live.
+  RUNBOOK gained the **bare-metal disaster recovery** procedure (10
+  steps, fresh machine → verified app, including "open a document with
+  an attachment" as the media proof) and Docker guidance (back up from
+  the host via pg_dump, never volume snapshots alone). Drill executed
+  for real on the dev machine: backup → scratch restore → identical
+  counts (29 docs / 7 ledger rows / 2 attachments) + media files back.

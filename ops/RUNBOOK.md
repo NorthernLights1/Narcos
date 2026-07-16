@@ -1,6 +1,9 @@
 # Narcos Ops Runbook
 
-This is the v1 go-live runbook for one Windows server PC.
+This is the v1 go-live runbook. The planned deployment is **one Linux server
+(Docker planned)**; bash scripts (`scripts/backup.sh`, `scripts/restore.sh`)
+are the canonical tooling. The PowerShell equivalents remain only as a
+fallback if the client machine ends up running Windows.
 
 ## Secrets and environment
 
@@ -36,36 +39,90 @@ If there is exactly one owner user, the username can be omitted.
 
 ## Nightly backup
 
-Create a Windows Task Scheduler job that runs every night:
+Put the environment in `/etc/narcos.env` (root-only readable) and add a cron
+job (`crontab -e` as the app user):
 
-```powershell
-powershell.exe -ExecutionPolicy Bypass -File C:\Projects\Narcos\scripts\backup.ps1
+```cron
+0 22 * * * . /etc/narcos.env && /opt/narcos/scripts/backup.sh >> /var/log/narcos-backup.log 2>&1
 ```
 
-The script writes a `pg_dump` custom-format dump and a `media.zip`, then keeps
-the last 14 backup folders. Copy the backup root to an external drive or cloud
-folder. The client still needs a UPS and backup drive before go-live.
+`backup.sh` writes a `pg_dump` custom-format dump **and** `media.tar.gz`
+(the attachments — a DB restore without media gives attachment rows that
+point at nothing), verifies the dump is listable, logs a BACKUP event into
+the app audit trail, and keeps the last 14 backup folders. Copy the backup
+root to an external drive or cloud folder — a backup on the same disk dies
+with the disk. The client still needs a UPS and backup drive before go-live.
+
+Windows fallback: Task Scheduler running `scripts\backup.ps1` (same design).
+
+**Docker note:** the same scripts work unchanged as long as PostgreSQL
+publishes port 5432 on localhost and the media volume is mounted where the
+app expects it. Back up from the host, not from inside the app container;
+never rely on `docker commit` or volume snapshots alone — a portable
+`pg_dump` restores anywhere, a volume snapshot only restores into Docker.
 
 ## Restore drill
 
 Before go-live, and before every update, prove the latest backup restores into
 a scratch database:
 
-```powershell
-.\scripts\restore.ps1 -BackupDir D:\NarcosBackups\YYYYMMDD-HHMMSS -TargetDb narcos_restore
+```bash
+NARCOS_DB_PASSWORD=... ./scripts/restore.sh /backups/YYYYMMDD-HHMMSS
 ```
 
-The restore script creates a scratch database and runs `pg_restore` into it.
+This creates the scratch database `narcos_restore` and runs `pg_restore` into
+it (an existing target database is refused — a typo can never overwrite
+live). Add a third argument to also unpack media into a scratch folder:
+
+```bash
+./scripts/restore.sh /backups/YYYYMMDD-HHMMSS narcos_restore /tmp/narcos-media-drill
+```
 
 Then point a scratch app environment at `narcos_restore`, run:
 
-```powershell
-.\.venv\Scripts\python.exe manage.py migrate
-.\.venv\Scripts\python.exe manage.py check
-.\.venv\Scripts\python.exe -m pytest
+```bash
+.venv/bin/python manage.py migrate
+.venv/bin/python manage.py check
+.venv/bin/python -m pytest
 ```
 
 Only update the live database after the scratch restore and migration pass.
+(Windows fallback: `restore.ps1 -BackupDir ... -MediaTarget ...`.)
+
+## Bare-metal disaster recovery
+
+The scenario the backups exist for: the server is dead, stolen, or
+unbootable. Recovery point = the last nightly backup — **everything entered
+after it is gone** (make sure the owner knows this; if a day of data is
+unacceptable, schedule the backup more often).
+
+On a fresh Linux machine:
+
+1. Install PostgreSQL 16 and Python 3.12 (or Docker with the same images).
+2. Get the application code at the **same version** that took the backup
+   (`git clone` + checkout the release tag, or copy the release folder).
+   Create the venv: `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`.
+3. Recreate the database role:
+   `sudo -u postgres createuser --pwprompt narcos`
+   (use the password from your secrets store; it must match `NARCOS_DB_PASSWORD`).
+4. Copy the **newest backup folder** from the external drive / cloud onto
+   the machine.
+5. Restore as the real database and real media in one go:
+   ```bash
+   NARCOS_DB_PASSWORD=... ./scripts/restore.sh /backups/YYYYMMDD-HHMMSS narcos /opt/narcos/media
+   ```
+6. Write `/etc/narcos.env` with `NARCOS_SECRET_KEY`, `NARCOS_DB_PASSWORD`,
+   `NARCOS_BACKUP_ROOT` (a fresh secret key is fine — it only logs everyone
+   out; the database password must match step 3).
+7. `manage.py migrate` (no-op when code and backup versions match), then
+   `manage.py check`.
+8. Start the service (waitress behind the same service manager as before,
+   or `docker compose up -d`).
+9. Prove it end to end before telling anyone it's fixed: log in, open the
+   dashboard, open a document **that has an attachment** (this proves media
+   came back, not just rows), print one document.
+10. Re-enable the nightly backup cron on the new machine — a recovered
+    server with no backups is the next disaster.
 
 ## Update procedure
 
