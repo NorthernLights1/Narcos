@@ -1076,3 +1076,11 @@ data. Audit log reconstructed the whole sequence in one query.*
   of silently pricing those rows at zero. Server-side math was always
   correct — this fixes only the display.
 - app.js cache-buster bumped to 20260715d.
+- **AR/AP balances as of a date** (client request): two new reports —
+  one row per customer/supplier with a non-zero balance on the chosen end
+  date, biggest first, grand total at the bottom, CSV. Deliberately
+  separate from aging (no due dates, no buckets): aging answers "how
+  late", this answers "who owed what on that day". Each figure ties out
+  with the party's statement closing balance for the same date and the
+  grand total with the Finance page — total → per-client → per-document,
+  three views of one ledger.

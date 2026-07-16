@@ -303,6 +303,45 @@ def _ap_aging(start, end, _user):
     return _aging([DocType.RECEIVING, DocType.OPENING_AP], _("Supplier"), start, end)
 
 
+def _balances_as_of(party_type, model, party_label, end):
+    """One row per party with a non-zero balance on `end` (client request):
+    a snapshot, deliberately without due dates — aging answers 'how late',
+    this answers 'who owed what on that day'. Ties out with each party's
+    statement closing balance and with the Finance page totals."""
+    columns = [_("Code"), party_label, _("Balance")]
+    balances: dict[int, Decimal] = {}
+    rows_qs = (PartyLedger.objects.filter(party_type=party_type)
+               .select_related("document"))
+    for row in rows_qs:
+        day = _day(row.document.document_date)
+        if day is None or day > end:
+            continue
+        balances[row.party_id] = (
+            balances.get(row.party_id, Decimal("0.00")) + row.amount_delta
+        )
+    parties = {p.pk: p for p in model.objects.filter(pk__in=balances)}
+    rows = []
+    grand = Decimal("0.00")
+    for pk, balance in balances.items():
+        if balance == 0:
+            continue
+        party = parties[pk]
+        rows.append([party.code, party.name, balance])
+        grand += balance
+    rows.sort(key=lambda r: r[2], reverse=True)  # biggest balance first
+    return columns, rows, [_("Total"), "", _money(grand)]
+
+
+def _ar_balances(_start, end, _user):
+    return _balances_as_of(PartyLedger.PartyType.CUSTOMER, Customer,
+                           _("Customer"), end)
+
+
+def _ap_balances(_start, end, _user):
+    return _balances_as_of(PartyLedger.PartyType.SUPPLIER, Supplier,
+                           _("Supplier"), end)
+
+
 def _consignment(_start, _end, _user):
     """Open consignments as of today — ignores the period filter (D73)."""
     columns = [_("Date"), _("Due"), _("Document"), _("Customer"),
@@ -430,6 +469,10 @@ REPORTS = {
                "owner_only": True},
     "ar-aging": {"title": _("AR aging"), "builder": _ar_aging, "open_items": True},
     "ap-aging": {"title": _("AP aging"), "builder": _ap_aging, "open_items": True},
+    "ar-balances": {"title": _("AR balances by customer (as of the end date)"),
+                    "builder": _ar_balances},
+    "ap-balances": {"title": _("AP balances by supplier (as of the end date)"),
+                    "builder": _ap_balances},
     "consignment": {"title": _("Consignment outstanding"), "builder": _consignment,
                     "open_items": True},
     "vat": {"title": _("VAT summary"), "builder": _vat},

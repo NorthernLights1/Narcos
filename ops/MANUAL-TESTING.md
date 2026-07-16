@@ -59,6 +59,11 @@ Written for a dev machine (Linux, `.venv`, PostgreSQL on localhost).
 > - Settlement preview: if an item was issued at two different prices, the
 >   preview now says it can't price those rows (before, it silently
 >   under-counted; the posted totals were always correct).
+> - **Reports → AR balances by customer / AP balances by supplier**: who
+>   owed what *as of the end date* — one row per party, grand total,
+>   CSV. Separate from aging on purpose: no due dates here, just the
+>   snapshot. Each row's figure equals that party's Statement closing
+>   balance for the same date.
 
 ---
 
