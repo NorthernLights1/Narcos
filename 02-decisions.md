@@ -1125,3 +1125,21 @@ data. Audit log reconstructed the whole sequence in one query.*
   the host via pg_dump, never volume snapshots alone). Drill executed
   for real on the dev machine: backup → scratch restore → identical
   counts (29 docs / 7 ledger rows / 2 attachments) + media files back.
+
+## Round 12 (2026-07-17) — print fixes from the field
+
+### D82 — Party TIN prints in the party box; template-comment leak fixed
+- **What:** Sale/consignment (and every other document) printouts showed a
+  stray paragraph of template-comment text in the party box: Django only
+  treats `{# … #}` as a comment when it stays on **one line**, and this one
+  had been wrapped across two, so it rendered literally on paper. The
+  comment is now a single line and a regression test asserts no `{#` ever
+  reaches the rendered page. In the same box the party's **TIN** now prints
+  under the name (customer or supplier; skipped when blank, and free-text
+  payees have none). Master codes (CUS-0001…) still never print (D-Round-10
+  rule, unchanged). The Cash Sales Attachment layout already printed the
+  buyer's TIN and is untouched.
+- **Why:** Owner feedback on printed sales/consignments: the explanation
+  text was never meant to appear on the document, and "the TIN number of
+  the party should be included, not just the name" — the receiving business
+  files this paper and identifies parties by TIN.

@@ -118,3 +118,32 @@ def test_sales_attachment_layout_has_watermark(client, owner, customer,
     html = client.get(reverse("document_print", args=[sale.pk]),
                       {"layout": "SALES_ATT"}).content.decode()
     assert 'class="watermark"' in html
+
+
+def test_print_leaks_no_template_comment(client, owner, customer,
+                                         stocked_item):
+    # Django {# #} comments must stay on one line; a wrapped one renders
+    # as literal text on the printout.
+    sale = _posted_cash_sale(owner, customer, stocked_item)
+    client.force_login(owner)
+    html = client.get(reverse("document_print", args=[sale.pk])).content.decode()
+    assert "{#" not in html
+    assert "master codes" not in html
+
+
+def test_print_shows_customer_tin(client, owner, customer, stocked_item):
+    customer.tin = "0012345678"
+    customer.save()
+    sale = _posted_cash_sale(owner, customer, stocked_item)
+    client.force_login(owner)
+    html = client.get(reverse("document_print", args=[sale.pk])).content.decode()
+    assert "0012345678" in html
+
+
+def test_print_shows_supplier_tin(client, owner, supplier, stocked_item):
+    supplier.tin = "0087654321"
+    supplier.save()
+    grn = Document.objects.get(doc_type=DocType.RECEIVING)
+    client.force_login(owner)
+    html = client.get(reverse("document_print", args=[grn.pk])).content.decode()
+    assert "0087654321" in html

@@ -61,10 +61,13 @@
   </div>
 
   <div class="summary">
-    {# Name only — internal master codes (CUS-0001…) mean nothing to the
-       other business and clutter a document they file. #}
+    {# Name + TIN, never internal master codes (CUS-0001…). Keep this comment on one line — Django renders wrapped hash-comments literally. #}
     <div class="box"><strong>{% translate "Party" %}</strong><br>
-      {% if doc.customer %}{{ doc.customer.name }}{% elif doc.supplier %}{{ doc.supplier.name }}{% else %}{{ doc.payee|default:"-" }}{% endif %}</div>
+      {% if doc.customer %}{{ doc.customer.name }}
+        {% if doc.customer.tin %}<br><span class="muted">{% translate "TIN" %}: {{ doc.customer.tin }}</span>{% endif %}
+      {% elif doc.supplier %}{{ doc.supplier.name }}
+        {% if doc.supplier.tin %}<br><span class="muted">{% translate "TIN" %}: {{ doc.supplier.tin }}</span>{% endif %}
+      {% else %}{{ doc.payee|default:"-" }}{% endif %}</div>
     <div class="box"><strong>{% translate "Subtotal" %}</strong><br>{{ doc.subtotal }}</div>
     <div class="box"><strong>{% translate "Tax" %}</strong><br>{{ doc.tax_total }}</div>
     <div class="box total"><strong>{% translate "Total" %}</strong><br>{{ doc.grand_total }}</div>

@@ -70,6 +70,14 @@ Written for a dev machine (Linux, `.venv`, PostgreSQL on localhost).
 >   "Withholding withheld/remitted/owed"; enable the setting and it
 >   returns. Nothing was deleted.
 
+> **2026-07-17 print fixes (D82):** document printouts no longer show the
+> stray "Name only — internal master codes…" paragraph in the party box
+> (it was a wrapped template comment rendering literally), and the party's
+> **TIN** now prints under their name when the customer/supplier record
+> has one. To verify: print any sale or consignment issue for a party
+> with a TIN — party box shows *name + TIN, no CUS-/SUP- code, no stray
+> text*.
+
 ---
 
 ## 0. One-time setup
