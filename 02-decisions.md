@@ -1143,3 +1143,41 @@ data. Audit log reconstructed the whole sequence in one query.*
   text was never meant to appear on the document, and "the TIN number of
   the party should be included, not just the name" — the receiving business
   files this paper and identifies parties by TIN.
+
+## Round 13 (2026-07-17) — on-prem Docker deployment
+
+### D83 — Dockerized on-prem deployment: Windows host, plain-HTTP LAN, GHCR pipeline
+- **What:** The app now ships as a two-container Docker stack — `app`
+  (Django on **waitress**, published on host port 80) and `db` (PostgreSQL 16,
+  on the internal network only, **never** published; R45 held tighter than
+  before). New artifacts: `Dockerfile` (collectstatic at build, tini as PID 1),
+  `compose.yml`, `docker-entrypoint.sh` (wait-for-db → auto-migrate → serve;
+  opt out with `NARCOS_AUTO_MIGRATE=0`), `.env.example`, `.dockerignore` (note:
+  `docs/` is a Django app, not documentation — it stays in the image), and a
+  `.github/workflows/release.yml` that on a `v*` tag runs pytest then builds a
+  `linux/amd64` image and pushes it **private to GHCR**. Settings gained
+  `CSRF_TRUSTED_ORIGINS` derived from `ALLOWED_HOSTS` (with a
+  `NARCOS_CSRF_TRUSTED_ORIGINS` override) and a `NARCOS_BEHIND_TLS_PROXY` flag
+  that gates `SECURE_PROXY_SSL_HEADER` + secure cookies — **off by default**
+  because the LAN deployment serves plain HTTP and forcing secure cookies would
+  break login. Backup/restore got container-aware twins
+  (`ops/docker-backup.ps1`, `ops/docker-restore.ps1`) that run `pg_dump` /
+  `pg_restore` inside `db` and `manage.py` / `tar` inside `app` via
+  `docker compose exec`; the restore refuses a non-empty target so a typo can't
+  overwrite live. `ops/deploy.ps1` wraps update as backup → pull → up.
+  `ops/DEPLOYMENT.md` is the Windows-first runbook; `ops/RUNBOOK.md` reframed
+  (the old "works unchanged in Docker" note was wrong — no host `.venv`/`pg_dump`).
+- **Why:** Client requires on-prem (financial pharmacy data, all-LAN users) on
+  a **Windows 10** desktop, with internet that can't be relied on. Decisions
+  locked with the user: (1) **Windows Task Scheduler** at **16:00** with
+  "run missed task at next boot" (staff leave ~17:00, power is unreliable, so
+  back up while the PC is on) — not a cron sidecar, since both need Docker/the
+  auto-login session running anyway. (2) **Auto-migrate on start**, with the
+  deploy wrapper taking a backup first. (3) Retention **14 nightly + one per
+  month for a year** (financial records need a longer tail than 14 days).
+  (4) **`.env` copied into every backup** — the only recovery input not in git
+  or the image. Static IP (DHCP reservation) instead of a domain; a local DNS
+  name can be layered on later without touching the containers. 8 GB RAM
+  confirmed adequate; `.wslconfig` memory cap documented. Not RAM-driven —
+  Docker on Windows adds WSL2 overhead; it's chosen for clean packaging,
+  reproducible CI builds, and one-command deploy/DR.

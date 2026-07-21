@@ -1,0 +1,53 @@
+# Narcos on-prem stack (D83): two services, plain HTTP on the LAN.
+#   db  — PostgreSQL, reachable ONLY on the internal network (R45), data on a
+#         named volume (never a Windows bind mount — WSL2 file-locking).
+#   app — Django on waitress; the only service published to the host.
+# Secrets and host-specific values come from .env (see .env.example).
+name: narcos
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${NARCOS_DB_NAME:-narcos}
+      POSTGRES_USER: ${NARCOS_DB_USER:-narcos}
+      POSTGRES_PASSWORD: ${NARCOS_DB_PASSWORD:?set NARCOS_DB_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ${NARCOS_BACKUP_ROOT:-./backups}:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${NARCOS_DB_USER:-narcos} -d ${NARCOS_DB_NAME:-narcos}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # No `ports:` — PostgreSQL is never published to the host or LAN.
+
+  app:
+    image: ${NARCOS_IMAGE:-ghcr.io/northernlights1/narcos:latest}
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NARCOS_DEBUG: "0"
+      NARCOS_SECRET_KEY: ${NARCOS_SECRET_KEY:?set NARCOS_SECRET_KEY in .env}
+      NARCOS_ALLOWED_HOSTS: ${NARCOS_ALLOWED_HOSTS:?set NARCOS_ALLOWED_HOSTS in .env}
+      NARCOS_CSRF_TRUSTED_ORIGINS: ${NARCOS_CSRF_TRUSTED_ORIGINS:-}
+      NARCOS_DB_NAME: ${NARCOS_DB_NAME:-narcos}
+      NARCOS_DB_USER: ${NARCOS_DB_USER:-narcos}
+      NARCOS_DB_PASSWORD: ${NARCOS_DB_PASSWORD:?set NARCOS_DB_PASSWORD in .env}
+      NARCOS_DB_HOST: db
+      NARCOS_DB_PORT: "5432"
+      NARCOS_AUTO_MIGRATE: ${NARCOS_AUTO_MIGRATE:-1}
+      NARCOS_BEHIND_TLS_PROXY: ${NARCOS_BEHIND_TLS_PROXY:-0}
+    volumes:
+      - media:/app/media
+      - ${NARCOS_BACKUP_ROOT:-./backups}:/backups
+    ports:
+      - "${NARCOS_HTTP_PORT:-80}:8080"
+
+volumes:
+  pgdata:
+  media:

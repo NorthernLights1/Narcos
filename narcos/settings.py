@@ -11,6 +11,39 @@ SECRET_KEY = os.environ.get(
 DEBUG = os.environ.get("NARCOS_DEBUG", "1") == "1"
 ALLOWED_HOSTS = os.environ.get("NARCOS_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 
+
+def _csrf_trusted_origins():
+    """Full origins Django will trust for unsafe requests (D83).
+
+    Behind a proxy or when the browser reaches us by a name/scheme Django
+    doesn't itself see, CSRF needs the origin spelled out with a scheme.
+    Deriving them from ALLOWED_HOSTS means the deployment sets the static IP
+    once; an explicit NARCOS_CSRF_TRUSTED_ORIGINS overrides when needed.
+    """
+    explicit = os.environ.get("NARCOS_CSRF_TRUSTED_ORIGINS", "").strip()
+    if explicit:
+        return [o.strip() for o in explicit.split(",") if o.strip()]
+    origins = []
+    for host in ALLOWED_HOSTS:
+        host = host.strip()
+        if not host or host == "*" or host.startswith("."):
+            continue  # wildcards aren't valid origins
+        origins.append(f"http://{host}")
+        origins.append(f"https://{host}")  # so a future TLS proxy needs no change
+    return origins
+
+
+CSRF_TRUSTED_ORIGINS = _csrf_trusted_origins()
+
+# The on-prem stack serves plain HTTP directly (no proxy), so proxy-header
+# trust and HTTPS-only cookies stay OFF — enabling them here would let a
+# client spoof the scheme, or stop the login cookie from ever being sent.
+# Flip NARCOS_BEHIND_TLS_PROXY=1 only when a TLS-terminating proxy is added.
+if os.environ.get("NARCOS_BEHIND_TLS_PROXY", "0") == "1":
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+
 INSTALLED_APPS = [
     "django.contrib.auth",
     "django.contrib.contenttypes",

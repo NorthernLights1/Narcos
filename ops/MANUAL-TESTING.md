@@ -6,6 +6,18 @@ to do and **what you must see** — if you see something else, that's a bug.
 
 Written for a dev machine (Linux, `.venv`, PostgreSQL on localhost).
 
+> **2026-07-17 deployment (D83):** production now runs as a Docker stack on a
+> Windows 10 host — see [DEPLOYMENT.md](DEPLOYMENT.md). This guide's app
+> walkthrough is unchanged; only *where it runs* differs. To exercise the
+> production server path on the dev machine (no Docker needed), run the exact
+> container command and hit it:
+> `NARCOS_DEBUG=0 NARCOS_SECRET_KEY=x NARCOS_ALLOWED_HOSTS=127.0.0.1 .venv/bin/waitress-serve --listen=127.0.0.1:8091 narcos.wsgi:application`
+> then browse `http://127.0.0.1:8091/` — you must see the login page (a `302`
+> to `/login` for an anonymous request), and `/static/css/app.css` must return
+> `200` (whitenoise) after `manage.py collectstatic`. A disallowed `Host`
+> header must return `400`. Container build/boot itself is validated by CI on a
+> release tag and on the client machine.
+
 > **2026-07-10 UI update (D67/D68):** master codes are now auto-assigned
 > (`ITM-0001`…) — the forms no longer ask for one. Document line tables have
 > an **+ Add row** button; item/batch/party pickers are searchable; batch

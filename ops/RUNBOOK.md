@@ -1,9 +1,15 @@
 # Narcos Ops Runbook
 
-This is the v1 go-live runbook. The planned deployment is **one Linux server
-(Docker planned)**; bash scripts (`scripts/backup.sh`, `scripts/restore.sh`)
-are the canonical tooling. The PowerShell equivalents remain only as a
-fallback if the client machine ends up running Windows.
+This is the v1 go-live runbook (operational background: secrets, owner password
+recovery, backup/restore *design*, disaster-recovery principles).
+
+The production deployment is **Docker Desktop on a Windows 10 host** — the
+step-by-step install, backup schedule, update, and disaster-recovery procedures
+live in **[DEPLOYMENT.md](DEPLOYMENT.md)**, and the container-aware
+`ops/docker-backup.ps1` / `ops/docker-restore.ps1` are the canonical tooling
+there. The `scripts/backup.sh` + `scripts/restore.sh` (and their `.ps1` twins)
+document the **host-installed, no-Docker alternative** and the shared restore
+logic; the sections below apply to that path.
 
 ## Secrets and environment
 
@@ -55,10 +61,12 @@ with the disk. The client still needs a UPS and backup drive before go-live.
 
 Windows fallback: Task Scheduler running `scripts\backup.ps1` (same design).
 
-**Docker note:** the same scripts work unchanged as long as PostgreSQL
-publishes port 5432 on localhost and the media volume is mounted where the
-app expects it. Back up from the host, not from inside the app container;
-never rely on `docker commit` or volume snapshots alone — a portable
+**Docker note:** on the Docker deployment these host scripts do **not** run
+unchanged — there is no host `.venv` or host `pg_dump`. Use
+`ops/docker-backup.ps1` / `ops/docker-restore.ps1` instead, which run the same
+logic *inside* the containers via `docker compose exec` (see
+[DEPLOYMENT.md](DEPLOYMENT.md)). The principle is unchanged: back up with a
+portable `pg_dump`, never `docker commit` or volume snapshots alone — a
 `pg_dump` restores anywhere, a volume snapshot only restores into Docker.
 
 ## Restore drill

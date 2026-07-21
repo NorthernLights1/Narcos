@@ -1,0 +1,27 @@
+# Keep the image small and secret-free. NOTE: `docs/` is a Django app
+# (the documents module), NOT documentation — it must stay in the image.
+.git
+.gitignore
+.venv
+**/__pycache__/
+*.pyc
+.pytest_cache/
+staticfiles/
+media/
+data/
+backups/
+.env
+.env.*
+node_modules/
+# dev tooling / agent config
+.agents/
+.claude/
+tools/
+skills-lock.json
+# planning + ops docs (not needed at runtime)
+ops/
+01-business-logic.md
+02-decisions.md
+03-open-risks.md
+04-build-spec.md
+README.md
