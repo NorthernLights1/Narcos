@@ -218,7 +218,6 @@
         <th>{% translate "Qty" %}</th>
         {% if doc.doc_type == "RECEIVING" %}
           <th class="num">{% translate "Unit cost" %}</th>
-          <th class="num">{% translate "Free" %}</th>
         {% else %}
           <th class="num">{% translate "Price" %}</th>
           <th class="num">{% translate "Net" %}</th>
@@ -237,7 +236,6 @@
         </td>
         {% if doc.doc_type == "RECEIVING" %}
           <td class="num">{{ line.unit_cost_entered|default:"—" }}</td>
-          <td class="num">{{ line.free_qty }}</td>
         {% else %}
           <td class="num">{{ line.unit_price }}</td>
           <td class="num">{{ line.line_net }}</td>

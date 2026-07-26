@@ -3,7 +3,7 @@ from decimal import Decimal
 import pytest
 from django.urls import reverse
 
-from catalog.models import Customer, Item
+from catalog.models import Customer, Item, Supplier
 from core.models import AuditLog
 from docs.models import Document, DocType, DocumentCharge, DocumentLine
 from docs.posting import post
@@ -108,3 +108,28 @@ def test_posted_proforma_converts_to_draft_sale(client, owner):
     assert sale.doc_discount == Decimal("1.00")
     assert sale.lines.get().item == item
     assert sale.charges.get().label == "Delivery"
+
+
+def test_receiving_ui_has_no_free_units(client, owner):
+    """Field testing: the business gets no bonus goods — the Free box only
+    confused staff. D21 math stays in the engine; the UI drops it (D84)."""
+    login(client, owner)
+    form_html = client.get(
+        reverse("document_create", args=[DocType.RECEIVING])
+    ).content.decode()
+    assert "free_qty" not in form_html
+
+    supplier = Supplier.objects.create(code="S-D84", name="Addis Pharma")
+    item = Item.objects.create(code="PARA", name="Paracetamol",
+                               base_unit="pack",
+                               maintained_price=Decimal("5.00"))
+    grn = Document.objects.create(doc_type=DocType.RECEIVING,
+                                  created_by=owner, supplier=supplier)
+    DocumentLine.objects.create(
+        document=grn, item=item, qty_entered=5,
+        unit_cost_entered=Decimal("4.00"), unit_label="pack", factor=1,
+    )
+    detail_html = client.get(
+        reverse("document_detail", args=[grn.pk])
+    ).content.decode()
+    assert ">Free<" not in detail_html

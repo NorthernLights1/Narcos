@@ -72,9 +72,11 @@ DOC_CONFIG = {
         "title": _("Receiving"),
         # due_date = supplier credit terms; feeds AP overdue on the dashboard
         "fields": ["supplier", "supplier_invoice_date", "due_date", "notes"],
+        # D84: free_qty stays in the model/engine (D21) but off the form —
+        # this business never receives bonus goods and the box confused staff.
         "lines": [
             "item", "batch_no_entered", "expiry_entered", "unit_label", "factor",
-            "qty_entered", "unit_cost_entered", "free_qty",
+            "qty_entered", "unit_cost_entered",
         ],
         "payments": True,
     },
