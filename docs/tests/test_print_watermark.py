@@ -147,3 +147,14 @@ def test_print_shows_supplier_tin(client, owner, supplier, stocked_item):
     client.force_login(owner)
     html = client.get(reverse("document_print", args=[grn.pk])).content.decode()
     assert "0087654321" in html
+
+
+def test_print_totals_come_after_the_lines(client, owner, customer,
+                                           stocked_item):
+    """Field testing (D85): the money belongs at the bottom of the page,
+    after the goods — not up in the header. Party stays at the top."""
+    sale = _posted_cash_sale(owner, customer, stocked_item)
+    client.force_login(owner)
+    html = client.get(reverse("document_print", args=[sale.pk])).content.decode()
+    assert html.index("Amoxicillin") < html.index("<strong>Total</strong>")
+    assert html.index("Selam Pharmacy") < html.index("Amoxicillin")

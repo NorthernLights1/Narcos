@@ -15,8 +15,9 @@
     .muted { color: #6b7280; }
     .top { align-items: start; display: flex; justify-content: space-between; gap: 24px; }
     .label { border: 1px solid #111827; display: inline-block; font-weight: 700; margin-top: 8px; padding: 4px 8px; }
-    .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 18px; }
+    .summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 18px; }
     .box { border: 1px solid #d1d5db; padding: 8px; }
+    .party-box { display: inline-block; margin-top: 18px; min-width: 220px; }
     .total { font-size: 16px; font-weight: 700; }
     .screen-actions { margin-bottom: 16px; }
     .screen-actions a, .screen-actions button { margin-right: 8px; }
@@ -60,18 +61,13 @@
     </div>
   </div>
 
-  <div class="summary">
-    {# Name + TIN, never internal master codes (CUS-0001…). Keep this comment on one line — Django renders wrapped hash-comments literally. #}
-    <div class="box"><strong>{% translate "Party" %}</strong><br>
-      {% if doc.customer %}{{ doc.customer.name }}
-        {% if doc.customer.tin %}<br><span class="muted">{% translate "TIN" %}: {{ doc.customer.tin }}</span>{% endif %}
-      {% elif doc.supplier %}{{ doc.supplier.name }}
-        {% if doc.supplier.tin %}<br><span class="muted">{% translate "TIN" %}: {{ doc.supplier.tin }}</span>{% endif %}
-      {% else %}{{ doc.payee|default:"-" }}{% endif %}</div>
-    <div class="box"><strong>{% translate "Subtotal" %}</strong><br>{{ doc.subtotal }}</div>
-    <div class="box"><strong>{% translate "Tax" %}</strong><br>{{ doc.tax_total }}</div>
-    <div class="box total"><strong>{% translate "Total" %}</strong><br>{{ doc.grand_total }}</div>
-  </div>
+  {# Name + TIN, never internal master codes (CUS-0001…). Keep this comment on one line — Django renders wrapped hash-comments literally. #}
+  <div class="box party-box"><strong>{% translate "Party" %}</strong><br>
+    {% if doc.customer %}{{ doc.customer.name }}
+      {% if doc.customer.tin %}<br><span class="muted">{% translate "TIN" %}: {{ doc.customer.tin }}</span>{% endif %}
+    {% elif doc.supplier %}{{ doc.supplier.name }}
+      {% if doc.supplier.tin %}<br><span class="muted">{% translate "TIN" %}: {{ doc.supplier.tin }}</span>{% endif %}
+    {% else %}{{ doc.payee|default:"-" }}{% endif %}</div>
 
   {% if doc.lines.exists %}
   <h2>{% translate "Lines" %}</h2>
@@ -124,6 +120,13 @@
     </table>
     {% endif %}
   {% endif %}
+
+  {# D85 (field testing): the money reads at the bottom, after the goods. #}
+  <div class="summary">
+    <div class="box"><strong>{% translate "Subtotal" %}</strong><br>{{ doc.subtotal }}</div>
+    <div class="box"><strong>{% translate "Tax" %}</strong><br>{{ doc.tax_total }}</div>
+    <div class="box total"><strong>{% translate "Total" %}</strong><br>{{ doc.grand_total }}</div>
+  </div>
 
   {% if doc.withholding_certificate_no %}
   <p>{% translate "Withholding certificate" %}: {{ doc.withholding_certificate_no }}</p>
