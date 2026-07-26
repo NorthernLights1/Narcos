@@ -511,10 +511,31 @@ ChargeFormSet = inlineformset_factory(
         "amount": forms.NumberInput(attrs={"placeholder": _("0.00")}),
     },
 )
+class PaymentLineForm(forms.ModelForm):
+    """D86: an unsaved row without an amount is not a payment.
+
+    Field testing: staff typed an amount, changed their mind and cleared
+    it — but the leftover account/method picks made the row count as
+    'changed', so the formset demanded a number and blocked the save.
+    No amount on a never-saved row means the whole row is blank. Saved
+    rows keep validating: real money is removed with ✕, never by
+    clearing a box."""
+
+    class Meta:
+        model = PaymentLine
+        fields = ["account", "method", "amount"]
+        widgets = {"amount": forms.NumberInput(attrs={"placeholder": _("0.00")})}
+
+    def has_changed(self):
+        if self.is_bound and self.instance.pk is None:
+            amount = (self.data.get(self.add_prefix("amount")) or "").strip()
+            if not amount:
+                return False
+        return super().has_changed()
+
+
 PaymentLineFormSet = inlineformset_factory(
-    Document, PaymentLine, fields=["account", "method", "amount"],
-    extra=3, can_delete=True,
-    widgets={"amount": forms.NumberInput(attrs={"placeholder": _("0.00")})},
+    Document, PaymentLine, form=PaymentLineForm, extra=3, can_delete=True,
 )
 PaymentAllocationFormSet = inlineformset_factory(
     Document, PaymentAllocation, form=PaymentAllocationForm, fk_name="payment",
