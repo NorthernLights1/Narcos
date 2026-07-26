@@ -90,6 +90,19 @@ Written for a dev machine (Linux, `.venv`, PostgreSQL on localhost).
 > with a TIN — party box shows *name + TIN, no CUS-/SUP- code, no stray
 > text*.
 
+> **2026-07-26 field-testing round 1 (D84–D87):**
+> - **Receiving form has no Free box** any more (no bonus goods in this
+>   trade). Old documents that carried free units keep their numbers.
+> - **Printouts show Subtotal / Tax / Total at the bottom**, after the
+>   goods; the party box (name + TIN) stays at the top.
+> - **Payment lines start as one row** — use **+ Add row** to split
+>   across accounts, ✕ to remove a row.
+> - **Clearing a typed payment amount no longer blocks saving**: a
+>   never-saved row without an amount is ignored even if an account or
+>   method was picked on it. To verify: on a sale, type an amount on a
+>   payment row, pick an account, delete the amount, save — no "enter a
+>   number" complaint, and no payment line is created.
+
 ---
 
 ## 0. One-time setup

@@ -1181,3 +1181,46 @@ data. Audit log reconstructed the whole sequence in one query.*
   confirmed adequate; `.wslconfig` memory cap documented. Not RAM-driven —
   Docker on Windows adds WSL2 overhead; it's chosen for clean packaging,
   reproducible CI builds, and one-command deploy/DR.
+
+## Round 13 (2026-07-26) — first client field-testing round
+
+*Trigger: the owner ran the app with real trade for a stretch ("so far so
+good") and came back with four paper-and-keyboard findings.*
+
+### D84 — Free units come off the receiving interface
+- **What:** The receiving form and the document detail table no longer
+  show the **Free** box/column. `free_qty` stays on the model and in the
+  D21 posting math (amount paid ÷ all units received), so any old
+  document that carried bonus goods keeps its numbers — the UI just
+  stops asking.
+- **Why:** Owner: "there are no free units" — this business never
+  receives bonus goods, and the box only confused staff.
+
+### D85 — Printout totals read at the bottom
+- **What:** On the generic document printout (compact/detailed layouts)
+  the Subtotal / Tax / Total boxes moved from the header to the bottom
+  of the page, after the goods (and after charges/payment lines on the
+  detailed layout). The party box (name + TIN, D82) stays at the top.
+  The Cash Sales Attachment already printed its total under the table
+  and is unchanged.
+- **Why:** Owner: "the total of the attachment printout should be
+  written on the bottom" — that is how the trade reads an invoice:
+  goods first, money last.
+
+### D86 — A cleared payment amount is not a payment
+- **What:** A never-saved payment row whose amount is empty is treated
+  as blank and skipped at save, even when an account or method was
+  picked on it. Already-saved rows still validate — real money is
+  removed with the ✕ column, never by clearing a box.
+- **Why:** Field bug: staff typed an amount, changed their mind and
+  deleted it; the leftover account/method selections made Django treat
+  the row as filled, so the save bounced with "enter a number" on a row
+  the user considered empty.
+
+### D87 — Payment lines start as a single row
+- **What:** The payment-lines table renders one blank row instead of
+  three; "+ Add row" covers the split-across-accounts case and ✕
+  removes a row. (The cash-prefill JS already targeted the first row
+  and needs no change.)
+- **Why:** Owner: payments almost always go into a single account —
+  three blank rows suggested something more was expected.

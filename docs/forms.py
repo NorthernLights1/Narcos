@@ -534,8 +534,10 @@ class PaymentLineForm(forms.ModelForm):
         return super().has_changed()
 
 
+# D87: one row by default — payments almost always go into a single
+# account; "+ Add row" covers the split case.
 PaymentLineFormSet = inlineformset_factory(
-    Document, PaymentLine, form=PaymentLineForm, extra=3, can_delete=True,
+    Document, PaymentLine, form=PaymentLineForm, extra=1, can_delete=True,
 )
 PaymentAllocationFormSet = inlineformset_factory(
     Document, PaymentAllocation, form=PaymentAllocationForm, fk_name="payment",
