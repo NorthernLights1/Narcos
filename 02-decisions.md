@@ -1224,3 +1224,19 @@ good") and came back with four paper-and-keyboard findings.*
   and needs no change.)
 - **Why:** Owner: payments almost always go into a single account —
   three blank rows suggested something more was expected.
+
+### D88 — Rows are removed with a ✕ button, not a checkbox
+- **What:** Every line/charge/payment/allocation row now carries its own
+  **✕ button** in the last column. Clicking it removes that row there and
+  then: a row the server has never seen is taken straight out of the page,
+  and a saved row is hidden with Django's `DELETE` box ticked behind it so
+  the deletion lands on save. The checkbox itself is never shown — it stays
+  in the markup because it is the mechanism Django needs on submit.
+  `TOTAL_FORMS` deliberately is **not** decremented: it only says how many
+  forms to build, and leaving it alone keeps every remaining row on the
+  index it was rendered with (renumbering mid-form is how formsets get
+  their wires crossed; a removed row's fields simply arrive empty and are
+  ignored).
+- **Why:** Owner during field testing: the tick boxes at the end of each
+  row "have no purpose" — selecting one then saving is not how anyone
+  expects to delete a row. The button does what it says, immediately.

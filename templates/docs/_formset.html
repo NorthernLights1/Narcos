@@ -12,8 +12,8 @@
       <thead>
         <tr>
           {% for field in formset.empty_form.visible_fields %}
-            <th{% if field.name == "DELETE" %} class="col-del" title="{% translate 'Remove' %}"{% endif %}>
-              {% if field.name == "DELETE" %}✕{% else %}{{ field.label }}{% endif %}
+            <th{% if field.name == "DELETE" %} class="col-del"{% endif %}>
+              {% if field.name != "DELETE" %}{{ field.label }}{% endif %}
             </th>
           {% endfor %}
         </tr>
@@ -24,8 +24,16 @@
           {% for field in row.visible_fields %}
           <td{% if field.name == "DELETE" %} class="col-del"{% endif %}>
             {% if forloop.first %}{% for hidden in row.hidden_fields %}{{ hidden }}{% endfor %}{% endif %}
-            {{ field }}
-            {% if field.errors %}<p class="field-error">{{ field.errors|striptags }}</p>{% endif %}
+            {% if field.name == "DELETE" %}
+              {# D88: the checkbox is the mechanism Django needs on submit; the ✕ button is the interface. #}
+              <span class="row-del-box" hidden>{{ field }}</span>
+              <button type="button" class="btn-row-del" data-del-row
+                      title="{% translate 'Remove this row' %}"
+                      aria-label="{% translate 'Remove this row' %}">✕</button>
+            {% else %}
+              {{ field }}
+              {% if field.errors %}<p class="field-error">{{ field.errors|striptags }}</p>{% endif %}
+            {% endif %}
           </td>
           {% endfor %}
         </tr>
@@ -38,7 +46,14 @@
       {% for field in formset.empty_form.visible_fields %}
       <td{% if field.name == "DELETE" %} class="col-del"{% endif %}>
         {% if forloop.first %}{% for hidden in formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}{% endif %}
-        {{ field }}
+        {% if field.name == "DELETE" %}
+          <span class="row-del-box" hidden>{{ field }}</span>
+          <button type="button" class="btn-row-del" data-del-row
+                  title="{% translate 'Remove this row' %}"
+                  aria-label="{% translate 'Remove this row' %}">✕</button>
+        {% else %}
+          {{ field }}
+        {% endif %}
       </td>
       {% endfor %}
     </tr>

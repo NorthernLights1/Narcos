@@ -66,9 +66,37 @@
     recomputeTotals();
   }
 
+  /* D88: ✕ removes the row it sits in.
+   *
+   * A row the server has never seen is simply taken out of the page — its
+   * inputs stop being submitted, so Django builds a blank form for that
+   * index and ignores it. TOTAL_FORMS deliberately stays put: it only
+   * says how many forms to build, and leaving it alone keeps every
+   * remaining row on the index it was rendered with (renumbering mid-form
+   * is how formsets get their wires crossed).
+   *
+   * A saved row is real data, so we tick the DELETE box Django looks for
+   * and hide the row — the deletion lands when the form is saved. */
+  function deleteFormsetRow(row) {
+    var idInput = row.querySelector('input[name$="-id"]');
+    var deleteBox = row.querySelector('input[name$="-DELETE"]');
+    if (idInput && idInput.value && deleteBox) {
+      deleteBox.checked = true;
+      row.hidden = true;
+    } else {
+      row.remove();
+    }
+    recomputeTotals();
+  }
+
   document.addEventListener("click", function (event) {
     var button = event.target.closest("[data-add-row]");
     if (button) addFormsetRow(button.dataset.addRow);
+    var remove = event.target.closest("[data-del-row]");
+    if (remove) {
+      var row = remove.closest("tr");
+      if (row) deleteFormsetRow(row);
+    }
   });
 
   /* ---------- item pick: prefill + batch filtering ---------- */

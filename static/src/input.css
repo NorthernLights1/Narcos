@@ -77,7 +77,12 @@
   .table-input td { @apply px-1.5 py-1.5; }
   .table-input input, .table-input select { @apply px-2 py-1.5; }
   .col-del { @apply w-8 text-center; }
-  .col-del input[type="checkbox"] { @apply mt-2.5; }
+  /* D88: rows are removed with this button; the DELETE checkbox behind it
+     stays in the page for Django but is never shown. */
+  .btn-row-del {
+    @apply mt-1 cursor-pointer rounded px-2 py-1 text-sm leading-none
+           text-slate-400 hover:bg-rose-50 hover:text-rose-700;
+  }
   .total-row th { @apply border-t-2 border-slate-300 text-sm normal-case tracking-normal text-ink; }
   .opening-row td { @apply font-semibold text-slate-600; }
   .row-reversal td { @apply text-rose-700; }

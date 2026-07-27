@@ -102,6 +102,12 @@ Written for a dev machine (Linux, `.venv`, PostgreSQL on localhost).
 >   method was picked on it. To verify: on a sale, type an amount on a
 >   payment row, pick an account, delete the amount, save — no "enter a
 >   number" complaint, and no payment line is created.
+> - **Rows are removed with the ✕ button** at the end of each row (D88) —
+>   the old tick boxes are gone. On a new row ✕ removes it immediately; on
+>   a row that was already saved the row disappears and the deletion is
+>   written when you save. To verify: add three lines, ✕ the middle one,
+>   fill the rest and post — the posted document has exactly the two lines
+>   you kept, in order.
 
 ---
 
