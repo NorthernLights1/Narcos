@@ -147,6 +147,24 @@ def _write_money(doc: Document, effects: Effects, now) -> None:
         )
 
 
+def _void_the_document_being_corrected(draft: Document, actor) -> None:
+    """D92: reverse the document this draft replaces, before the draft posts.
+
+    Correcting is owner-only, and `void()` enforces that too — but it would
+    complain about voiding, which is not the button anyone pressed. Say what
+    is actually happening instead.
+    """
+    if not actor.is_owner:
+        raise PostingError(_("Only the owner can post a correction (D28)."))
+    original = draft.corrects
+    if original.status != Document.Status.POSTED:
+        raise PostingError(_(
+            "%(no)s is no longer posted, so this correction cannot replace "
+            "it. Post it as a new document instead."
+        ) % {"no": original.doc_no})
+    void(original, actor, draft.correction_reason)
+
+
 def post(document: Document, actor, override_reason: str = "") -> Document:
     """§4 Post(): single transaction, serialized by row locks (D14).
     override_reason: owner-only escape for credit BLOCK (D25) — never for
@@ -160,6 +178,13 @@ def post(document: Document, actor, override_reason: str = "") -> Document:
             raise PostingError(_("Document no longer exists (draft was deleted)."))
         if doc.status != Document.Status.DRAFT:
             raise PostingError(_("Only drafts can be posted (D28)."))
+        # D92: a correction voids what it replaces *first*, here, inside this
+        # same transaction — so the goods and money the original held are
+        # free before this document's own checks run, and a failure in
+        # either half rolls back both. Until this moment the original is
+        # untouched, which is what makes abandoning a correction harmless.
+        if doc.corrects_id:
+            _void_the_document_being_corrected(doc, actor)
         doc._override_reason = override_reason  # read by handlers (credit check)
         doc._posting_actor = actor  # read by owner-only handlers
         handler = get_handler(doc.doc_type)

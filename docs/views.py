@@ -25,7 +25,7 @@ from docs.forms import (
 )
 from docs.handlers_sales import outstanding_by_item_batch
 from docs.models import POST_EDITABLE_FIELDS, DocType, Document, DocumentCharge, DocumentLine
-from docs.posting import PostingError, post, void
+from docs.posting import PostingError, get_handler, post, void
 from docs.preview import draft_expected_totals
 from docs.settlement import (
     SETTLEMENT_FILTERS,
@@ -454,7 +454,7 @@ def document_void(request, pk):
     return redirect("document_detail", pk=voided.pk)
 
 
-def _duplicate_as_draft(source: Document, actor) -> Document:
+def _duplicate_as_draft(source: Document, actor, reason: str) -> Document:
     """An editable copy of `source`, built from the same field lists the
     entry forms use — so whatever a doc type asks staff to type is exactly
     what gets carried over, and nothing computed at posting is.
@@ -469,7 +469,8 @@ def _duplicate_as_draft(source: Document, actor) -> Document:
         "no": source.doc_no, "notes": fields.get("notes") or ""
     }
     draft = Document.objects.create(
-        doc_type=source.doc_type, created_by=actor, **fields,
+        doc_type=source.doc_type, created_by=actor, corrects=source,
+        correction_reason=reason, **fields,
     )
     for line in source.lines.all():
         DocumentLine.objects.create(
@@ -500,27 +501,39 @@ def _duplicate_as_draft(source: Document, actor) -> Document:
 @login_required
 @require_POST
 def document_correct(request, pk):
-    """D90: void the wrong document and reopen it as a draft, in one click.
+    """D90/D92: reopen a posted document as an editable draft.
 
-    Posted documents stay immutable — this is the void path plus the
-    retyping it used to cost. If the void is refused (D5: the goods have
-    moved on) the whole thing rolls back and no orphan draft survives.
+    Nothing is reversed here. The original stays live and the copy carries a
+    link back to it; posting the copy is what voids the original (D92), in
+    one transaction. Walk away from the draft and nothing ever happened.
     """
     if not request.user.is_owner:
         raise PermissionDenied
     source = get_object_or_404(
         Document.objects.filter(status=Document.Status.POSTED), pk=pk,
     )
+    reason = request.POST.get("reason", "").strip()
+    if not reason:
+        messages.error(request, _("A reason is required."))
+        return redirect("document_detail", pk=source.pk)
+    if source.corrections.filter(status=Document.Status.DRAFT).exists():
+        messages.error(request, _(
+            "A correction of %(no)s is already open. Finish or delete that "
+            "draft first."
+        ) % {"no": source.doc_no})
+        return redirect("document_detail", pk=source.pk)
     try:
-        with transaction.atomic():
-            voided = void(source, request.user, request.POST.get("reason", ""))
-            draft = _duplicate_as_draft(voided, request.user)
+        # Advisory only — the binding check runs again when the draft is
+        # posted, because the goods can move in between. Refusing here just
+        # saves retyping a correction that could never land.
+        get_handler(source.doc_type).check_voidable(source)
     except PostingError as exc:
         messages.error(request, str(exc))
         return redirect("document_detail", pk=source.pk)
+    draft = _duplicate_as_draft(source, request.user, reason)
     messages.success(request, _(
-        "%(no)s is voided. Fix this copy and post it."
-    ) % {"no": voided.doc_no})
+        "Fix this copy and post it — that is when %(no)s is voided."
+    ) % {"no": source.doc_no})
     return redirect("document_edit", pk=draft.pk)
 
 

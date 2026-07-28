@@ -116,6 +116,15 @@ class Document(models.Model):
                                          on_delete=models.PROTECT,
                                          related_name="related_documents")
 
+    # D92: this draft replaces `corrects`. The original stays live until this
+    # one is posted — posting voids it first, inside the same transaction, so
+    # the books never hold a reversal without its replacement. Abandon the
+    # draft and nothing ever happened.
+    corrects = models.ForeignKey("self", null=True, blank=True,
+                                 on_delete=models.PROTECT,
+                                 related_name="corrections")
+    correction_reason = models.CharField(max_length=300, blank=True)
+
     created_by = models.ForeignKey("core.User", on_delete=models.PROTECT,
                                    related_name="documents_created")
     created_at = models.DateTimeField(auto_now_add=True)

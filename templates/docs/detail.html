@@ -41,6 +41,22 @@
   </div>
 </div>
 
+{# D92: a correction is two documents for a while — say so on both of them. #}
+{% if doc.corrects %}
+<p class="msg msg-info pending-correction">
+  {% blocktranslate with no=doc.corrects.doc_no %}This replaces {{ no }}. Posting it voids {{ no }} at that moment — until then {{ no }} still counts. Delete this draft and nothing happens.{% endblocktranslate %}
+  <a href="{% url 'document_detail' doc.corrects.pk %}">{% translate "Open it" %}</a>
+</p>
+{% endif %}
+{% for correction in doc.corrections.all %}
+  {% if correction.status == "DRAFT" %}
+  <p class="msg msg-info pending-correction">
+    {% translate "A correction of this document is open as a draft. This one stays valid until that draft is posted." %}
+    <a href="{% url 'document_detail' correction.pk %}">{% translate "Open the draft" %}</a>
+  </p>
+  {% endif %}
+{% endfor %}
+
 <section class="card">
   <dl class="summary-grid">
     <div><dt>{% translate "Type" %}</dt><dd>{{ doc.get_doc_type_display }}</dd></div>
@@ -187,7 +203,18 @@
       <input id="id_override_reason" name="override_reason">
     </div>
     {% endif %}
+    {% if doc.corrects %}
+    {# The moment the void actually fires — the one that cannot be undone. #}
+    <button type="submit" class="btn btn-primary"
+            data-confirm
+            data-confirm-title="{% translate 'Post this correction?' %}"
+            data-confirm-ok="{% blocktranslate with no=doc.corrects.doc_no %}Post and void {{ no }}{% endblocktranslate %}"
+            data-confirm-body="{% blocktranslate with no=doc.corrects.doc_no reason=doc.correction_reason %}This voids {{ no }} and replaces it with this document, in one step — if either half fails, neither happens.|The reversal is recorded with your reason: “{{ reason }}”.|This cannot be undone.{% endblocktranslate %}">
+      {% translate "Post" %}
+    </button>
+    {% else %}
     <button type="submit" class="btn btn-primary">{% translate "Post" %}</button>
+    {% endif %}
   </form>
   <form method="post" action="{% url 'document_delete' doc.pk %}">
     {% csrf_token %}
@@ -208,10 +235,20 @@
     </div>
     <div class="actions">
       <button type="submit" class="btn btn-primary"
-              formaction="{% url 'document_correct' doc.pk %}">
+              formaction="{% url 'document_correct' doc.pk %}"
+              data-confirm data-confirm-reason="id_reason"
+              data-confirm-title="{% blocktranslate with no=doc.doc_no %}Correct {{ no }}?{% endblocktranslate %}"
+              data-confirm-ok="{% translate 'Open draft copy' %}"
+              data-confirm-body="{% blocktranslate with no=doc.doc_no %}A draft copy opens for you to fix. Nothing changes in your books yet — {{ no }} stays active until you post that copy.|Posting the copy voids {{ no }} at that moment, with your reason: “{reason}”.|If you never post the copy, nothing happens.{% endblocktranslate %}">
         {% translate "Correct this document" %}
       </button>
-      <button type="submit" class="btn">{% translate "Void only" %}</button>
+      <button type="submit" class="btn"
+              data-confirm data-confirm-reason="id_reason"
+              data-confirm-title="{% blocktranslate with no=doc.doc_no %}Void {{ no }}?{% endblocktranslate %}"
+              data-confirm-ok="{% blocktranslate with no=doc.doc_no %}Void {{ no }}{% endblocktranslate %}"
+              data-confirm-body="{% translate 'This reverses it now — stock returns, money and balances are undone — and nothing replaces it.|If you are fixing a mistake, use “Correct this document” instead.|This cannot be undone.' %}">
+        {% translate "Void only" %}
+      </button>
     </div>
   </form>
 </section>
