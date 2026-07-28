@@ -1294,3 +1294,51 @@ good") and came back with four paper-and-keyboard findings.*
   **empty in Settings** (it was added with D78, after this install last
   edited its settings, so it had never been filled). Filling *Settings →
   Phone numbers* makes it appear; the generic layouts were the real gap.
+
+## Round 15 (2026-07-28) — correcting becomes reversible
+
+### D92 — The void waits for the replacement to be posted
+- **What:** Amends D90. **Correct this document** no longer reverses
+  anything: it opens the draft copy and records what that copy replaces
+  (`corrects` + `correction_reason`). The original stays **live and
+  counted** until the copy is posted; posting it voids the original
+  **first, inside the same transaction**, then applies the replacement.
+  Delete or abandon the draft and nothing ever happened. Posting a
+  correction is **owner-only** (void always was).
+- **Why:** Field testing: "it should not be voided until the new document
+  is posted." Correct — under D90 an interrupted correction left the books
+  holding a reversal with nothing in its place: the sale gone, stock back,
+  money undone, and no replacement. That is worse than the mistake being
+  corrected.
+- **How, and why the order matters:** the original still *holds* the stock
+  and money it consumed, so the replacement cannot pass its own checks
+  while the original stands — the void has to run before them, not after
+  the post. One transaction covers both, so a failure in either half
+  leaves both untouched: never a voided original without its replacement,
+  never both live at once. (A test proves it: a sale of 8 packs out of 10,
+  corrected to 9, posts only because the void hands the goods back first.)
+- **Guards:** one open correction per document; the original must still be
+  posted when the replacement lands (otherwise the correction is refused
+  with a message, not a crash); the D5 voidability check runs early at
+  click time as **advice** and again binding at post time, because the
+  goods can move in between. Both documents carry a banner saying a
+  correction is pending.
+
+### D93 — Destructive buttons say what they will do
+- **What:** A single `<dialog>` in `base.html`, filled from
+  `data-confirm-*` attributes on whichever button was pressed, so each
+  action states its own consequence and reads the owner's typed reason
+  back to them. Wired to three buttons: **Correct** (reassuring — nothing
+  changes yet), **Post** on a correction draft (the real warning — this is
+  when the void fires and it cannot be undone), and **Void only**.
+- **Why:** Owner: "there should be a clear warning ... so the user
+  understands what the platform is doing." D92 also flipped which button
+  is dangerous — correcting is now reversible, while **Void only** still
+  reverses a document with nothing replacing it, and it previously had no
+  confirmation at all.
+- **How:** the click is intercepted, not the submit, because Correct and
+  Void share one form and differ only by `formaction`;
+  `requestSubmit(button)` replays the exact button after the owner agrees.
+  `reportValidity()` runs first so the browser's own "reason is required"
+  still fires. Native `<dialog>` brings the focus trap and Esc handling;
+  with JS off the buttons simply work as before.

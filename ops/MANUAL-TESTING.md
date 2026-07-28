@@ -129,6 +129,26 @@ Written for a dev machine (Linux, `.venv`, PostgreSQL on localhost).
 > - **Company phone on printouts** (D91): fill *Settings → Phone numbers* —
 >   it now prints under the TIN on every layout, not just the attachment.
 
+> **2026-07-28 correcting is now reversible (D92/D93):**
+> - **Correct no longer voids anything straight away.** Clicking *Correct
+>   this document* opens the draft copy; the original **stays posted and
+>   still counts** until you post that copy. Posting the copy voids the
+>   original at that moment, in one step. **Delete the draft and nothing
+>   ever happened.** Posting a correction is owner-only.
+> - To verify: correct a sale, then *delete the draft* — the original must
+>   still read POSTED. Do it again, fix the quantity (and the cash payment
+>   line to match), post — now the original reads VOIDED with your reason,
+>   and the new document has its own number. Both documents show a
+>   "correction pending" banner while the draft is open.
+> - **The stock case worth trying:** with 10 packs on hand, sell 8, then
+>   correct to 9 and post. It must succeed — the void hands the goods back
+>   inside the same step. If posting fails for any reason, nothing is
+>   voided.
+> - **Confirmation dialogs** now appear on *Correct*, on *Post* for a
+>   correction draft, and on *Void only*. Each states what it will do and
+>   quotes your reason back. Note **Void only** is now the dangerous one —
+>   it reverses with no replacement.
+
 ---
 
 ## 0. One-time setup

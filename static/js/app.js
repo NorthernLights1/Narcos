@@ -99,6 +99,77 @@
     }
   });
 
+  /* ---------- confirmation dialog (D93) ----------
+   *
+   * Any submit button carrying data-confirm explains itself before it fires.
+   * The wording lives on the button so each action says what *it* does; a
+   * {reason} token is replaced with whatever the linked input holds, so the
+   * dialog can read the owner's own words back to them.
+   *
+   * The click is intercepted rather than the submit, because Correct and
+   * Void share one form and differ only by formaction — requestSubmit(button)
+   * replays the exact button that was pressed. */
+
+  var confirmed = null;  // the button we have already cleared
+
+  function confirmText(button, key) {
+    var raw = button.dataset[key] || "";
+    var field = button.dataset.confirmReason;
+    var input = field ? document.getElementById(field) : null;
+    return raw.replace("{reason}", input ? input.value.trim() : "");
+  }
+
+  function askToConfirm(button) {
+    var dialog = document.getElementById("confirm-dialog");
+    if (!dialog || !dialog.showModal) return true;  // no dialog: let it through
+    dialog.querySelector('[data-confirm-slot="title"]').textContent =
+      confirmText(button, "confirmTitle");
+    var body = dialog.querySelector('[data-confirm-slot="body"]');
+    body.textContent = "";
+    confirmText(button, "confirmBody").split("|").forEach(function (line) {
+      if (!line.trim()) return;
+      var p = document.createElement("p");
+      p.textContent = line.trim();
+      body.appendChild(p);
+    });
+    dialog.querySelector("[data-confirm-ok]").textContent =
+      confirmText(button, "confirmOk") || "OK";
+    dialog._pendingButton = button;
+    dialog.showModal();
+    return false;
+  }
+
+  document.addEventListener("click", function (event) {
+    var button = event.target.closest("[data-confirm]");
+    if (!button || button === confirmed) return;
+    var form = button.form;
+    /* Let the browser's own "this field is required" run first — we are
+     * about to swallow the event that would have triggered it. */
+    if (form && !form.reportValidity()) {
+      event.preventDefault();
+      return;
+    }
+    event.preventDefault();
+    askToConfirm(button);
+  }, true);
+
+  document.addEventListener("click", function (event) {
+    var dialog = document.getElementById("confirm-dialog");
+    if (!dialog) return;
+    if (event.target.closest("[data-confirm-cancel]")) {
+      dialog.close();
+      return;
+    }
+    if (event.target.closest("[data-confirm-ok]")) {
+      var button = dialog._pendingButton;
+      dialog.close();
+      if (!button || !button.form) return;
+      confirmed = button;              // second pass sails through
+      button.form.requestSubmit(button);
+      confirmed = null;
+    }
+  });
+
   /* ---------- item pick: prefill + batch filtering ---------- */
 
   function rowInput(row, suffix) {

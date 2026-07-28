@@ -6,11 +6,11 @@
   <title>{% block title %}Narcos{% endblock %}</title>
   {# bump ?v= whenever app.css/app.js change so browsers refetch #}
   <link rel="stylesheet" href="{% static 'css/choices.min.css' %}">
-  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=20260727a">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=20260728a">
   <script src="{% static 'js/htmx.min.js' %}" defer></script>
   <script src="{% static 'js/alpine.min.js' %}" defer></script>
   <script src="{% static 'js/choices.min.js' %}"></script>
-  <script src="{% static 'js/app.js' %}?v=20260727a"></script>
+  <script src="{% static 'js/app.js' %}?v=20260728a"></script>
 </head>
 <body>
 <header class="topbar">
@@ -58,5 +58,15 @@
     {% block content %}{% endblock %}
   </main>
 </div>
+
+{# D93: one dialog for the whole app. Buttons carry the wording in data-confirm-* attributes; app.js fills this in and only submits once the user agrees. Native <dialog> brings the focus trap and Esc handling with it. #}
+<dialog id="confirm-dialog" class="confirm-dialog">
+  <h2 data-confirm-slot="title"></h2>
+  <div data-confirm-slot="body"></div>
+  <div class="confirm-actions">
+    <button type="button" class="btn btn-secondary" data-confirm-cancel>{% translate "Cancel" %}</button>
+    <button type="button" class="btn btn-primary" data-confirm-ok></button>
+  </div>
+</dialog>
 </body>
 </html>
