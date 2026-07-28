@@ -7,6 +7,7 @@ from django.forms import inlineformset_factory
 from django.utils.translation import gettext_lazy as _
 
 from catalog.models import Item
+from core.models import CompanySettings
 from docs.handlers_sales import issue_line_value
 from docs.models import DocType, Document, DocumentCharge, DocumentLine
 from docs.tax import round2
@@ -65,6 +66,24 @@ def _batch_label(batch: Batch) -> str:
     expiry = batch.expiry_date.isoformat() if batch.expiry_date else _("no expiry")
     on_hand = batch.warehouse_qty or 0
     return f"{batch.item.code} · {batch.batch_no} · {expiry} · {on_hand}"
+
+
+def fields_hidden_by_settings() -> set[str]:
+    """D89: boxes this business has switched off in settings.
+
+    Hiding only affects data entry. The columns stay on the models and in
+    the posting math, so documents posted before a flag was turned off
+    keep their discounts, machine totals and pack factors.
+    """
+    settings = CompanySettings.load()
+    hidden = set()
+    if not settings.fiscal_machine_present:
+        hidden.add("machine_total")
+    if not settings.discounts_enabled:
+        hidden.update({"doc_discount", "line_discount"})
+    if not settings.unit_conversion_enabled:
+        hidden.add("factor")
+    return hidden
 
 
 DOC_CONFIG = {
@@ -273,7 +292,7 @@ class DocumentForm(forms.ModelForm):
 
     def __init__(self, *args, doc_type: str, **kwargs):
         super().__init__(*args, **kwargs)
-        keep = set(DOC_CONFIG[doc_type]["fields"])
+        keep = set(DOC_CONFIG[doc_type]["fields"]) - fields_hidden_by_settings()
         for name in list(self.fields):
             if name not in keep:
                 del self.fields[name]
@@ -347,7 +366,7 @@ class DocumentLineForm(forms.ModelForm):
                  master_priced: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
         self._master_priced = master_priced
-        keep = set(line_fields)
+        keep = set(line_fields) - fields_hidden_by_settings()
         for name in list(self.fields):
             if name not in keep:
                 del self.fields[name]
@@ -549,8 +568,12 @@ def formsets_for(doc: Document, data=None):
     config = DOC_CONFIG[doc.doc_type]
     formsets = []
     if config.get("lines"):
+        # D89: the owner can hand pricing back to the counter. With the flag
+        # off this stays D80 — the item's price, recomputed server-side.
+        master_priced = (config.get("master_priced", False)
+                         and not CompanySettings.load().sale_price_editable)
         line_kwargs = {"line_fields": config["lines"],
-                       "master_priced": config.get("master_priced", False)}
+                       "master_priced": master_priced}
         if doc.doc_type == DocType.CONSIGNMENT_SETTLEMENT and doc.related_document_id:
             line_kwargs["issue"] = doc.related_document
         formsets.append((

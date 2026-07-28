@@ -66,6 +66,31 @@ class CompanySettings(models.Model):
         _("Withholding rate %"), max_digits=5, decimal_places=2, default=3
     )
 
+    # D89: what this business actually uses. Each flag only hides a box on
+    # the entry forms — the underlying columns keep working, so posted
+    # documents that already carry a discount, a machine total or a pack
+    # factor still show and total exactly as before.
+    fiscal_machine_present = models.BooleanField(
+        _("Fiscal machine present"), default=True,
+        help_text=_("Off hides the machine-total box on sales."),
+    )
+    discounts_enabled = models.BooleanField(
+        _("Discounts in use"), default=True,
+        help_text=_("Off hides both the document and line discount boxes."),
+    )
+    unit_conversion_enabled = models.BooleanField(
+        _("Pack conversion (factor) in use"), default=True,
+        help_text=_("Off hides the factor box; every line counts in base units."),
+    )
+    sale_price_editable = models.BooleanField(
+        _("Sale price editable at the time of sale"), default=False,
+        help_text=_(
+            "On lets staff type a price on sales, proformas and consignment "
+            "issues instead of taking the item's price (reverses D80 — "
+            "discounts are the safer way to charge less)."
+        ),
+    )
+
     near_expiry_months = models.PositiveSmallIntegerField(_("Near-expiry months"), default=6)  # D59
     consignment_term_months = models.PositiveSmallIntegerField(
         _("Consignment term (months)"), default=3
@@ -94,7 +119,10 @@ class CompanySettings(models.Model):
     AUDITED_FIELDS = [
         "name", "address", "tin", "phone", "tax_regime", "vat_rate", "tot_rate",
         "prices_tax_exclusive", "withholding_on_sales", "withholding_on_purchases",
-        "withholding_rate", "near_expiry_months", "consignment_term_months",
+        "withholding_rate",
+        "fiscal_machine_present", "discounts_enabled", "unit_conversion_enabled",
+        "sale_price_editable",
+        "near_expiry_months", "consignment_term_months",
         "default_credit_limit", "default_credit_action",
         "fiscal_year_start_month", "date_display", "print_layout",
     ]
