@@ -109,6 +109,26 @@ Written for a dev machine (Linux, `.venv`, PostgreSQL on localhost).
 >   fill the rest and post — the posted document has exactly the two lines
 >   you kept, in order.
 
+> **2026-07-28 field-testing round 2 (D89–D91):**
+> - **Settings has four new switches** (D89): *Fiscal machine present*,
+>   *Discounts in use*, *Pack conversion (factor) in use*, *Sale price
+>   editable at the time of sale*. Turning the first three off hides the
+>   machine-total, discount (document + line) and factor boxes; the last
+>   one lets staff type a price on sales/proformas/consignment issues
+>   instead of taking the item's price. All four start at today's
+>   behaviour — **nothing changes until you flip a switch**. Documents
+>   posted earlier keep their discounts/factors and still total the same.
+> - **"Correct this document"** (D90): on any posted document the owner
+>   now sees one **Reason** box with two buttons — *Correct this document*
+>   voids it and immediately hands back a draft copy to fix and post;
+>   *Void only* is the old behaviour. To verify: post a sale with the
+>   wrong quantity, correct it, change the quantity on the draft that
+>   opens, post — the original shows VOIDED, the new one carries the note
+>   "Corrects SI-0000NN". Where a void is refused (a receiving whose stock
+>   was already sold), correcting is refused too and no draft appears.
+> - **Company phone on printouts** (D91): fill *Settings → Phone numbers* —
+>   it now prints under the TIN on every layout, not just the attachment.
+
 ---
 
 ## 0. One-time setup

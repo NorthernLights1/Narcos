@@ -51,6 +51,7 @@
       <h1>{{ company.name|default:"Narcos" }}</h1>
       <p class="muted">{{ company.address }}</p>
       <p class="muted">{% translate "TIN" %}: {{ company.tin|default:"-" }}</p>
+      {% if company.phone %}<p class="muted">{% translate "Tel" %}: {{ company.phone }}</p>{% endif %}
       <p class="label">{% translate "Attachment / not a fiscal receipt" %}</p>
     </div>
     <div>

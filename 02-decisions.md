@@ -1240,3 +1240,57 @@ good") and came back with four paper-and-keyboard findings.*
 - **Why:** Owner during field testing: the tick boxes at the end of each
   row "have no purpose" — selecting one then saving is not how anyone
   expects to delete a row. The button does what it says, immediately.
+
+## Round 14 (2026-07-28) — field-testing round 2: fit the app to this trade
+
+### D89 — Four settings flags decide which boxes the forms show
+- **What:** Company settings gained **Fiscal machine present**, **Discounts
+  in use**, **Pack conversion (factor) in use** and **Sale price editable
+  at the time of sale**. Off/on they hide or show the machine-total box,
+  both discount boxes (document and line), and the line factor box; the
+  last one hands pricing back to the counter. All four default to today's
+  behaviour (present / in use / in use / **not** editable), so nothing
+  changes until the owner flips a switch.
+- **How:** `fields_hidden_by_settings()` subtracts names from the field
+  lists `DocumentForm` and `DocumentLineForm` already filter by, and
+  `formsets_for` turns `master_priced` off when the price is editable.
+  Hiding is **entry-only**: the columns stay on the models and in the
+  posting math, so documents posted while a flag was on keep their
+  discounts, machine totals and pack factors, and still total the same.
+  The totals preview already read those boxes defensively, so a missing
+  one simply counts as zero.
+- **Why:** Owner after field testing: this business has no fiscal machine,
+  gives no discounts and buys in base units, so three boxes were dead
+  weight on every screen; and staff sometimes need to agree a price at the
+  counter.
+- **Note:** `sale_price_editable` deliberately reverses D80 (the CN-000002
+  lesson — a hand-typed price is what caused it). It stays **off** by
+  default and the safer route is still a line or document discount.
+
+### D90 — "Correct this document": void and reopen in one click
+- **What:** A posted document shows one **Reason** box with two buttons:
+  **Correct this document** (voids it *and* hands back an editable draft
+  copy — party, lines, charges, payments, allocations, with a note
+  pointing at the document it replaces) and **Void only** (the old
+  behaviour). Owner only; the reason is still required and still audited.
+- **How:** `_duplicate_as_draft()` copies exactly the fields each doc type
+  asks staff to type, read from `DOC_CONFIG` unfiltered — so a discount
+  captured before D89 hid the box is still carried over. Void and copy run
+  in one transaction: when the void is refused (D5, the goods have already
+  moved on) nothing is written and no orphan draft survives.
+- **Why:** Owner asked for editable posted documents. Editing them would
+  break the ledgers those documents wrote — stock, money, party,
+  withholding and the FIFO cost lots later sales already consumed — and
+  leave the paper disagreeing with every report built on them. The real
+  complaint was that fixing a mistake meant retyping the whole document.
+  This removes the retyping and keeps the books reversible rather than
+  erasable.
+
+### D91 — The company phone prints on every layout
+- **What:** `print.html` now prints **Tel** under the company TIN, as the
+  Cash Sales Attachment already did.
+- **Why:** Reported as "phone number not showing on attachments". The
+  attachment layout was in fact already printing it — the field was simply
+  **empty in Settings** (it was added with D78, after this install last
+  edited its settings, so it had never been filled). Filling *Settings →
+  Phone numbers* makes it appear; the generic layouts were the real gap.

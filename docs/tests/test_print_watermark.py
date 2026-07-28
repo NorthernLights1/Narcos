@@ -10,7 +10,7 @@ import pytest
 from django.urls import reverse
 
 from catalog.models import Account, Customer, Item, Supplier
-from core.models import User
+from core.models import CompanySettings, User
 from docs.models import Document, DocType, DocumentLine
 from docs.posting import post
 from money.models import PaymentLine
@@ -158,3 +158,17 @@ def test_print_totals_come_after_the_lines(client, owner, customer,
     html = client.get(reverse("document_print", args=[sale.pk])).content.decode()
     assert html.index("Amoxicillin") < html.index("<strong>Total</strong>")
     assert html.index("Selam Pharmacy") < html.index("Amoxicillin")
+
+
+def test_print_shows_company_phone(client, owner, customer, stocked_item):
+    """D91: the company's own phone belongs on anything we hand over —
+    it was only on the attachment layout before."""
+    settings = CompanySettings.load()
+    settings.phone = "0911-223344"
+    settings.save()
+    sale = _posted_cash_sale(owner, customer, stocked_item)
+    client.force_login(owner)
+    for layout in ("COMPACT", "DETAILED", "SALES_ATT"):
+        html = client.get(reverse("document_print", args=[sale.pk]),
+                          {"layout": layout}).content.decode()
+        assert "0911-223344" in html, layout
