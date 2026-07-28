@@ -21,5 +21,6 @@ urlpatterns = [
     path("<int:pk>/convert-sale/", views.document_convert_sale, name="document_convert_sale"),
     path("<int:pk>/post/", views.document_post, name="document_post"),
     path("<int:pk>/void/", views.document_void, name="document_void"),
+    path("<int:pk>/correct/", views.document_correct, name="document_correct"),
     path("<int:pk>/delete/", views.document_delete, name="document_delete"),
 ]

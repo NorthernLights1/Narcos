@@ -196,13 +196,23 @@
 </section>
 {% elif doc.status == "POSTED" and user.is_owner %}
 <section class="card">
+  {# D90: one reason, two outcomes — void and stop, or void and get the copy back. #}
   <form method="post" action="{% url 'document_void' doc.pk %}">
     {% csrf_token %}
     <div class="field">
-      <label for="id_reason">{% translate "Void reason" %}</label>
+      <label for="id_reason">{% translate "Reason" %}</label>
       <input id="id_reason" name="reason" required>
+      <p class="field-help">
+        {% translate "Posted documents are never edited. Voiding reverses this one; correcting also reopens it as a draft you can fix and post again." %}
+      </p>
     </div>
-    <button type="submit" class="btn btn-primary">{% translate "Void" %}</button>
+    <div class="actions">
+      <button type="submit" class="btn btn-primary"
+              formaction="{% url 'document_correct' doc.pk %}">
+        {% translate "Correct this document" %}
+      </button>
+      <button type="submit" class="btn">{% translate "Void only" %}</button>
+    </div>
   </form>
 </section>
 {% endif %}

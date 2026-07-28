@@ -34,7 +34,7 @@ from docs.settlement import (
     settlement_context,
     settlement_state,
 )
-from money.models import PaymentAllocation
+from money.models import PaymentAllocation, PaymentLine
 from stock.models import StockBalance, Zone
 
 
@@ -452,6 +452,76 @@ def document_void(request, pk):
         return redirect("document_detail", pk=doc.pk)
     messages.success(request, _("Voided %(no)s.") % {"no": voided.doc_no})
     return redirect("document_detail", pk=voided.pk)
+
+
+def _duplicate_as_draft(source: Document, actor) -> Document:
+    """An editable copy of `source`, built from the same field lists the
+    entry forms use — so whatever a doc type asks staff to type is exactly
+    what gets carried over, and nothing computed at posting is.
+
+    DOC_CONFIG is read unfiltered on purpose: a discount or pack factor
+    captured before those boxes were switched off (D89) still belongs to
+    the document being corrected.
+    """
+    config = DOC_CONFIG[source.doc_type]
+    fields = {name: getattr(source, name) for name in config["fields"]}
+    fields["notes"] = _("Corrects %(no)s. %(notes)s") % {
+        "no": source.doc_no, "notes": fields.get("notes") or ""
+    }
+    draft = Document.objects.create(
+        doc_type=source.doc_type, created_by=actor, **fields,
+    )
+    for line in source.lines.all():
+        DocumentLine.objects.create(
+            document=draft,
+            **{name: getattr(line, name) for name in config["lines"]},
+        )
+    if config.get("charges"):
+        for charge in source.charges.all():
+            DocumentCharge.objects.create(
+                document=draft, label=charge.label, amount=charge.amount,
+                is_taxable=charge.is_taxable,
+            )
+    if config.get("payments"):
+        for payment in source.payment_lines.all():
+            PaymentLine.objects.create(
+                document=draft, account=payment.account,
+                method=payment.method, amount=payment.amount,
+            )
+    if config.get("allocations"):
+        for allocation in source.allocations_made.all():
+            PaymentAllocation.objects.create(
+                payment=draft, target=allocation.target,
+                amount=allocation.amount,
+            )
+    return draft
+
+
+@login_required
+@require_POST
+def document_correct(request, pk):
+    """D90: void the wrong document and reopen it as a draft, in one click.
+
+    Posted documents stay immutable — this is the void path plus the
+    retyping it used to cost. If the void is refused (D5: the goods have
+    moved on) the whole thing rolls back and no orphan draft survives.
+    """
+    if not request.user.is_owner:
+        raise PermissionDenied
+    source = get_object_or_404(
+        Document.objects.filter(status=Document.Status.POSTED), pk=pk,
+    )
+    try:
+        with transaction.atomic():
+            voided = void(source, request.user, request.POST.get("reason", ""))
+            draft = _duplicate_as_draft(voided, request.user)
+    except PostingError as exc:
+        messages.error(request, str(exc))
+        return redirect("document_detail", pk=source.pk)
+    messages.success(request, _(
+        "%(no)s is voided. Fix this copy and post it."
+    ) % {"no": voided.doc_no})
+    return redirect("document_edit", pk=draft.pk)
 
 
 @login_required
