@@ -4,6 +4,11 @@ Status: `OPEN` (needs a decision), `TO BUILD` (decided, not built yet), `WATCH`
 (future, don't block it), `RESOLVED` (in [02-decisions.md](02-decisions.md)),
 `DROPPED`/`DEFERRED` (out of v1).
 
+**As of 2026-07-28 (client field testing):** the build is in the client's
+hands and real use has reopened a short list of questions — see
+[round 3 below](#new--client-field-testing-round-3-2026-07-28) (R47–R55).
+Rounds 1 and 2 of that feedback are already built and logged as D84–D91.
+
 **As of 2026-07-03 (after round 7):** every design question is closed. Tax
 settled (D50–D54) · stack locked (D55: Django + **PostgreSQL 16** + HTMX/Alpine +
 Tailwind — D66 confirms PostgreSQL after D65 amendment) · owner's closing answers
@@ -191,3 +196,89 @@ added D62 unit-conversion model kept · D63 input VAT confirmed not modeled.
 Round 7 (2026-07-03) added D65 SQLite amendment (test scope) and D66 PostgreSQL
 final (test-what-you-ship principle, multi-client product, postings must be
 multi-user correct).
+
+---
+
+## New — client field testing, round 3 (2026-07-28)
+
+Eight comments came back from the client after real use. Three of them are
+still design questions; the rest are decided and waiting to be built.
+Nothing here is implemented yet except R47.
+
+### R47 — Selling price editable on sales — `RESOLVED` (→ D89)
+Already shipped: **Settings → "Sale price editable at the time of sale"**,
+off by default because it reverses D80 (the CN-000002 lesson). Nothing to
+build — the owner just ticks the box. Discounts remain the safer route.
+
+### R48 — Items read by brand, not generic name — `OPEN` (part decided)
+`Item.name` holds the brand; `generic_name` is a separate field. Two
+changes hide in one request:
+- **Items list gains a Generic name column** — decided, `TO BUILD`. (It is
+  already *searchable*, just not shown.)
+- **Item pickers on document lines** — `OPEN`. `Item.__str__` is
+  `"CODE — brand"` and drives **every dropdown in the app**, so switching
+  to generic-first changes how every line on every form reads. Needs the
+  owner's call before building.
+
+### R49 — Create an item without leaving Receiving — `OPEN` (scope)
+Staff must abandon a half-typed receiving to add an unknown item. Wanted:
+a modal on the line row that creates the item and drops it into the
+picker. **Must reuse `ItemForm`**, not a parallel simplified form, or D81
+(every item needs a usable price) and the auto-code rules (D67) get
+bypassed and half-formed items accumulate. `OPEN`: minimum fields in the
+modal — proposed generic name, brand name, base unit, price.
+
+### R50 — Prepared By + signature on the printout — `TO BUILD`
+The **generic** layout (`print.html`, labelled "Attachment / not a fiscal
+receipt", and the COMPACT default) has no signature markup at all; only
+the Cash Sales Attachment layout does. Decided with the owner
+(2026-07-28): print **Prepared By: <full name>** from the document's
+**`created_by`** (matches the Cash Sales Attachment; "prepared" = who
+entered it), with a ruled signature line beneath, at the bottom of the
+page under the D85 totals. **No stamp box** (client to confirm later) and
+**no Received By** for now. Block needs `break-inside: avoid` so a
+multi-page print cannot split the name from its line.
+
+### R51 — Generic name before brand on the attachment — `TO BUILD`
+The Cash Sales Attachment prints `Brand (Generic), Strength, Dosage`; the
+client reads generic-first. Flip to `Generic (Brand), …`. Do it together
+with R48 so the wording agrees everywhere.
+
+### R52 — "Due Date" → "Payment Due Date" — `TO BUILD`
+`Document.due_date` carries no `verbose_name`, so Django auto-labels it
+"Due date". The same field doubles as the supplier's credit terms on
+receivings (feeds AP overdue) — "Payment due date" reads correctly for
+both, so one label change covers it.
+
+### R53 — Print a draft — `OPEN` (what for?)
+`document_print` accepts posted documents only; a draft 404s. Buildable,
+but a draft **has no document number** (assigned at posting under gapless
+rules, D8) and is not yet a record of anything — printed plain, someone
+will hand it to a customer. Would need a loud **DRAFT** watermark (the D18
+watermark machinery already exists) and no number where the number goes.
+`OPEN`: is this a **picking list** for the storeroom or a **quote** for the
+customer? A picking list wants its own layout, not a watermarked invoice.
+
+### R54 — Price/net on a saved draft — `TO BUILD`
+A saved draft already shows an **Expected totals** card (D67–D69), but the
+per-line **Net** column reads 0.00 because `line_net` is frozen at posting
+(※) and defaults to zero. Compute per-line net on the fly for drafts,
+**display only**, clearly labelled as a preview — those figures can still
+move at posting (tax allocation, master-price re-derivation under D80).
+
+### R55 — Editable posted documents — `RESOLVED` (→ D90)
+The client asked for a flag letting the owner edit anything on a posted
+document. Refused as designed, and answered with D90 instead. The reason
+in one line: **a posted document is the cause of ledger rows, not a record
+of them** — editing it changes the paper and leaves the stock, money,
+party and withholding ledgers (and the FIFO cost lots later sales already
+consumed) saying something else, which no report would ever reconcile. The
+guards in `Document.save()`, `PaymentLine.save()` and the lot-consumption
+freeze are the warning, not the safety. Making editing safe means
+reversing and re-applying every ledger row under the same locks and
+balance checks — which is void + repost, i.e. exactly what **"Correct this
+document" (D90)** now does in one click. A narrow set of ledger-free
+fields is already editable and audited (`fiscal_receipt_no`,
+`machine_total`, `withholding_certificate_no`); `notes` and `due_date`
+could be added at low risk if the client asks. `WATCH` that request
+recurring.
