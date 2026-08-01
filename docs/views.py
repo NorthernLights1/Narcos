@@ -339,8 +339,16 @@ def document_detail(request, pk):
         pk=pk,
     )
     attachments = list(doc.attachments.select_related("uploaded_by", "voided_by"))
+    # D95: voiding this document takes its settling payment with it — the
+    # warning has to say so by name before the owner commits.
+    settled_by = list(
+        Document.objects.filter(allocations_made__target=doc,
+                                status=Document.Status.POSTED)
+        .distinct().order_by("pk")
+    ) if doc.status == Document.Status.POSTED else []
     return render(request, "docs/detail.html", {
         "doc": doc,
+        "settled_by_numbers": ", ".join(p.doc_no or "" for p in settled_by),
         "config": DOC_CONFIG.get(doc.doc_type),
         "expected": draft_expected_totals(doc),
         "settlement": settlement_context(doc),

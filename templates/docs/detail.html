@@ -239,14 +239,14 @@
               data-confirm data-confirm-reason="id_reason"
               data-confirm-title="{% blocktranslate with no=doc.doc_no %}Correct {{ no }}?{% endblocktranslate %}"
               data-confirm-ok="{% translate 'Open draft copy' %}"
-              data-confirm-body="{% blocktranslate with no=doc.doc_no %}A draft copy opens for you to fix. Nothing changes in your books yet — {{ no }} stays active until you post that copy.|Posting the copy voids {{ no }} at that moment, with your reason: “{reason}”.|If you never post the copy, nothing happens.{% endblocktranslate %}">
+              data-confirm-body="{% blocktranslate with no=doc.doc_no %}A draft copy opens for you to fix. Nothing changes in your books yet — {{ no }} stays active until you post that copy.|Posting the copy voids {{ no }} at that moment, with your reason: “{reason}”.{% endblocktranslate %}{% if settled_by_numbers %}|{% blocktranslate with pay=settled_by_numbers %}The payment that settled it ({{ pay }}) is reversed at the same moment, so the money goes back too.{% endblocktranslate %}{% endif %}|{% translate 'If you never post the copy, nothing happens.' %}">
         {% translate "Correct this document" %}
       </button>
       <button type="submit" class="btn"
               data-confirm data-confirm-reason="id_reason"
               data-confirm-title="{% blocktranslate with no=doc.doc_no %}Void {{ no }}?{% endblocktranslate %}"
               data-confirm-ok="{% blocktranslate with no=doc.doc_no %}Void {{ no }}{% endblocktranslate %}"
-              data-confirm-body="{% translate 'This reverses it now — stock returns, money and balances are undone — and nothing replaces it.|If you are fixing a mistake, use “Correct this document” instead.|This cannot be undone.' %}">
+              data-confirm-body="{% translate 'This reverses it now — stock returns, money and balances are undone — and nothing replaces it.' %}{% if settled_by_numbers %}|{% blocktranslate with no=settled_by_numbers %}The payment that settled it ({{ no }}) is reversed with it, so the money goes back too.{% endblocktranslate %}{% endif %}|{% translate 'If you are fixing a mistake, use “Correct this document” instead.|This cannot be undone.' %}">
         {% translate "Void only" %}
       </button>
     </div>

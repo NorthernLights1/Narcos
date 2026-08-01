@@ -1342,3 +1342,42 @@ good") and came back with four paper-and-keyboard findings.*
   `reportValidity()` runs first so the browser's own "reason is required"
   still fires. Native `<dialog>` brings the focus trap and Esc handling;
   with JS off the buttons simply work as before.
+
+## Round 14 (2026-07-30) — the money follows the void
+
+*Trigger: a probe showed that voiding a settled invoice left the customer
+at −200.00 — the business owing them the money they had paid — with the
+allocation still pointing at a document that no longer existed.*
+
+### D94 — One payment settles one invoice
+- **What:** A receipt (RC) or payment voucher (PV) may allocate to exactly
+  **one** invoice. Posting one with two or more targets is refused with a
+  pointer to enter a separate payment per invoice. Partial payments are
+  untouched (D44) — one invoice, part of its balance, still fine.
+- **Why:** Owner: "there should never be a single receipt to settle
+  multiple invoices, it should be a single invoice a single receipt." It
+  also makes D95 unambiguous: a receipt reversed along with its invoice
+  can never be un-settling somebody else's invoice at the same time.
+  Existing data already complied (10 allocations, all single-target), so
+  nothing needed converting.
+- **Cost accepted:** a customer settling three invoices with one bank
+  transfer is now three receipts against that transfer — clearer books,
+  slightly more typing, marginally more work at bank reconciliation.
+
+### D95 — Voiding a document reverses the payment that settled it
+- **What:** `void()` already cascaded to documents linked by
+  `related_document` (a cash sale's auto receipt, a stock count's auto
+  adjustment). It now also reverses any **posted payment allocated to the
+  document being voided** — the case that was missed, because such a
+  payment is a separate document linked only through `PaymentAllocation`.
+  The cascade records why: *"<reason> (settled SI-000012)"*. A payment the
+  owner had already voided is skipped, not voided twice.
+- **Why:** Reversing an invoice only undid what the invoice itself wrote.
+  The receipt's own ledger rows survived it, so the books read −200.00
+  against the customer. Measured before the fix: sale 200 → owes 200;
+  payment 200 → owes 0; **void → owes −200**. After: **0**.
+- **Warning first:** the void and correct dialogs (D93) now name the
+  payment that will be reversed — *"The payment that settled it (RC-000004)
+  is reversed with it, so the money goes back too."* Voiding stays a
+  deliberate, confirmed act rather than a block; the owner asked for a
+  clear warning, not a refusal.

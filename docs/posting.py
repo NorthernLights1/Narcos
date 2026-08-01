@@ -269,6 +269,21 @@ def void(document: Document, actor, reason: str) -> Document:
             ],
         ).order_by("pk"):
             void(linked, actor, reason)
+
+        # D95: a payment that settled this document is a *separate* document,
+        # so nothing above touches it — reversing the invoice alone left the
+        # party owing nothing and the business owing them what they had paid,
+        # with the allocation pointing at a document that no longer exists.
+        # The receipt goes back with the invoice it settled. D94 guarantees it
+        # settled only this one, so no other invoice is disturbed.
+        settled_by = Document.objects.filter(
+            allocations_made__target=doc,
+            status=Document.Status.POSTED,
+        ).distinct().order_by("pk")
+        for payment in settled_by:
+            void(payment, actor, _("%(reason)s (settled %(no)s)") % {
+                "reason": reason, "no": doc.doc_no,
+            })
     return doc
 
 

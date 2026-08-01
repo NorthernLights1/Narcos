@@ -2,7 +2,22 @@
 
 Dear Temesgen,
 
-Working state of `build` as of 2026-07-29.
+Working state of `build` as of 2026-07-30. Everything committed is pushed;
+this file is the only uncommitted change.
+
+## Blocked on you — four answers unblock everything
+
+1. **Multi-invoice receipt.** One receipt can pay several invoices. Voiding one
+   of them cancels that receipt, un-paying the others. Proceed and name every
+   affected invoice in the warning, or refuse in that case?
+2. **Medicine dropdowns (R48b).** Show generic name before brand? Changes every
+   dropdown in the app.
+3. **"Add new item" pop-up (R49).** Which boxes? Proposed: generic name, brand
+   name, unit, price.
+4. **Draft printing (R53).** Storeroom picking list, or customer quote?
+
+Items 1–4 are the critical path. Everything else below is either shipped or
+ready for me to build.
 
 ## Shipped
 
@@ -31,6 +46,27 @@ baseline, and D84–D93 have not been merged into it yet.
 - Full suite green.
 - Asset cache-buster at `?v=20260728a` — **browsers need a hard refresh** for D88/D93 to behave.
 - Company phone is still blank in Settings; fill it or D91 prints nothing.
+
+## Decided 2026-07-30 — voiding a paid invoice
+
+Temesgen: **do not block it.** Show a large warning, require an explicit
+confirmation (not a single tap), and **reverse the money** as part of the void.
+
+Investigation result: `void()` already cascades — `posting.py:264-271` voids any
+posted `CUSTOMER_PAYMENT` / `SUPPLIER_PAYMENT` / `ADJUSTMENT` whose
+`related_document` points at the document being voided. That covers
+system-generated payments (cash sale → auto receipt, stock count → auto
+adjustment).
+
+The gap is payments linked by **`PaymentAllocation`** rather than by
+`related_document` — a receipt the user entered and applied to the invoice.
+Those are not cascaded, which is why the customer is left at −200.00 with a
+dangling allocation. The fix extends the existing cascade to allocation-linked
+payments; the machinery and the pattern already exist.
+
+**Open sub-decision:** one receipt may settle several invoices. Cascading it
+un-settles the others too. Plan is to proceed anyway and name every affected
+invoice in the warning rather than refuse. Awaiting confirmation.
 
 ## Defect found, not fixed
 

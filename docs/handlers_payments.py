@@ -67,6 +67,14 @@ class _PaymentBase(Handler):
         allocations = list(doc.allocations_made.all())
         if not allocations:
             raise PostingError(_("Payment must be allocated to invoices (D3)."))
+        if len({a.target_id for a in allocations}) > 1:
+            # D94: one receipt settles one invoice. Keeps the paper trail
+            # one-to-one, and makes the D95 void cascade unambiguous — a
+            # receipt reversed along with its invoice can never be
+            # un-settling somebody else's invoice at the same time.
+            raise PostingError(_(
+                "A payment settles one invoice. Enter a separate payment "
+                "for each invoice being settled."))
         if any(a.amount <= 0 for a in allocations):
             raise PostingError(_("Every allocation must be positive."))
         allocated = sum((a.amount for a in allocations), Decimal("0.00"))
