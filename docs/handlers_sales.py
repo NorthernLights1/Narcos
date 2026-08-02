@@ -225,6 +225,26 @@ class ProformaHandler(Handler):
 class ConsignmentIssueHandler(Handler):
     """CN: stock WAREHOUSE -> CONSIGNED(customer); price/tax frozen."""
 
+    def check_voidable(self, doc: Document) -> None:
+        """D97: say why, instead of letting the stock rule say it badly.
+
+        A settled issue could never be voided — the goods have left
+        CONSIGNED, so the reversal failed the no-negative check. Correct,
+        but it surfaced as "Not enough stock: item 10 lot 12 in CONSIGNED
+        (have 0, need 10)", which tells the owner nothing about what to do.
+        """
+        settlement = Document.objects.filter(
+            related_document=doc,
+            doc_type=DocType.CONSIGNMENT_SETTLEMENT,
+            status=Document.Status.POSTED,
+        ).first()
+        if settlement is not None:
+            raise PostingError(_(
+                "%(no)s was already settled by %(cs)s. Void the settlement "
+                "first — that puts the goods back on consignment — then this "
+                "issue can be voided."
+            ) % {"no": doc.doc_no, "cs": settlement.doc_no})
+
     def validate(self, doc: Document) -> None:
         if doc.customer_id is None:
             raise PostingError(_("Consignment issue needs a customer."))

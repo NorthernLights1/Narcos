@@ -266,6 +266,12 @@ def void(document: Document, actor, reason: str) -> Document:
             status=Document.Status.POSTED,
             doc_type__in=[
                 DocType.CUSTOMER_PAYMENT, DocType.SUPPLIER_PAYMENT, DocType.ADJUSTMENT,
+                # D96: a customer return hands goods back *against this sale*.
+                # Leaving it posted while the sale is reversed credited the
+                # customer for a sale that no longer existed and put the
+                # returned packs in the warehouse twice — stock the business
+                # never had. It goes back with the sale it belongs to.
+                DocType.CUSTOMER_RETURN,
             ],
         ).order_by("pk"):
             void(linked, actor, reason)

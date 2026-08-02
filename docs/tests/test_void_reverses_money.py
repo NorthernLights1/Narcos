@@ -169,3 +169,86 @@ def test_correcting_a_paid_sale_leaves_the_books_flat(client, owner, customer,
     assert draft.status == Document.Status.POSTED
     # The replacement is unpaid, so the customer owes it — and only it.
     assert _balance(customer) == D("200.00")
+
+
+# --- D96: a sale takes its customer return with it ------------------------
+
+def _return_against(owner, sale, item, qty=2):
+    from stock.models import Zone
+    cr = Document.objects.create(doc_type=DocType.CUSTOMER_RETURN,
+                                 created_by=owner, customer=sale.customer,
+                                 related_document=sale)
+    DocumentLine.objects.create(
+        document=cr, item=item, batch=Batch.objects.get(item=item),
+        qty_entered=qty, unit_price=D("100.00"), target_zone=Zone.WAREHOUSE,
+        unit_label="pack", factor=1,
+    )
+    return post(cr, owner)
+
+
+def _warehouse(item) -> int:
+    from stock.models import StockBalance, Zone
+    return StockBalance.objects.filter(
+        zone=Zone.WAREHOUSE, lot__item=item
+    ).aggregate(s=Sum("qty"))["s"] or 0
+
+
+def test_voiding_a_sale_reverses_its_customer_return(owner, customer,
+                                                     stocked_item):
+    """Before D96 this left the customer at −200.00 *and* invented two
+    packs of stock: the return handed goods back against a sale that no
+    longer existed."""
+    before = _warehouse(stocked_item)
+    sale = _credit_sale(owner, customer, stocked_item, qty=5)
+    cr = _return_against(owner, sale, stocked_item, qty=2)
+    assert _balance(customer) == D("300.00")
+
+    void(sale, owner, "wrong order")
+
+    cr.refresh_from_db()
+    assert cr.status == Document.Status.VOIDED
+    assert _balance(customer) == D("0.00")      # not −200.00
+    assert _warehouse(stocked_item) == before   # no phantom packs
+
+
+def test_an_already_voided_return_is_not_voided_twice(owner, customer,
+                                                      stocked_item):
+    before = _warehouse(stocked_item)
+    sale = _credit_sale(owner, customer, stocked_item, qty=5)
+    cr = _return_against(owner, sale, stocked_item, qty=2)
+    void(cr, owner, "return keyed twice")
+
+    void(sale, owner, "and now the sale")
+
+    assert _balance(customer) == D("0.00")
+    assert _warehouse(stocked_item) == before
+
+
+# --- D97: a settled consignment issue says so ----------------------------
+
+def test_voiding_a_settled_issue_explains_itself(owner, customer,
+                                                 stocked_item):
+    """It was already refused — but by the stock rule, so the owner got
+    'Not enough stock … in CONSIGNED (have 0, need 10)'."""
+    issue = Document.objects.create(doc_type=DocType.CONSIGNMENT_ISSUE,
+                                    created_by=owner, customer=customer,
+                                    due_date=DUE)
+    DocumentLine.objects.create(
+        document=issue, item=stocked_item, batch=Batch.objects.get(item=stocked_item),
+        qty_entered=10, unit_price=D("100.00"), unit_label="pack", factor=1,
+    )
+    post(issue, owner)
+    settlement = Document.objects.create(
+        doc_type=DocType.CONSIGNMENT_SETTLEMENT, created_by=owner,
+        customer=customer, related_document=issue, sale_kind="CREDIT",
+        due_date=DUE,
+    )
+    DocumentLine.objects.create(
+        document=settlement, item=stocked_item,
+        batch=Batch.objects.get(item=stocked_item),
+        qty_entered=10, qty_sold=6, qty_returned=4, unit_label="pack", factor=1,
+    )
+    post(settlement, owner)
+
+    with pytest.raises(PostingError, match="settle"):
+        void(issue, owner, "changed my mind")

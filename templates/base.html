@@ -6,11 +6,11 @@
   <title>{% block title %}Narcos{% endblock %}</title>
   {# bump ?v= whenever app.css/app.js change so browsers refetch #}
   <link rel="stylesheet" href="{% static 'css/choices.min.css' %}">
-  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=20260728a">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=20260802a">
   <script src="{% static 'js/htmx.min.js' %}" defer></script>
   <script src="{% static 'js/alpine.min.js' %}" defer></script>
   <script src="{% static 'js/choices.min.js' %}"></script>
-  <script src="{% static 'js/app.js' %}?v=20260728a"></script>
+  <script src="{% static 'js/app.js' %}?v=20260802a"></script>
 </head>
 <body>
 <header class="topbar">
@@ -60,9 +60,18 @@
 </div>
 
 {# D93: one dialog for the whole app. Buttons carry the wording in data-confirm-* attributes; app.js fills this in and only submits once the user agrees. Native <dialog> brings the focus trap and Esc handling with it. #}
+{# D98: destructive actions explain themselves in full and cannot be
+   dismissed with one reflex tap — see the type-to-confirm block. #}
 <dialog id="confirm-dialog" class="confirm-dialog">
   <h2 data-confirm-slot="title"></h2>
   <div data-confirm-slot="body"></div>
+  <ul class="confirm-list" data-confirm-slot="list" hidden></ul>
+  <p class="confirm-final" data-confirm-slot="final" hidden></p>
+  <label class="confirm-typegate" data-confirm-slot="typegate" hidden>
+    <span data-confirm-slot="typeprompt"></span>
+    <input type="text" data-confirm-type-input autocomplete="off"
+           spellcheck="false">
+  </label>
   <div class="confirm-actions">
     <button type="button" class="btn btn-secondary" data-confirm-cancel>{% translate "Cancel" %}</button>
     <button type="button" class="btn btn-primary" data-confirm-ok></button>

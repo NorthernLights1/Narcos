@@ -1381,3 +1381,46 @@ allocation still pointing at a document that no longer existed.*
   is reversed with it, so the money goes back too."* Voiding stays a
   deliberate, confirmed act rather than a block; the owner asked for a
   clear warning, not a refusal.
+
+## Round 15 (2026-08-02) — the rest of the void gaps, and warnings that get read
+
+*Trigger: after D95 fixed invoice↔payment, the owner asked for the other
+document pairs to be checked. One was clean, one was safe by accident, one
+was worse than the original bug.*
+
+### D96 — Voiding a sale reverses its customer return
+- **What:** `CUSTOMER_RETURN` joins the `related_document` void cascade
+  alongside payments and adjustments. A sale voided while a return sits
+  against it now takes the return with it.
+- **Why:** Probed on real data: sale of 5 on credit → owes 500; customer
+  returns 2 → owes 300; **void the sale → owes −200 and the warehouse
+  gained two packs that never existed** (the return handed goods back
+  against a sale that no longer existed, and the void handed the original
+  five back on top). Worse than the D95 case, because it corrupted
+  **stock** as well as money. After D96: balance 0, warehouse unchanged.
+
+### D97 — A settled consignment issue explains why it cannot be voided
+- **What:** `ConsignmentIssueHandler.check_voidable` refuses with
+  *"CN-000004 was already settled by CS-000002. Void the settlement first
+  — that puts the goods back on consignment — then this issue can be
+  voided."*
+- **Why:** It was already impossible (the goods have left CONSIGNED, so
+  the reversal failed the no-negative stock check) — but it surfaced as
+  *"Not enough stock: item 10 lot 12 in CONSIGNED (have 0, need 10)"*.
+  Right answer, useless words. Voiding the settlement itself was probed
+  and is correct: consigned stock restored, warehouse adjusted, balance
+  cleared.
+
+### D98 — Destructive confirmations are over-explained and type-gated
+- **What:** The D93 dialog gained a **danger** variant: red rule and
+  heading, an itemised list of every consequence, a highlighted
+  "cannot be undone" panel, and — the part that stops reflex clicking —
+  the confirm button stays **disabled until the operator types the
+  document number**. Applied to **Void** and to **posting a correction**
+  (the moment the void actually fires). The warning names every linked
+  document that will be reversed alongside, by number and type.
+- **Why:** Owner: "do an over explainer on the warning, scary warnings so
+  people don't just randomly do it." Correcting stays deliberately calm —
+  it is reversible, and dressing it in red would teach staff to ignore
+  red. Only the two irreversible actions are dangerous, so only they look
+  it.

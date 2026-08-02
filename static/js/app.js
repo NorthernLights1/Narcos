@@ -119,25 +119,68 @@
     return raw.replace("{reason}", input ? input.value.trim() : "");
   }
 
+  function fillSlot(dialog, slot, text, tag) {
+    var node = dialog.querySelector('[data-confirm-slot="' + slot + '"]');
+    if (!node) return;
+    node.textContent = "";
+    var items = (text || "").split("|").filter(function (line) {
+      return line.trim();
+    });
+    node.hidden = !items.length;
+    items.forEach(function (line) {
+      var el = document.createElement(tag);
+      el.textContent = line.trim();
+      node.appendChild(el);
+    });
+  }
+
+  /* D98: a destructive action must be read, not swatted away. The dialog
+   * turns red, itemises every document it is about to reverse, and — when
+   * the button asks for it — refuses to arm until the operator types the
+   * document number. Reversible actions (Correct) skip all of this. */
+  function armTypeGate(dialog, button) {
+    var wanted = confirmText(button, "confirmType");
+    var gate = dialog.querySelector('[data-confirm-slot="typegate"]');
+    var input = dialog.querySelector("[data-confirm-type-input]");
+    var ok = dialog.querySelector("[data-confirm-ok]");
+    dialog._typeWanted = wanted;
+    if (!gate || !input) return;
+    input.value = "";
+    gate.hidden = !wanted;
+    ok.disabled = Boolean(wanted);
+    if (!wanted) return;
+    var prompt = dialog.querySelector('[data-confirm-slot="typeprompt"]');
+    if (prompt) {
+      prompt.textContent =
+        (button.dataset.confirmTypePrompt || "Type {x} to confirm")
+          .replace("{x}", wanted);
+    }
+  }
+
   function askToConfirm(button) {
     var dialog = document.getElementById("confirm-dialog");
     if (!dialog || !dialog.showModal) return true;  // no dialog: let it through
+    dialog.classList.toggle("confirm-danger", "confirmDanger" in button.dataset);
     dialog.querySelector('[data-confirm-slot="title"]').textContent =
       confirmText(button, "confirmTitle");
-    var body = dialog.querySelector('[data-confirm-slot="body"]');
-    body.textContent = "";
-    confirmText(button, "confirmBody").split("|").forEach(function (line) {
-      if (!line.trim()) return;
-      var p = document.createElement("p");
-      p.textContent = line.trim();
-      body.appendChild(p);
-    });
+    fillSlot(dialog, "body", confirmText(button, "confirmBody"), "p");
+    fillSlot(dialog, "list", confirmText(button, "confirmList"), "li");
+    fillSlot(dialog, "final", confirmText(button, "confirmFinal"), "span");
     dialog.querySelector("[data-confirm-ok]").textContent =
       confirmText(button, "confirmOk") || "OK";
+    armTypeGate(dialog, button);
     dialog._pendingButton = button;
     dialog.showModal();
     return false;
   }
+
+  document.addEventListener("input", function (event) {
+    if (!event.target.matches("[data-confirm-type-input]")) return;
+    var dialog = document.getElementById("confirm-dialog");
+    if (!dialog) return;
+    dialog.querySelector("[data-confirm-ok]").disabled =
+      event.target.value.trim() !== (dialog._typeWanted || "");
+  });
 
   document.addEventListener("click", function (event) {
     var button = event.target.closest("[data-confirm]");
@@ -161,6 +204,7 @@
       return;
     }
     if (event.target.closest("[data-confirm-ok]")) {
+      if (event.target.closest("[data-confirm-ok]").disabled) return;
       var button = dialog._pendingButton;
       dialog.close();
       if (!button || !button.form) return;

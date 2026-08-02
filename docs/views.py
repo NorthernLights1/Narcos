@@ -346,9 +346,21 @@ def document_detail(request, pk):
                                 status=Document.Status.POSTED)
         .distinct().order_by("pk")
     ) if doc.status == Document.Status.POSTED else []
+    # D98: the warning itemises every document the void will drag with it,
+    # by number, so nobody discovers the blast radius afterwards.
+    also_reversed = list(Document.objects.filter(
+        related_document=doc,
+        status=Document.Status.POSTED,
+        doc_type__in=[DocType.CUSTOMER_PAYMENT, DocType.SUPPLIER_PAYMENT,
+                      DocType.ADJUSTMENT, DocType.CUSTOMER_RETURN],
+    ).order_by("pk")) if doc.status == Document.Status.POSTED else []
     return render(request, "docs/detail.html", {
         "doc": doc,
         "settled_by_numbers": ", ".join(p.doc_no or "" for p in settled_by),
+        "void_also_reverses": ", ".join(
+            f"{d.doc_no} — {d.get_doc_type_display()}"
+            for d in settled_by + also_reversed
+        ),
         "config": DOC_CONFIG.get(doc.doc_type),
         "expected": draft_expected_totals(doc),
         "settlement": settlement_context(doc),
