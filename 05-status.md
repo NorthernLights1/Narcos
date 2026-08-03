@@ -2,116 +2,116 @@
 
 Dear Temesgen,
 
-Working state of `build` as of 2026-07-30. Everything committed is pushed;
-this file is the only uncommitted change.
+Working state of `build` as of 2026-08-03. `build` and `origin/build` are both
+at `499cfbf`; the working tree is clean and this file is the only change.
 
 ## Nothing is blocked on you
 
-All four open questions were answered 2026-07-30:
+All questions from 2026-07-30 are answered and the two that needed building are
+built. The open sub-decision from that day — *what happens when one receipt
+settles several invoices* — was closed by making it impossible (D94).
 
-| Question | Answer | State |
-|---|---|---|
-| Multi-invoice receipt | Never allow it — one invoice, one receipt | **built (D94)** |
-| Medicine dropdowns (R48b) | Generic name first, brand second | queued |
-| "Add new item" pop-up (R49) | The full item form, all fields | queued |
-| Draft printing (R53) | Dropped | closed |
+## What was implemented
 
-The money bug is **fixed and pushed** (D94/D95). Measured before: sale 200 →
-owes 200; payment 200 → owes 0; void → **owes −200**. After: **0**.
+### Round 14 (2026-08-02)
+| Ref | Change |
+|-----|--------|
+| D92 | Void deferred to posting time; correcting is reversible |
+| D93 | Confirm dialogs on Correct / Post-correction / Void |
+| D94 | One payment settles exactly one invoice |
+| D95 | Voiding a document reverses the payment that settled it |
 
-## Queued — next batch, no decisions outstanding
+### Round 15 (2026-08-02)
+| Ref | Change |
+|-----|--------|
+| D96 | Voiding a sale reverses its customer return (was corrupting **stock**, not just money) |
+| D97 | A settled consignment issue refuses the void in words that explain it |
+| D98 | Void and post-correction dialogs are over-explained and type-gated |
 
-1. Generic name before brand: item dropdowns (R48b), Cash Sales Attachment
-   line text (R51), Generic name column on the Items list (R48a).
-2. **Second phone number** in Settings, printing alongside the first.
-3. Prepared By (`created_by` full name) + signature line on the generic
-   printout (R50).
-4. `due_date` label → "Payment Due Date" (R52).
-5. Per-line price/net on saved drafts, display-only (R54).
-6. Add-item pop-up carrying the whole item form (R49) — largest; reuses the
-   D93 dialog machinery.
+Measured on the original bug: sale 200 → owes 200; payment 200 → owes 0;
+void → **owes −200**. After D95: **0**. The return case (D96) was worse — the
+warehouse gained two packs that never existed. After D96: balance 0, warehouse
+unchanged.
 
-## Shipped
+Earlier rounds D84–D91 remain as previously reported, all pushed.
 
-| Ref | Change | Remote |
-|-----|--------|--------|
-| D84 | `free_qty` off receiving form + detail table | pushed |
-| D85 | Printout totals moved below the lines | pushed |
-| D86 | Cleared payment amount no longer blocks save | pushed |
-| D87 | Payment lines default to one row | pushed |
-| D88 | Row delete is a ✕ button, not a checkbox | pushed |
-| D89 | 4 settings flags: fiscal machine, discounts, factor, editable sale price | pushed |
-| D90 | "Correct this document" (void + prefilled draft) | pushed |
-| D91 | Company phone on all print layouts | pushed |
-| R47–R55 | Round-3 client feedback logged in `03-open-risks.md` | pushed |
-| D92 | Void deferred to posting time; correcting is now reversible | pushed |
-| D93 | Confirm dialogs on Correct / Post-correction / Void | pushed |
+## What is left
 
-All of the above is on GitHub. `build` and `origin/build` both at `262b230`.
+### Bug fixes — no open reproduction, but unprobed surface
 
-`master` is behind and **staying** that way by decision (2026-08-02). Nothing
-deploys from it — the GHCR pipeline fires on `v*` tags only — so merging would
-plant a rollback marker that a single-developer, single-branch repo has no use
-for. The checkpoint that matters is the version tag, cut when the client is
-meant to receive a new build. Not to be raised again.
+D95/D96/D97 closed every void pair that was actually probed. Three shapes have
+**not** been checked:
+
+1. **Sale ↔ WHT remittance.** `WhtRemittanceHandler` has no `check_voidable`,
+   and `WHT_REMITTANCE` is not in the `related_document` cascade
+   (`docs/posting.py:264-277`). Voiding a sale whose withholding was already
+   remitted reverses the sale's `WithholdingLedger` rows and leaves the
+   remittance standing. Structurally identical to the D95 bug.
+2. **Opening documents.** Voiding an opening stock / opening AR after later
+   transactions consumed it. No handler override; the default is *allow*.
+3. **Wording, D97 class.** Voiding a receiving after a supplier return is
+   correctly blocked, but the message reads "goods were already sold or moved"
+   (`docs/handlers.py:178-191`). Right answer, wrong words.
+
+Method for all three is the one that worked twice: build the scenario in a
+rolled-back transaction and read the balances.
+
+### Feature improvements — decided, ready to build
+
+| Ref | Change | Where |
+|-----|--------|-------|
+| R48b | Generic name first in every item dropdown | `Item.__str__`, `catalog/models.py:100` |
+| R48a | Generic name column on the items list | items list template |
+| R51 | Generic before brand on the Cash Sales Attachment | `templates/docs/print_sales_attachment.html` |
+| R50 | Prepared By (`created_by`) + signature line, `break-inside: avoid` | `templates/docs/print.html` — has no signature markup at all |
+| R52 | `due_date` label → "Payment Due Date" | `docs/models.py:81`, no `verbose_name` today |
+| R54 | Per-line net on saved drafts, display-only, labelled preview | `line_net` is frozen at posting |
+
+**Second phone number — likely nothing to build.** `CompanySettings.phone` is
+already a single free-text field labelled "Phone numbers", 100 characters,
+printed verbatim on both layouts (`core/models.py:53`). Two numbers can be
+typed into it today. Only worth a schema change if you want them as separate,
+separately-labelled fields.
+
+### New features
+
+- **R49 — add an item without leaving Receiving.** A modal on the line row that
+  runs the full `ItemForm` and drops the new item into the picker. The largest
+  remaining item; reuses the D93 dialog machinery. Must not be a simplified
+  parallel form, or D81 and the D67 auto-code rules get bypassed.
+- `WATCH`, deliberately not queued: R46 per-customer price lists, R8b master
+  data merge, R9 broader returns, R55 (editable posted documents) recurring.
+
+### Ops — code side is done
+
+R10 (password recovery), R11 (`TIME_ZONE = "Africa/Addis_Ababa"`,
+`narcos/settings.py:117`), R44 (update procedure) and R45 (localhost DB
+binding, static IP, secrets) are all built into `ops/RUNBOOK.md` and settings.
+What remains is not code:
+
+- UPS + backup drive — the client's purchase, before go-live.
+- R43 — 2–4 week parallel run against the old process.
+- R40 — accountant confirms the 3% base and the 20,000 / 10,000 thresholds.
+- R39 — ask the client's legal form, then set the two withholding switches.
 
 ## Environment
 
-- Dev server up on `:8000`, `--noreload`.
-- Migrations applied to dev DB: `core.0005` (settings flags), `docs.0008` (`corrects`, `correction_reason`).
+- Migrations on the dev DB: `core.0005` (settings flags), `docs.0008`
+  (`corrects`, `correction_reason`).
 - Full suite green.
-- Asset cache-buster at `?v=20260728a` — **browsers need a hard refresh** for D88/D93 to behave.
+- Asset cache-buster — **hard refresh** the browser or D88/D93/D98 misbehave.
 - Company phone is still blank in Settings; fill it or D91 prints nothing.
 
-## Decided 2026-07-30 — voiding a paid invoice
-
-Temesgen: **do not block it.** Show a large warning, require an explicit
-confirmation (not a single tap), and **reverse the money** as part of the void.
-
-Investigation result: `void()` already cascades — `posting.py:264-271` voids any
-posted `CUSTOMER_PAYMENT` / `SUPPLIER_PAYMENT` / `ADJUSTMENT` whose
-`related_document` points at the document being voided. That covers
-system-generated payments (cash sale → auto receipt, stock count → auto
-adjustment).
-
-The gap is payments linked by **`PaymentAllocation`** rather than by
-`related_document` — a receipt the user entered and applied to the invoice.
-Those are not cascaded, which is why the customer is left at −200.00 with a
-dangling allocation. The fix extends the existing cascade to allocation-linked
-payments; the machinery and the pattern already exist.
-
-**Open sub-decision:** one receipt may settle several invoices. Cascading it
-un-settles the others too. Plan is to proceed anyway and name every affected
-invoice in the warning rather than refuse. Awaiting confirmation.
-
-## Defect found, not fixed
-
-`check_voidable` is overridden on **3 of ~15 handlers** (receiving, auto-adjustment, auto-payment). Default is *allow*.
-
-Probed and confirmed: voiding a fully-allocated credit sale is permitted and leaves the customer at **−200.00** (credit balance) with the `PaymentAllocation` still pointing at the voided invoice. Pre-existing, not introduced by D92 — but D92 routes a common workflow (correcting an already-paid sale) straight through it. Same dangling-reference shape exists for consignment issue↔settlement and sale↔customer return.
-
-Stock is protected by the no-negative CHECK constraint; money and party balances have no equivalent backstop.
-
-## Backlog — R47–R55
-
-**Specified, ready to build:**
-- R50 — Prepared By (`created_by` full name) + signature line on the generic printout
-- R51 — Generic name before brand on the Cash Sales Attachment
-- R52 — `due_date` label → "Payment Due Date"
-- R48a — Generic name column on the items list
-- R54 — Per-line price/net on saved drafts (display-only, labelled preview)
-
-**All answered 2026-07-30.** R48b → generic first, brand second. R49 → the
-full item form. R53 → dropped. The multi-invoice receipt question → never
-allowed, built as D94.
+`master` stays behind by decision (2026-08-02) — nothing deploys from it, the
+GHCR pipeline fires on `v*` tags only. Not to be raised again.
 
 ## Recommended next steps
 
-1. **Build the queued batch** (items 1–5 above) — one sitting.
-2. **Then the add-item pop-up** (R49) on its own.
-3. **Probe the remaining void shapes.** D95 fixed invoice↔payment. Consignment
-   issue↔settlement and sale↔customer return have the same separate-document
-   structure and have *not* been checked for equivalent dangling references.
-   Same method: build it in a rolled-back transaction and read the balances.
-4. **Cut a `v*` tag** when the client is meant to receive a new build — that,
-   not a branch merge, is what ships an image to their machine.
+1. **Build the six-item improvement batch** (R48a/R48b/R50/R51/R52/R54) in one
+   sitting — they are small, all decided, and R48b/R51 must land together so
+   the wording agrees everywhere.
+2. **Probe the three remaining void shapes**, WHT remittance first — it is the
+   one with real money behind it.
+3. **Then R49** on its own.
+4. **Cut a `v*` tag** when the client is meant to receive this build. That, not
+   a branch merge, is what ships an image to their machine.

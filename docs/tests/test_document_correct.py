@@ -319,9 +319,13 @@ def test_correct_and_void_buttons_explain_themselves(client, owner, customer,
     html = client.get(reverse("document_detail", args=[sale.pk])).content.decode()
     assert "data-confirm-title" in html
     assert "Correct %s?" % sale.doc_no in html
-    assert "Void %s?" % sale.doc_no in html
+    # D98 renamed the void dialog: it stops asking and starts warning
+    assert "Void %s — read this first" % sale.doc_no in html
     # Void is the sharp one now — it must say so
     assert "cannot be undone" in html
+    # D98: only the irreversible one is type-gated
+    assert 'data-confirm-type="%s"' % sale.doc_no in html
+    assert "data-confirm-danger" in html
 
 
 def test_posting_a_correction_warns_before_the_void(client, owner, customer,
@@ -331,8 +335,10 @@ def test_posting_a_correction_warns_before_the_void(client, owner, customer,
     _correct(client, sale)
     draft = _draft_sale()
     html = client.get(reverse("document_detail", args=[draft.pk])).content.decode()
-    assert "Post this correction?" in html
+    assert "This posts and voids %s — read this first" % sale.doc_no in html
     assert "Post and void %s" % sale.doc_no in html
+    # D98: this is the moment the void actually fires, so it is type-gated too
+    assert 'data-confirm-type="%s"' % sale.doc_no in html
 
 
 def test_an_ordinary_draft_posts_without_a_dialog(client, owner, customer,
@@ -341,4 +347,5 @@ def test_an_ordinary_draft_posts_without_a_dialog(client, owner, customer,
                                     customer=customer)
     client.force_login(owner)
     html = client.get(reverse("document_detail", args=[draft.pk])).content.decode()
-    assert "Post this correction?" not in html
+    assert "This posts and voids" not in html
+    assert "data-confirm-danger" not in html

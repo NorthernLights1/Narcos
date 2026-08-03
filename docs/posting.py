@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Max
+from django.db.models import Max, Sum
 from django.utils import timezone
 from django.utils.translation import gettext as _
 
@@ -120,10 +120,15 @@ def _apply_stock(doc: Document, deltas: list[StockDelta], now, actor,
             # D4: no negative stock, ever. The DB CHECK is the backstop; this
             # check gives the user a readable message. No override — the fix
             # path is an owner adjustment first (D28).
+            # D100: it used to print raw row ids ("item 10 lot 12"), which told
+            # the owner nothing about which medicine was short.
+            batch = (_(", batch %(no)s") % {"no": balance.batch.batch_no}
+                     if balance.batch_id else "")
             raise PostingError(
-                _("Not enough stock: item %(item)s lot %(lot)s in %(zone)s "
+                _("Not enough stock: %(item)s%(batch)s in %(zone)s "
                   "(have %(have)d, need %(need)d).")
-                % {"item": d.item_id, "lot": d.lot_id, "zone": d.zone,
+                % {"item": balance.item, "batch": batch,
+                   "zone": balance.get_zone_display(),
                    "have": balance.qty, "need": -net[key]}
             )
         balance.qty = new_qty
@@ -214,6 +219,38 @@ def post(document: Document, actor, override_reason: str = "") -> Document:
     return doc
 
 
+def _check_withholding_not_already_remitted(doc: Document) -> None:
+    """D99: stock cannot go negative — a CHECK constraint says so. The
+    withholding buckets have no such backstop, so reversing a payment whose
+    withheld tax had already been remitted pushed PAYABLE below zero:
+    measured at −30.00, with the 30.00 sitting at the tax office and the
+    books claiming the tax office owed it back. Refuse, and name the
+    remittance that has to be reversed first."""
+    written = (doc.withholding_rows.filter(is_reversal=False)
+               .values("direction").annotate(total=Sum("amount_delta")))
+    for row in written:
+        # A negative row means this document *consumed* the bucket (a
+        # remittance); reversing it refills, so it can never go short.
+        if row["total"] <= 0:
+            continue
+        balance = WithholdingLedger.objects.filter(
+            direction=row["direction"]
+        ).aggregate(s=Sum("amount_delta"))["s"] or Decimal("0.00")
+        if balance - row["total"] >= 0:
+            continue
+        remittance = Document.objects.filter(
+            doc_type=DocType.WHT_REMITTANCE, status=Document.Status.POSTED,
+        ).order_by("-pk").first()
+        raise PostingError(
+            _("Cannot void: the %(amount)s withheld here was already paid to "
+              "the tax office by %(remittance)s. Void that remittance first — "
+              "the amount goes back into what you owe the tax office — then "
+              "this document can be voided.")
+            % {"amount": row["total"],
+               "remittance": remittance.doc_no if remittance else _("a remittance")}
+        )
+
+
 def void(document: Document, actor, reason: str) -> Document:
     """§4 Void(): owner only, exact reversal, same balance checks (D4/D28)."""
     if not actor.is_owner:
@@ -228,6 +265,7 @@ def void(document: Document, actor, reason: str) -> Document:
         if doc.status != Document.Status.POSTED:
             raise PostingError(_("Only posted documents can be voided."))
         get_handler(doc.doc_type).check_voidable(doc)  # D5 hook
+        _check_withholding_not_already_remitted(doc)   # D99
 
         now = timezone.now()
         # Reverse stock: negate every ledger row this document wrote

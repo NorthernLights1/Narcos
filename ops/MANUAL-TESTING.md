@@ -149,6 +149,42 @@ Written for a dev machine (Linux, `.venv`, PostgreSQL on localhost).
 >   quotes your reason back. Note **Void only** is now the dangerous one —
 >   it reverses with no replacement.
 
+> **2026-08-02 the void takes the money with it (D94–D98):**
+> - **One receipt settles one invoice** (D94). A receipt against two invoices
+>   is refused, telling you to enter one per invoice. Partial payments are
+>   unaffected — one invoice, part of its balance, is still fine.
+> - **Voiding an invoice reverses the receipt that settled it** (D95).
+>   Verify: credit sale 200, receipt 200 (customer owes 0), void the sale.
+>   The customer must land at **0.00**, not −200.00, and the receipt shows
+>   VOIDED with your reason plus "(settled SI-0000NN)".
+> - **Voiding a sale reverses its customer return** (D96). Sell 5 on credit,
+>   take 2 back as a customer return, void the sale: customer at **0.00** and
+>   the warehouse count exactly what it was before the sale. Before this, the
+>   warehouse gained two packs that never existed.
+> - **A settled consignment issue refuses the void in plain words** (D97):
+>   *"CN-0000NN was already settled by CS-0000NN. Void the settlement
+>   first…"* — it used to talk about CONSIGNED stock levels.
+> - **The dangerous dialogs are type-gated** (D98). *Void only* and *posting
+>   a correction* show a red panel listing every consequence and every linked
+>   document that will be reversed, and the confirm button stays greyed out
+>   until you **type the document number**. *Correct this document* stays
+>   calm on purpose — it is reversible.
+
+> **2026-08-03 the last void gaps (D99/D100):**
+> - **A payment cannot be voided once its withholding was remitted** (D99).
+>   Verify (needs *Withholding on purchases* on): receive 1000 on credit, pay
+>   it as 970 cash + 30 withheld, post a WR remittance for the 30. Try to
+>   void the payment — **refused**, naming WR-0000NN. Try to void the
+>   receiving instead: also refused, same reason. Void the remittance first,
+>   then the payment — both succeed and *withholding owed* returns to 0.00.
+>   Before this fix, withholding owed went to **−30.00** with the money
+>   already at the tax office.
+> - **Refusals name the medicine** (D100). Post opening stock of 20 packs,
+>   sell 5, void the opening: the refusal must read *"Not enough stock: AMOX
+>   — Amoxicillin, batch B-1 in Warehouse (have 15, need 20)"* — not "item 10
+>   lot 12". Voiding a receiving whose goods were sold names the documents
+>   that took them (e.g. "have already moved on SI-000012").
+
 ---
 
 ## 0. One-time setup

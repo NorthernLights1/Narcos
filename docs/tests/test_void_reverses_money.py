@@ -252,3 +252,159 @@ def test_voiding_a_settled_issue_explains_itself(owner, customer,
 
     with pytest.raises(PostingError, match="settle"):
         void(issue, owner, "changed my mind")
+
+
+# --- D99: the withheld tax was already handed to the tax office -----------
+
+def _payable() -> Decimal:
+    from money.models import WithholdingLedger
+    return WithholdingLedger.objects.filter(direction="PAYABLE").aggregate(
+        s=Sum("amount_delta"))["s"] or D("0.00")
+
+
+@pytest.fixture
+def withholding_on(db):
+    from core.models import CompanySettings
+    settings = CompanySettings.load()
+    settings.withholding_on_purchases = True
+    settings.save()
+    return settings
+
+
+def _receiving(owner, item):
+    """The GRN behind `stocked_item`: 20 packs at 50.00 → AP 1000.00."""
+    return Document.objects.get(doc_type=DocType.RECEIVING,
+                                status=Document.Status.POSTED)
+
+
+def _supplier_payment(owner, grn, cash, withheld=D("30.00")):
+    """Pay the 1000 AP as 970 cash + 30 kept back for the tax office."""
+    pv = Document.objects.create(doc_type=DocType.SUPPLIER_PAYMENT,
+                                 created_by=owner, supplier=grn.supplier,
+                                 withheld_amount=withheld)
+    PaymentLine.objects.create(document=pv, account=cash,
+                               amount=grn.grand_total - withheld)
+    PaymentAllocation.objects.create(payment=pv, target=grn,
+                                     amount=grn.grand_total)
+    return post(pv, owner)
+
+
+def _remit(owner, cash, amount=D("30.00")):
+    wr = Document.objects.create(doc_type=DocType.WHT_REMITTANCE, created_by=owner)
+    PaymentLine.objects.create(document=wr, account=cash, amount=amount)
+    return post(wr, owner)
+
+
+def test_voiding_a_remitted_payment_is_refused(owner, cash, stocked_item,
+                                               withholding_on):
+    """The 30.00 kept back from the supplier has already been paid to the
+    tax office. Reversing the payment alone pushes PAYABLE to −30.00: the
+    business is out 30.00 with nothing in the books to show for it."""
+    grn = _receiving(owner, stocked_item)
+    pv = _supplier_payment(owner, grn, cash)
+    assert _payable() == D("30.00")
+    _remit(owner, cash)
+    assert _payable() == D("0.00")
+
+    with pytest.raises(PostingError, match="tax office"):
+        void(pv, owner, "paid the wrong supplier")
+
+    pv.refresh_from_db()
+    assert pv.status == Document.Status.POSTED
+    assert _payable() == D("0.00")      # not −30.00
+
+
+def test_voiding_the_invoice_behind_a_remitted_payment_is_refused(
+        owner, cash, stocked_item, withholding_on):
+    """Same hole reached through the D95 cascade: voiding the receiving
+    drags the payment down with it, remitted withholding and all."""
+    grn = _receiving(owner, stocked_item)
+    _supplier_payment(owner, grn, cash)
+    _remit(owner, cash)
+
+    with pytest.raises(PostingError, match="tax office"):
+        void(grn, owner, "wrong goods")
+
+    grn.refresh_from_db()
+    assert grn.status == Document.Status.POSTED
+    assert _payable() == D("0.00")
+
+
+def test_voiding_the_remittance_first_then_the_payment_works(
+        owner, cash, stocked_item, withholding_on):
+    """The way out the message points at."""
+    grn = _receiving(owner, stocked_item)
+    pv = _supplier_payment(owner, grn, cash)
+    wr = _remit(owner, cash)
+
+    void(wr, owner, "remitted too early")
+    assert _payable() == D("30.00")
+    void(pv, owner, "paid the wrong supplier")
+
+    assert _payable() == D("0.00")
+
+
+def test_an_unremitted_payment_still_voids(owner, cash, stocked_item,
+                                           withholding_on):
+    """The guard must not block the ordinary case."""
+    grn = _receiving(owner, stocked_item)
+    pv = _supplier_payment(owner, grn, cash)
+    assert _payable() == D("30.00")
+
+    void(pv, owner, "keyed twice")
+
+    pv.refresh_from_db()
+    assert pv.status == Document.Status.VOIDED
+    assert _payable() == D("0.00")
+
+
+def test_a_stock_shortfall_names_the_medicine(owner, customer):
+    """D100: the message used to read 'item 10 lot 12', which named two
+    database rows and no medicine."""
+    item = Item.objects.create(code="AMOX", name="Amoxicillin", base_unit="pack",
+                               is_batch_tracked=True, has_expiry=True,
+                               vat_exempt=True, maintained_price=D("100.00"))
+    opening = Document.objects.create(doc_type=DocType.OPENING_STOCK,
+                                      created_by=owner)
+    DocumentLine.objects.create(document=opening, item=item, qty_entered=20,
+                                unit_cost_entered=D("50.00"),
+                                batch_no_entered="B-1", expiry_entered=FAR,
+                                unit_label="pack", factor=1)
+    post(opening, owner)
+    _credit_sale(owner, customer, item, qty=5)
+
+    with pytest.raises(PostingError) as caught:
+        void(opening, owner, "opening was wrong")
+
+    message = str(caught.value)
+    assert "AMOX" in message and "Amoxicillin" in message
+    assert "B-1" in message
+    assert "Warehouse" in message      # not the raw WAREHOUSE token
+    assert "have 15, need 20" in message
+
+
+def test_voiding_a_receiving_names_what_took_the_goods(owner, customer,
+                                                       stocked_item):
+    """D100: it said 'sold or moved … use a supplier return', which is
+    absurd advice when a supplier return is what moved them."""
+    grn = Document.objects.get(doc_type=DocType.RECEIVING,
+                               status=Document.Status.POSTED)
+    sale = _credit_sale(owner, customer, stocked_item, qty=2)
+
+    with pytest.raises(PostingError) as caught:
+        void(grn, owner, "wrong supplier")
+
+    assert sale.doc_no in str(caught.value)
+
+
+def test_the_remittance_itself_still_voids(owner, cash, stocked_item,
+                                           withholding_on):
+    """A remittance only ever *consumes* the bucket, so reversing it
+    refills — it must never be caught by the guard."""
+    grn = _receiving(owner, stocked_item)
+    _supplier_payment(owner, grn, cash)
+    wr = _remit(owner, cash)
+
+    void(wr, owner, "wrong month")
+
+    assert _payable() == D("30.00")

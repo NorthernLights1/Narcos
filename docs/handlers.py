@@ -184,10 +184,24 @@ class ReceivingHandler(Handler):
                 .values_list("qty", flat=True).first() or 0
             )
             if in_warehouse != lot.qty_received:
+                # D100: "sold or moved" was true but unhelpful — and reads as
+                # nonsense when what moved them was a supplier return and the
+                # message then advised a supplier return. Name the documents
+                # that took them.
+                movers = list(
+                    Document.objects.filter(
+                        lines__lot_consumptions__lot=lot,
+                        status=Document.Status.POSTED,
+                    ).exclude(pk=doc.pk).order_by("pk")
+                    .values_list("doc_no", flat=True).distinct()
+                )
                 raise PostingError(
-                    _("Cannot void: goods from this receiving were already "
-                      "sold or moved (D5). Use a supplier return or owner "
-                      "adjustment instead.")
+                    _("Cannot void: goods from this receiving have already "
+                      "moved on %(docs)s. A receiving can only be voided "
+                      "while every pack it brought in is still whole in the "
+                      "warehouse (D5). Reverse those documents first, or "
+                      "correct the quantity with an owner adjustment.")
+                    % {"docs": ", ".join(movers) or _("a later document")}
                 )
 
 

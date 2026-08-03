@@ -1424,3 +1424,57 @@ was worse than the original bug.*
   it is reversible, and dressing it in red would teach staff to ignore
   red. Only the two irreversible actions are dangerous, so only they look
   it.
+
+## Round 16 (2026-08-03) — the last void gaps, and messages that name things
+
+*Trigger: the remaining unprobed void shapes from the D96/D97 sweep —
+withholding remittance, and the opening documents. One was a real hole, one
+was safe, one was refused in words nobody could act on.*
+
+### D99 — A payment cannot be voided after its withholding was remitted
+- **What:** `void()` now refuses when reversing a document would push a
+  withholding bucket below zero, naming the remittance to void first:
+  *"Cannot void: the 30.00 withheld here was already paid to the tax office
+  by WR-000001. Void that remittance first — the amount goes back into what
+  you owe the tax office — then this document can be voided."* The check
+  lives in the engine, not one handler, so it covers the direct void **and**
+  the D95 cascade (voiding the receiving behind the payment).
+- **Why:** Stock cannot go negative — a DB CHECK constraint says so (D4).
+  The withholding buckets had no such backstop. Measured on real posting:
+  receiving 1000 → pay 970 cash + 30 withheld → PAYABLE 30 → remit 30 →
+  PAYABLE 0. Void the payment: **PAYABLE −30.00**, cash back to −30.00, AP
+  1000. The 30 was sitting at the tax office and the books said the tax
+  office owed it back.
+- **Consistent with what already existed:** `WhtRemittanceHandler.validate`
+  already refused to remit more than is owed. The rule "this bucket never
+  goes negative" was therefore already the design; the void was simply the
+  one path that skipped it.
+- **The way out is the message:** void the remittance (which refills the
+  bucket), then the payment. Both directions are covered by tests.
+
+### D100 — Refusals name the medicine and the document, not row ids
+- **What:** Two messages rewritten. The stock shortfall now reads
+  *"Not enough stock: AMOX — Amoxicillin, batch B-1 in Warehouse (have 15,
+  need 20)"* instead of *"item 10 lot 12 in WAREHOUSE"*. Voiding a receiving
+  whose goods have moved now names the documents that took them instead of
+  saying *"sold or moved … use a supplier return"*.
+- **Why:** The same complaint D97 fixed for consignment: the refusal was
+  correct and unusable. The receiving one was worse than unusable — when a
+  **supplier return** was what moved the goods, it advised the owner to do
+  the thing they had already done. Naming the documents turns a dead end
+  into an instruction.
+- **Scope:** the shortfall message is raised by the posting engine, so every
+  stock refusal in the app reads better, not only voids.
+
+### Probed and found clean — opening documents
+Voiding an **opening AR** after a receipt settled it is correct: the D95
+cascade reverses the receipt, the customer lands at 0.00 and the cash goes
+back. Voiding **opening stock** after some of it was sold is correctly
+refused by the D4 stock rule (in D100's new words). No change needed.
+
+### Defect found in the D98 tests (fixed, no decision needed)
+`test_document_correct.py` still asserted the **D93** dialog titles
+("Void SI-000001?", "Post this correction?") that D98 deliberately replaced
+with warning-shaped ones. Two tests were failing at `499cfbf`, and the
+2026-07-30 status file's "full suite green" was wrong. Assertions updated to
+the D98 copy and strengthened to check the type-gate.
