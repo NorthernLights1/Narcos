@@ -15,6 +15,8 @@ urlpatterns = [
     path("new/<str:doc_type>/", views.document_create, name="document_create"),
     path("<int:pk>/", views.document_detail, name="document_detail"),
     path("<int:pk>/print/", views.document_print, name="document_print"),
+    path("<int:pk>/picking-list/", views.document_picking_list,
+         name="document_picking_list"),
     path("<int:pk>/withholding-certificate/", views.withholding_certificate_print,
          name="withholding_certificate_print"),
     path("<int:pk>/edit/", views.document_edit, name="document_edit"),

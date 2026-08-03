@@ -5,6 +5,12 @@
 <div class="page-head">
   <h1>{{ doc }}</h1>
   <div class="actions">
+    {# R53: the storeroom picks from paper — drafts included, prices excluded. #}
+    {% if doc.status != "VOIDED" %}
+      {% if doc.doc_type == "SALE" or doc.doc_type == "PROFORMA" or doc.doc_type == "CONSIGNMENT_ISSUE" %}
+      <a class="btn" href="{% url 'document_picking_list' doc.pk %}">{% translate "Picking list" %}</a>
+      {% endif %}
+    {% endif %}
     {% if doc.status == "DRAFT" %}
       <a class="btn" href="{% url 'document_edit' doc.pk %}">{% translate "Edit" %}</a>
     {% elif doc.status == "POSTED" %}
@@ -277,7 +283,11 @@
           <th class="num">{% translate "Unit cost" %}</th>
         {% else %}
           <th class="num">{% translate "Price" %}</th>
-          <th class="num">{% translate "Net" %}</th>
+          {% if doc.status == "DRAFT" %}
+            <th class="num">{% translate "Net (preview)" %}</th>
+          {% else %}
+            <th class="num">{% translate "Net" %}</th>
+          {% endif %}
           {% if user.is_owner %}<th class="num">{% translate "COGS" %}</th>{% endif %}
         {% endif %}
       </tr>
@@ -295,7 +305,8 @@
           <td class="num">{{ line.unit_cost_entered|default:"—" }}</td>
         {% else %}
           <td class="num">{{ line.unit_price }}</td>
-          <td class="num">{{ line.line_net }}</td>
+          {# R54: drafts show a computed preview — line_net itself stays 0 until posting freezes it. #}
+          <td class="num">{% if doc.status == "DRAFT" %}{{ line.net_preview }}{% else %}{{ line.line_net }}{% endif %}</td>
           {% if user.is_owner %}<td class="num">{{ line.cogs_total }}</td>{% endif %}
         {% endif %}
       </tr>

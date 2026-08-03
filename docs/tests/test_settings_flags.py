@@ -11,7 +11,7 @@ from django.urls import reverse
 
 from catalog.models import Customer, Item
 from core.models import CompanySettings
-from docs.forms import DocumentForm, formsets_for
+from docs.forms import DocumentForm, DocumentReferenceForm, formsets_for
 from docs.models import Document, DocType, DocumentLine
 
 pytestmark = pytest.mark.django_db
@@ -52,6 +52,18 @@ def test_defaults_keep_every_box(client, owner):
 def test_no_fiscal_machine_hides_machine_total():
     _settings(fiscal_machine_present=False)
     assert "machine_total" not in DocumentForm(doc_type=DocType.SALE).fields
+
+
+def test_reference_form_shows_machine_total_by_default():
+    """R56: the posted-document Reference form obeys the same switches."""
+    assert "machine_total" in DocumentReferenceForm().fields
+
+
+def test_no_fiscal_machine_hides_machine_total_on_reference_form():
+    """R56: turning off the fiscal machine hid the box on entry forms but
+    left it on the Reference form — the one place it kept leaking through."""
+    _settings(fiscal_machine_present=False)
+    assert "machine_total" not in DocumentReferenceForm().fields
 
 
 def test_discounts_off_hides_both_discount_boxes(owner):

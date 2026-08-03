@@ -82,7 +82,7 @@
     <thead>
       <tr>
         <th class="sno">{% translate "S/No" %}</th>
-        <th>{% translate "(Generic) Brand Name, Strength and Dosage" %}</th>
+        <th>{% translate "Generic (Brand) Name, Strength and Dosage" %}</th>
         <th>{% translate "Unit of Measure" %}</th>
         <th>{% translate "Batch No" %}</th>
         <th>{% translate "Expiry Date" %}</th>
@@ -96,7 +96,7 @@
       <tr>
         <td class="sno">{{ forloop.counter }}</td>
         <td>
-          {{ line.item.name }}{% if line.item.generic_name %} ({{ line.item.generic_name }}){% endif %}{% if line.item.strength %}, {{ line.item.strength }}{% endif %}{% if line.item.dosage_form %}, {{ line.item.dosage_form }}{% endif %}
+          {% if line.item.generic_name %}{{ line.item.generic_name }} ({{ line.item.name }}){% else %}{{ line.item.name }}{% endif %}{% if line.item.strength %}, {{ line.item.strength }}{% endif %}{% if line.item.dosage_form %}, {{ line.item.dosage_form }}{% endif %}
         </td>
         <td>{{ line.unit_label }}</td>
         <td>{{ line.batch.batch_no|default:line.batch_no_entered }}</td>

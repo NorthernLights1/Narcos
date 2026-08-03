@@ -11,7 +11,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.translation import gettext as _
 from django.views.decorators.http import require_POST
 
-from catalog.forms import COMMON_UNITS
+from catalog.forms import COMMON_UNITS, ItemForm
 from catalog.models import Customer, Supplier
 from core.audit import log_change, snapshot
 from core.models import CompanySettings
@@ -292,6 +292,7 @@ def _draft_form(request, doc: Document):
     else:
         form = DocumentForm(instance=doc, doc_type=doc.doc_type)
         formsets = formsets_for(doc)
+    quick_add_item = config.get("quick_add_item", False)
     return render(request, "docs/form.html", {
         "doc": doc,
         "title": config["title"],
@@ -299,6 +300,11 @@ def _draft_form(request, doc: Document):
         "formsets": formsets,
         "totals_preview": _totals_preview_context(config, doc),
         "common_units": COMMON_UNITS,
+        "quick_add_item": quick_add_item,
+        # R49: the dialog renders the full ItemForm — D33 still hides the
+        # margin fields from employees.
+        "item_form": (ItemForm(is_owner=request.user.is_owner)
+                      if quick_add_item else None),
     })
 
 
@@ -395,6 +401,28 @@ def document_print(request, pk):
         "company": settings,
         "doc": doc,
         "layout": layout,
+    })
+
+
+# R53: goods-out types the storeroom picks for; receivings bring goods in.
+PICKING_LIST_TYPES = (DocType.SALE, DocType.PROFORMA, DocType.CONSIGNMENT_ISSUE)
+
+
+@login_required
+def document_picking_list(request, pk):
+    """R53: a draft is printable for the storeroom long before posting gives
+    it a number — as a picking list, never a watermarked invoice. No prices,
+    no totals: it is not a record of a transaction (D8/D18 stay intact)."""
+    doc = get_object_or_404(
+        Document.objects.filter(doc_type__in=PICKING_LIST_TYPES)
+        .exclude(status=Document.Status.VOIDED)
+        .select_related("customer")
+        .prefetch_related("lines__item", "lines__batch"),
+        pk=pk,
+    )
+    return render(request, "docs/print_picking_list.html", {
+        "company": CompanySettings.load(),
+        "doc": doc,
     })
 
 

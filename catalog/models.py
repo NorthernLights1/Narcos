@@ -97,6 +97,10 @@ class Item(AutoCodeModel):
         ordering = ["code"]
 
     def __str__(self) -> str:
+        # R48: this trade reads by generic name — it leads everywhere an
+        # item is named (dropdowns, refusal messages); brand in brackets.
+        if self.generic_name:
+            return f"{self.code} — {self.generic_name} ({self.name})"
         return f"{self.code} — {self.name}"
 
 

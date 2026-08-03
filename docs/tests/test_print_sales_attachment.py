@@ -113,6 +113,15 @@ def test_line_table_composed_and_padded_to_20(client, owner, company, buyer, sal
     assert content.count('<td class="sno">') == 20       # fixed-height table
 
 
+def test_line_reads_generic_before_brand(client, owner, company, buyer, sale):
+    """R51: the client reads generic-first — Generic (Brand), Strength, Dosage."""
+    client.force_login(owner)
+    content = client.get(
+        reverse("document_print", args=[sale.pk]), {"layout": "SALES_ATT"},
+    ).content.decode()
+    assert "Amoxicillin (Amoxil), 500mg, Capsule" in content
+
+
 def test_csi_and_fs_receipt_slots(client, owner, company, buyer, sale):
     sale.fiscal_receipt_no = "FS-0001234"
     sale.save(update_fields=["fiscal_receipt_no"])

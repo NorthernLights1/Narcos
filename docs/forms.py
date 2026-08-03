@@ -98,6 +98,9 @@ DOC_CONFIG = {
             "qty_entered", "unit_cost_entered",
         ],
         "payments": True,
+        # R49: unknown items arrive with the goods — the receiving desk may
+        # create one mid-form. Sales staff pick, they don't create.
+        "quick_add_item": True,
     },
     DocType.SALE: {
         "title": _("Sale"),
@@ -312,6 +315,12 @@ class DocumentReferenceForm(forms.ModelForm):
     class Meta:
         model = Document
         fields = ["fiscal_receipt_no", "machine_total", "withholding_certificate_no"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # R56: obey the same switches as the entry forms (D89).
+        for name in fields_hidden_by_settings():
+            self.fields.pop(name, None)
 
 
 class DocumentLineForm(forms.ModelForm):

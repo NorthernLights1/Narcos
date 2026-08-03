@@ -1,6 +1,7 @@
 """Document models — spec §3.4. Documents are the only thing that changes
 ledgers. Posted documents are immutable (D28/I1) except §7.12 reference fields."""
 
+from decimal import Decimal
 from pathlib import Path
 from uuid import uuid4
 
@@ -78,7 +79,8 @@ class Document(models.Model):
                                  on_delete=models.PROTECT, related_name="documents")
 
     sale_kind = models.CharField(max_length=6, choices=SaleKind.choices, blank=True)
-    due_date = models.DateField(null=True, blank=True)  # D38 exc. 3
+    # R52: doubles as supplier credit terms on receivings (feeds AP overdue)
+    due_date = models.DateField(_("Payment due date"), null=True, blank=True)  # D38 exc. 3
     supplier_invoice_date = models.DateField(null=True, blank=True)  # D38 exc. 2
 
     # Totals ※ (D32) — tax_total is authoritative, never recomputed elsewhere
@@ -207,6 +209,15 @@ class DocumentLine(models.Model):
     qty_delta = models.IntegerField(default=0)
     source_zone = models.CharField(max_length=10, blank=True)
     target_zone = models.CharField(max_length=10, blank=True)
+
+    @property
+    def net_preview(self) -> Decimal:
+        """R54: what line_net should freeze to at posting — same formula as
+        the sales handler. Display-only for drafts; tax allocation and D80
+        price re-derivation can still move the posted figure."""
+        from docs.tax import round2
+        gross = Decimal(self.qty_entered or 0) * (self.unit_price or 0)
+        return round2(gross - (self.line_discount or 0))
 
     def _document_is_locked(self) -> bool:
         return self.document.status != Document.Status.DRAFT

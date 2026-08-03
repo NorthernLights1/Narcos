@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.translation import gettext as _
 from django.utils.translation import gettext_lazy
@@ -45,7 +45,8 @@ class MasterConfig:
 
 MASTER: dict[str, MasterConfig] = {
     "items": MasterConfig(Item, ItemForm, gettext_lazy("Items"),
-                          ["code", "name", "category", "base_unit", "maintained_price", "is_active"],
+                          ["code", "name", "generic_name", "category", "base_unit",
+                           "maintained_price", "is_active"],
                           ["code", "name", "generic_name"]),
     "customers": MasterConfig(Customer, CustomerForm, gettext_lazy("Customers"),
                               ["code", "name", "phone", "is_withholding_agent", "is_active"],
@@ -127,6 +128,33 @@ def master_form(request, kind, pk=None):
         "cfg": cfg, "kind": kind, "form": form,
         "units_formset": units_formset, "instance": instance,
         "common_units": COMMON_UNITS if cfg.model is Item else None,
+    })
+
+
+@login_required
+def item_quick_create(request):
+    """R49: create an item mid-document without abandoning the form. Runs
+    the FULL ItemForm — D67 auto-code and D81 price rules apply, never a
+    simplified parallel form — and returns what the line pickers need."""
+    if request.method != "POST":
+        form = ItemForm(is_owner=request.user.is_owner)
+        return render(request, "catalog/_item_modal_fields.html", {"form": form})
+    form = ItemForm(request.POST, is_owner=request.user.is_owner)
+    if not form.is_valid():
+        return render(request, "catalog/_item_modal_fields.html",
+                      {"form": form}, status=400)
+    item = form.save()
+    log_change(actor=request.user, action="MASTER_CREATE", entity="Item",
+               entity_id=item.pk, before={},
+               after=snapshot(item, Item.AUDITED_FIELDS))
+    return JsonResponse({
+        "id": item.pk,
+        "label": str(item),
+        # A brand-new item has no cost lots yet, so the maintained price IS
+        # the selling price whichever pricing mode it uses (D23).
+        "price": str(item.maintained_price),
+        "baseUnit": item.base_unit,
+        "vatExempt": "1" if item.vat_exempt else "0",
     })
 
 
