@@ -1502,3 +1502,79 @@ refused by the D4 stock rule (in D100's new words). No change needed.
 with warning-shaped ones. Two tests were failing at `499cfbf`, and the
 2026-07-30 status file's "full suite green" was wrong. Assertions updated to
 the D98 copy and strengthened to check the type-gate.
+
+---
+
+## Round 17 (2026-08-03) — the field-testing improvement batch ships
+
+*Trigger: Temesgen greenlit the whole outstanding queue at once — the seven
+decided improvements (R48a/R48b/R50/R51/R52/R54/R56), answered the R53 open
+question ("picking list for store room"), and agreed the R49 scope.*
+
+### D102 — Items read generic-first everywhere (R48a/R48b/R51)
+- **What:** `Item.__str__` is now `CODE — Generic (Brand)` (brand alone when
+  no generic is recorded). Because every dropdown in the app and every D100
+  refusal message name items through `__str__`, the whole app flipped at
+  once. The items list gains a **Generic name** column (it was searchable
+  but invisible), and the Cash Sales Attachment line reads
+  `Generic (Brand), Strength, Dosage` — its header flipped to match.
+- **Why together:** R48b and R51 had to land in one round so the wording
+  agrees everywhere — a dropdown, a refusal and a printout must name the
+  same medicine the same way.
+- **Bonus:** master-list column headers now come from the fields'
+  verbose names (`field_label` filter) — the new column would otherwise
+  have been headed `generic_name`.
+
+### D103 — Prepared By + signature on the generic printout (R50)
+- **What:** `print.html` (the "Attachment / not a fiscal receipt" layout,
+  COMPACT default) prints **Prepared By: <full name>** from the document's
+  `created_by` with a ruled signature line beneath, at the bottom of the
+  page. `break-inside: avoid` keeps name and line on one page.
+- **Scope held:** no stamp box, no Received By — the client confirms those
+  later. "Prepared" = who entered it, same meaning as the Cash Sales
+  Attachment.
+
+### D104 — "Due date" is labelled "Payment due date" (R52)
+- **What:** one `verbose_name` on `Document.due_date`. The same field is
+  the supplier's credit terms on receivings (feeds AP overdue) and the
+  customer's terms on credit sales — "Payment due date" reads correctly for
+  both. State-only migration `docs.0009`.
+
+### D105 — Draft lines show a computed net preview (R54)
+- **What:** a draft's per-line **Net** column read 0.00 because `line_net`
+  freezes at posting (※). Drafts now show `DocumentLine.net_preview` —
+  the same `qty × price − discount` the sales handler will freeze — under a
+  column deliberately headed **"Net (preview)"**. Display only; posting
+  stays authoritative (tax allocation and D80 re-derivation can move it).
+
+### D106 — The Reference form obeys the fiscal-machine switch (R56)
+- **What:** `DocumentReferenceForm` hardcoded its three fields, so turning
+  off *Fiscal machine present* (D89) hid the machine-total box on entry
+  forms but left it on the posted-document Reference form. It now runs
+  through the same `fields_hidden_by_settings()` as the other forms.
+
+### D107 — A draft prints as a picking list for the storeroom (R53)
+- **What:** the R53 question ("picking list or quote?") is answered:
+  **picking list**. New `/documents/<pk>/picking-list/` for SALE, PROFORMA
+  and CONSIGNMENT_ISSUE, drafts included — its own layout with item
+  (generic-first), batch, **shelf/bin**, quantity and a tick box per line,
+  plus a "Picked by" sign-off. **No prices, no totals, no number slot**: a
+  draft has no number (D8) and this paper must never read like an invoice
+  (D18) — it is labelled *"Internal — not an invoice, carries no prices"*.
+- **Not built:** a quote layout. If the client ever wants to hand a draft
+  to a customer, that is a new request with its own rules.
+
+### D108 — Create an item without leaving Receiving (R49)
+- **What:** the Receiving lines card gains **+ New item**, opening a dialog
+  that runs the **full `ItemForm`** — D67 auto-codes and the D81 price
+  rules apply, and the creation is audited exactly like Master → Items
+  (`MASTER_CREATE`). On success the item is injected into every item picker
+  on the page — the live Choices instance, the pre-enhancement option
+  snapshot and the add-row template — and selected on the first empty line
+  row (a fresh row is added when none is empty). Endpoint:
+  `/master/items/quick-new/` (GET = blank fields partial, POST = JSON or a
+  400 re-render with errors).
+- **Why not a simplified form:** the R49 scope note was explicit — a
+  parallel "quick" form would bypass D81/D67 and half-formed items would
+  accumulate. Employees see the same form minus the margin fields (D33).
+- **Scope:** Receiving only. Sales staff pick, they don't create.

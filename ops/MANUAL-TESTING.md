@@ -6,6 +6,23 @@ to do and **what you must see** — if you see something else, that's a bug.
 
 Written for a dev machine (Linux, `.venv`, PostgreSQL on localhost).
 
+> **2026-08-03 improvement batch (D102–D108):** items now read
+> **generic-first** everywhere — dropdowns, refusal messages, the items list
+> (new *Generic name* column) and the Cash Sales Attachment
+> (`Generic (Brand), Strength, Dosage`). The generic printout gains a
+> **Prepared By** + signature line. "Due date" boxes are labelled **"Payment
+> due date"**. A saved draft's per-line net shows as **"Net (preview)"**
+> instead of 0.00. With *Fiscal machine present* off, the machine-total box
+> is gone from the posted-document **Reference fields** form too. Sales,
+> proforma and consignment-issue documents (drafts included) offer a
+> **Picking list** print — item, batch, shelf/bin, qty, tick boxes, no
+> prices. On a **Receiving**, the Lines card's **+ New item** opens the full
+> item form in a dialog; the created item drops straight into the pickers.
+> To verify: create a receiving, press *+ New item*, save one with only a
+> name+price — it must get an auto code, appear selected on an empty line,
+> and show under Master → Items with an audit row. **Hard-refresh** the
+> browser first (`?v=20260803a`).
+
 > **2026-07-17 deployment (D83):** production now runs as a Docker stack on a
 > Windows 10 host — see [DEPLOYMENT.md](DEPLOYMENT.md). This guide's app
 > walkthrough is unchanged; only *where it runs* differs. To exercise the

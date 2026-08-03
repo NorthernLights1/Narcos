@@ -203,14 +203,14 @@ multi-user correct).
 
 Eight comments came back from the client after real use. Three of them are
 still design questions; the rest are decided and waiting to be built.
-Nothing here is implemented yet except R47.
+All implemented: R47 shipped earlier (D89); the rest landed 2026-08-03 as D102–D108.
 
 ### R47 — Selling price editable on sales — `RESOLVED` (→ D89)
 Already shipped: **Settings → "Sale price editable at the time of sale"**,
 off by default because it reverses D80 (the CN-000002 lesson). Nothing to
 build — the owner just ticks the box. Discounts remain the safer route.
 
-### R48 — Items read by brand, not generic name — `OPEN` (part decided)
+### R48 — Items read by brand, not generic name — `RESOLVED` (→ D102)
 `Item.name` holds the brand; `generic_name` is a separate field. Two
 changes hide in one request:
 - **Items list gains a Generic name column** — decided, `TO BUILD`. (It is
@@ -220,7 +220,7 @@ changes hide in one request:
   to generic-first changes how every line on every form reads. Needs the
   owner's call before building.
 
-### R49 — Create an item without leaving Receiving — `OPEN` (scope)
+### R49 — Create an item without leaving Receiving — `RESOLVED` (→ D108)
 Staff must abandon a half-typed receiving to add an unknown item. Wanted:
 a modal on the line row that creates the item and drops it into the
 picker. **Must reuse `ItemForm`**, not a parallel simplified form, or D81
@@ -228,7 +228,7 @@ picker. **Must reuse `ItemForm`**, not a parallel simplified form, or D81
 bypassed and half-formed items accumulate. `OPEN`: minimum fields in the
 modal — proposed generic name, brand name, base unit, price.
 
-### R50 — Prepared By + signature on the printout — `TO BUILD`
+### R50 — Prepared By + signature on the printout — `RESOLVED` (→ D103)
 The **generic** layout (`print.html`, labelled "Attachment / not a fiscal
 receipt", and the COMPACT default) has no signature markup at all; only
 the Cash Sales Attachment layout does. Decided with the owner
@@ -239,18 +239,18 @@ page under the D85 totals. **No stamp box** (client to confirm later) and
 **no Received By** for now. Block needs `break-inside: avoid` so a
 multi-page print cannot split the name from its line.
 
-### R51 — Generic name before brand on the attachment — `TO BUILD`
+### R51 — Generic name before brand on the attachment — `RESOLVED` (→ D102)
 The Cash Sales Attachment prints `Brand (Generic), Strength, Dosage`; the
 client reads generic-first. Flip to `Generic (Brand), …`. Do it together
 with R48 so the wording agrees everywhere.
 
-### R52 — "Due Date" → "Payment Due Date" — `TO BUILD`
+### R52 — "Due Date" → "Payment Due Date" — `RESOLVED` (→ D104)
 `Document.due_date` carries no `verbose_name`, so Django auto-labels it
 "Due date". The same field doubles as the supplier's credit terms on
 receivings (feeds AP overdue) — "Payment due date" reads correctly for
 both, so one label change covers it.
 
-### R53 — Print a draft — `OPEN` (what for?)
+### R53 — Print a draft — `RESOLVED` (→ D107, picking list)
 `document_print` accepts posted documents only; a draft 404s. Buildable,
 but a draft **has no document number** (assigned at posting under gapless
 rules, D8) and is not yet a record of anything — printed plain, someone
@@ -259,7 +259,7 @@ watermark machinery already exists) and no number where the number goes.
 `OPEN`: is this a **picking list** for the storeroom or a **quote** for the
 customer? A picking list wants its own layout, not a watermarked invoice.
 
-### R54 — Price/net on a saved draft — `TO BUILD`
+### R54 — Price/net on a saved draft — `RESOLVED` (→ D105)
 A saved draft already shows an **Expected totals** card (D67–D69), but the
 per-line **Net** column reads 0.00 because `line_net` is frozen at posting
 (※) and defaults to zero. Compute per-line net on the fly for drafts,
@@ -282,3 +282,9 @@ fields is already editable and audited (`fiscal_receipt_no`,
 `machine_total`, `withholding_certificate_no`); `notes` and `due_date`
 could be added at low risk if the client asks. `WATCH` that request
 recurring.
+
+### R56 — Reference form ignored the fiscal-machine flag — `RESOLVED` (→ D106)
+Found 2026-08-03: `DocumentReferenceForm` hardcoded its three fields, so
+turning off *Fiscal machine present* (D89) left the machine-total box on the
+posted-document Reference form. Now filtered through the same
+`fields_hidden_by_settings()` as the entry forms.
