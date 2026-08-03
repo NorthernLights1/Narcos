@@ -6,18 +6,21 @@
 <form method="post" class="card">
   {% csrf_token %}
   {% if form.non_field_errors %}<p class="msg msg-error">{{ form.non_field_errors }}</p>{% endif %}
+  {% for title, fields in form.grouped %}
+  <h2 class="settings-group">{{ title }}</h2>
   <div class="form-grid">
-    {% for field in form %}
+    {% for field in fields %}
     <div class="field">
       <label for="{{ field.id_for_label }}">{{ field.label }}</label>
       {{ field }}
-      {# Every setting carries an explanation of what flipping it does; the
-         page used to drop them all on the floor. #}
+      {# Every setting explains what flipping it does; the page used to drop
+         all of them on the floor. #}
       {% if field.help_text %}<p class="hint">{{ field.help_text }}</p>{% endif %}
       {% if field.errors %}<p class="field-error">{{ field.errors|striptags }}</p>{% endif %}
     </div>
     {% endfor %}
   </div>
+  {% endfor %}
   <button type="submit" class="btn btn-primary">{% translate "Save settings" %}</button>
 </form>
 {% endblock %}

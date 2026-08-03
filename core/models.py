@@ -89,10 +89,14 @@ class CompanySettings(models.Model):
     )
     sale_price_editable = models.BooleanField(
         _("Sale price editable at the time of sale"), default=False,
+        # Reverses D80 (the CN-000002 lesson). The reason it defaults to off
+        # is that a typed price silently undercuts the item's maintained
+        # price with no record of why. That rationale belongs here, in the
+        # code — the help text below is for the person using the app.
         help_text=_(
             "On lets staff type a price on sales, proformas and consignment "
-            "issues instead of taking the item's price (reverses D80 — "
-            "discounts are the safer way to charge less)."
+            "issues instead of using the item's price. A discount is the "
+            "safer way to charge less: it leaves a record of the reduction."
         ),
     )
 
@@ -133,11 +137,12 @@ class CompanySettings(models.Model):
         _("Cash and bank may go negative"), max_length=14,
         choices=NegativeBalance.choices, default=NegativeBalance.ALLOW,
         help_text=_(
-            "Allowed: a negative balance is a warning on the Finance page, "
-            "not an error — it means income or an opening balance has not "
-            "been recorded yet. Not when voiding: day-to-day entry stays "
-            "unrestricted, but a void may not push an account below zero. "
-            "Never: any posting that would overdraw an account is refused."
+            "What happens when a payment would take an account below zero. "
+            "Allowed: it goes through and the account shows red on the "
+            "Finance page — usually it means income or an opening balance "
+            "was never entered. Not when voiding: staff are never stopped, "
+            "but voiding an old document may not overdraw an account. "
+            "Never: any payment larger than the balance is refused."
         ),
     )
 
