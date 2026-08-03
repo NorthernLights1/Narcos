@@ -11,6 +11,9 @@
     <div class="field">
       <label for="{{ field.id_for_label }}">{{ field.label }}</label>
       {{ field }}
+      {# Every setting carries an explanation of what flipping it does; the
+         page used to drop them all on the floor. #}
+      {% if field.help_text %}<p class="hint">{{ field.help_text }}</p>{% endif %}
       {% if field.errors %}<p class="field-error">{{ field.errors|striptags }}</p>{% endif %}
     </div>
     {% endfor %}

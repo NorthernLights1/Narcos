@@ -2,15 +2,22 @@
 
 Dear Temesgen,
 
-Working state of `build` as of 2026-08-03. Local `build` is at `a679aa7`,
-one commit ahead of `origin/build` — **not pushed yet**. This file is the only
-uncommitted change.
+Working state of `build` as of 2026-08-03. Local `build` is at `85becaa`,
+**three commits ahead of `origin/build` — not pushed yet.** Uncommitted: this
+file, and one settings-page fix (below).
 
 ## Nothing is blocked on you
 
 The one question that came up today — *can cash and bank go negative?* — you
 answered: **all three options in Settings, the owner chooses.** Built as D101,
 defaulting to today's behaviour so nothing changes until the switch moves.
+
+## The server is up
+
+`http://127.0.0.1:8000` answers (302 → login, correct when signed out). The
+earlier restart killed the old process without starting a new one; a second
+one was already listening, so nothing was lost. **Hard-refresh the browser** —
+the D88/D93/D98 dialogs misbehave on cached assets.
 
 ## What was implemented
 
@@ -43,6 +50,14 @@ unchanged.
 | — | Two tests that were failing at `499cfbf` now pass |
 
 Earlier rounds D84–D91 remain as previously reported, all pushed.
+
+### Uncommitted (2026-08-03)
+
+`templates/core/settings_form.html` — the Settings page was **dropping every
+field's help text on the floor**. Each flag already carries an explanation in
+`core/models.py` ("Off hides the machine-total box on sales", and so on) and
+none of it reached the screen, so the D89 and D101 switches read as bare
+labels. Now rendered under each field. One line of template, no migration.
 
 ## What is left
 
@@ -86,6 +101,18 @@ is genuinely green now.
 | R50 | Prepared By (`created_by`) + signature line, `break-inside: avoid` | `templates/docs/print.html` — has no signature markup at all |
 | R52 | `due_date` label → "Payment Due Date" | `docs/models.py:81`, no `verbose_name` today |
 | R54 | Per-line net on saved drafts, display-only, labelled preview | `line_net` is frozen at posting |
+| R56 | Reference form must respect the fiscal-machine flag | `docs/forms.py:311` |
+
+**R56, found 2026-08-03 while answering what "Reference fields" are.** On a
+posted document, Edit becomes *Reference fields* — the only three boxes that
+may change after posting, because none of them touches a ledger:
+`fiscal_receipt_no`, `machine_total`, `withholding_certificate_no`. They are
+numbers copied off someone else's paper that often is not in hand at posting
+time, and every change is audited before/after. That part is working as
+designed. The defect is that `DocumentReferenceForm` **hardcodes its field
+list**, so turning off *Fiscal machine present* (D89) hides the machine-total
+box on entry forms but leaves it on this one. One-line fix, same
+`fields_hidden_by_settings()` helper the other two forms already use.
 
 **Second phone number — likely nothing to build.** `CompanySettings.phone` is
 already a single free-text field labelled "Phone numbers", 100 characters,
@@ -99,6 +126,17 @@ separately-labelled fields.
   runs the full `ItemForm` and drops the new item into the picker. The largest
   remaining item; reuses the D93 dialog machinery. Must not be a simplified
   parallel form, or D81 and the D67 auto-code rules get bypassed.
+  **Confirmed missing 2026-08-03** — you looked for it on a new receiving.
+  Nothing in `templates/docs/` opens an item form, so there is no entry point
+  at all. The pickers are server-rendered `<select>`s searched client-side by
+  Choices.js (`static/js/app.js:37`), so creating the item in a second tab does
+  **not** refresh an open form's dropdown.
+  *Workaround until it is built, which loses no typing:* **save the receiving
+  as a draft**, create the item under Master → Items → New, then reopen the
+  draft — the picker is rebuilt on load with the new item in it.
+  *Build note:* the JS must inject the new option into each live Choices
+  instance (`el._choices`), not just the underlying `<select>`, or the new item
+  stays invisible until reload.
 - `WATCH`, deliberately not queued: R46 per-customer price lists, R8b master
   data merge, R9 broader returns, R55 (editable posted documents) recurring.
 
@@ -129,11 +167,15 @@ GHCR pipeline fires on `v*` tags only. Not to be raised again.
 
 1. **Pick the negative-balance position in Settings** if "Allowed" is not what
    you want — the code is in, the switch is yours.
-2. **Build the six-item improvement batch** (R48a/R48b/R50/R51/R52/R54) in one
-   sitting — they are small, all decided, and R48b/R51 must land together so
-   the wording agrees everywhere.
-3. **Then R49** on its own.
-4. **Cut a `v*` tag** when the client is meant to receive this build. That, not
+2. **Test the current build** — the server is up and this is the largest batch
+   of behaviour change yet (D92–D101). Voiding a paid invoice and voiding a
+   sale that has a return are the two worth trying deliberately.
+3. **Build the seven-item improvement batch** (R48a/R48b/R50/R51/R52/R54/R56)
+   in one sitting — they are small, all decided, and R48b/R51 must land
+   together so the wording agrees everywhere. Not started; say the word.
+4. **Then R49** on its own.
+5. **Cut a `v*` tag** when the client is meant to receive this build. That, not
    a branch merge, is what ships an image to their machine.
 
-Say "commit and sync" when you want `a679aa7` on GitHub.
+Say "commit and sync" when you want `85becaa` plus the settings-page fix on
+GitHub.
