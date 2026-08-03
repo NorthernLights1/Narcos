@@ -3,6 +3,7 @@ from django.urls import path
 from catalog import views
 
 urlpatterns = [
+    path("items/quick-new/", views.item_quick_create, name="item_quick_create"),
     path("<slug:kind>/", views.master_list, name="master_list"),
     path("<slug:kind>/new/", views.master_form, name="master_create"),
     path("<slug:kind>/<int:pk>/edit/", views.master_form, name="master_edit"),

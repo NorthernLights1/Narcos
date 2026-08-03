@@ -25,7 +25,7 @@
   </section>
 
   {% for prefix, section_title, formset in formsets %}
-    {% include "docs/_formset.html" with title=section_title formset=formset %}
+    {% include "docs/_formset.html" with title=section_title formset=formset quick_add_item=quick_add_item %}
   {% endfor %}
 
   {% if totals_preview.mode == "payment" %}
@@ -81,4 +81,27 @@
     {% endif %}
   </div>
 </form>
+
+{% if quick_add_item %}
+{% comment %}R49: the FULL ItemForm in a dialog — never a simplified parallel
+form, so D67 auto-codes and D81 price rules keep applying. Outside #doc-form
+because forms cannot nest. app.js submits it via fetch and feeds the new item
+into every picker on the page.{% endcomment %}
+<dialog id="item-modal" class="confirm-dialog" style="width:min(44rem,calc(100vw - 2rem))">
+  <div class="card-head">
+    <h2>{% translate "New item" %}</h2>
+    <span class="hint">{% translate "Saved to Master → Items like any other — your receiving draft stays as it is." %}</span>
+  </div>
+  <form id="item-modal-form" method="post" action="{% url 'item_quick_create' %}">
+    {% csrf_token %}
+    <div id="item-modal-fields">
+      {% include "catalog/_item_modal_fields.html" with form=item_form %}
+    </div>
+    <div class="confirm-actions">
+      <button type="button" class="btn btn-secondary" data-item-modal-close>{% translate "Cancel" %}</button>
+      <button type="submit" class="btn btn-primary">{% translate "Create item" %}</button>
+    </div>
+  </form>
+</dialog>
+{% endif %}
 {% endblock %}

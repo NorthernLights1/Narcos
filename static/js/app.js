@@ -214,6 +214,104 @@
     }
   });
 
+  /* ---------- R49: create an item without leaving the document ----------
+   *
+   * The dialog runs the FULL ItemForm (D67 auto-code, D81 price rules) via
+   * fetch. On success the new item is pushed into every item picker on the
+   * page — the Choices instance, the pre-enhancement snapshot (_opts), the
+   * raw <option> list, and the empty-row template — then selected on the
+   * first empty line row (a fresh row is added when none is empty). */
+
+  function newItemOption(data) {
+    var option = document.createElement("option");
+    option.value = String(data.id);
+    option.textContent = data.label;
+    option.dataset.price = data.price;
+    option.dataset.baseUnit = data.baseUnit;
+    option.dataset.vatExempt = data.vatExempt;
+    return option;
+  }
+
+  function injectItemOption(data) {
+    var value = String(data.id);
+    document.querySelectorAll('select[name$="-item"]').forEach(function (el) {
+      if (el._opts) {
+        el._opts.push({ value: value, label: data.label, data: {
+          price: data.price, baseUnit: data.baseUnit, vatExempt: data.vatExempt,
+        } });
+      }
+      if (el._choices) {
+        el._choices.setChoices([{ value: value, label: data.label }],
+                               "value", "label", false);
+      } else {
+        el.appendChild(newItemOption(data));
+      }
+    });
+    /* Rows added after this point are cloned from the template — it needs
+     * the option too, or the new item vanishes from every future row. */
+    var template = document.getElementById("lines-empty-row");
+    if (template) {
+      template.content.querySelectorAll('select[name$="-item"]')
+        .forEach(function (el) { el.appendChild(newItemOption(data)); });
+    }
+  }
+
+  function adoptNewItem(data) {
+    injectItemOption(data);
+    var target = null;
+    document.querySelectorAll("#lines-rows tr").forEach(function (row) {
+      if (target || row.hidden) return;
+      var select = row.querySelector('select[name$="-item"]');
+      if (select && !select.value) target = select;
+    });
+    if (!target) {
+      addFormsetRow("lines");
+      var rows = document.querySelectorAll("#lines-rows tr");
+      var lastRow = rows[rows.length - 1];
+      target = lastRow && lastRow.querySelector('select[name$="-item"]');
+    }
+    if (!target) return;
+    if (target._choices) target._choices.setChoiceByValue(String(data.id));
+    target.value = String(data.id);
+    target.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  document.addEventListener("click", function (event) {
+    if (event.target.closest("[data-open-item-modal]")) {
+      var dialog = document.getElementById("item-modal");
+      if (dialog && dialog.showModal) dialog.showModal();
+    }
+    if (event.target.closest("[data-item-modal-close]")) {
+      var openDialog = document.getElementById("item-modal");
+      if (openDialog) openDialog.close();
+    }
+  });
+
+  document.addEventListener("submit", function (event) {
+    var form = event.target;
+    if (form.id !== "item-modal-form") return;
+    event.preventDefault();
+    var fields = document.getElementById("item-modal-fields");
+    fetch(form.action, { method: "POST", body: new FormData(form) })
+      .then(function (response) {
+        if (response.ok) {
+          return response.json().then(function (data) {
+            document.getElementById("item-modal").close();
+            adoptNewItem(data);
+            /* Blank form for the next item; rebind the pricing toggle. */
+            return fetch(form.action)
+              .then(function (r) { return r.text(); })
+              .then(function (html) { fields.innerHTML = html; initPricingToggle(); });
+          });
+        }
+        /* Invalid: the server re-renders the fields with their errors. */
+        return response.text().then(function (html) {
+          fields.innerHTML = html;
+          initPricingToggle();
+        });
+      });
+  });
+
   /* ---------- item pick: prefill + batch filtering ---------- */
 
   function rowInput(row, suffix) {
