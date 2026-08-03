@@ -246,8 +246,8 @@
               data-confirm-body="{% blocktranslate with no=doc.doc_no %}A draft copy opens for you to fix. Nothing changes in your books yet — {{ no }} stays active until you post that copy.|Posting the copy voids {{ no }} at that moment, with your reason: “{reason}”.{% endblocktranslate %}{% if settled_by_numbers %}|{% blocktranslate with pay=settled_by_numbers %}The payment that settled it ({{ pay }}) is reversed at the same moment, so the money goes back too.{% endblocktranslate %}{% endif %}|{% translate 'If you never post the copy, nothing happens.' %}">
         {% translate "Correct this document" %}
       </button>
-      {# D98: the destructive path spells out every consequence and will not
-         arm until the operator types the document number. #}
+      {% comment %}D98: the destructive path spells out every consequence and
+      will not arm until the operator types the document number.{% endcomment %}
       <button type="submit" class="btn"
               data-confirm data-confirm-danger data-confirm-reason="id_reason"
               data-confirm-title="{% blocktranslate with no=doc.doc_no %}Void {{ no }} — read this first{% endblocktranslate %}"

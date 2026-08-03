@@ -17,8 +17,9 @@
     <h2>{% translate "Money now" %}</h2>
     <ul class="compact-list">
       {% for account, balance in accounts %}
-      {# D101: a negative balance is allowed by default — it means income or
-         an opening balance was never recorded. Say so instead of hiding it. #}
+      {% comment %}D101: a negative balance is allowed by default — it means
+      income or an opening balance was never recorded. Say so, don't hide
+      it.{% endcomment %}
       <li>{{ account.name }}
         <b class="num{% if balance < 0 %} finance-bad{% endif %}">{{ balance }}</b>
         {% if balance < 0 %}

@@ -60,8 +60,8 @@
 </div>
 
 {# D93: one dialog for the whole app. Buttons carry the wording in data-confirm-* attributes; app.js fills this in and only submits once the user agrees. Native <dialog> brings the focus trap and Esc handling with it. #}
-{# D98: destructive actions explain themselves in full and cannot be
-   dismissed with one reflex tap — see the type-to-confirm block. #}
+{% comment %}D98: destructive actions explain themselves in full and cannot be
+dismissed with one reflex tap — see the type-to-confirm block.{% endcomment %}
 <dialog id="confirm-dialog" class="confirm-dialog">
   <h2 data-confirm-slot="title"></h2>
   <div data-confirm-slot="body"></div>
