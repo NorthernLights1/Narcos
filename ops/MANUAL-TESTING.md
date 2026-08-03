@@ -184,6 +184,15 @@ Written for a dev machine (Linux, `.venv`, PostgreSQL on localhost).
 >   — Amoxicillin, batch B-1 in Warehouse (have 15, need 20)"* — not "item 10
 >   lot 12". Voiding a receiving whose goods were sold names the documents
 >   that took them (e.g. "have already moved on SI-000012").
+> - **Negative cash is now your choice** (D101). *Settings → Cash and bank may
+>   go negative*: **Allowed** (the default, today's behaviour), **Not when
+>   voiding**, **Never**. To verify: with an empty drawer, post an expense of
+>   4,000. On *Allowed* it posts and **Work → Finance** shows the account in
+>   red with "negative — income or an opening balance has not been recorded".
+>   On *Never* it is refused, naming the account and the shortfall. On *Not
+>   when voiding* the expense posts normally, but voiding the opening-cash
+>   document the money was spent from is refused. **Nothing changes until you
+>   move the setting.**
 
 ---
 

@@ -6,30 +6,11 @@ Working state of `build` as of 2026-08-03. Local `build` is at `a679aa7`,
 one commit ahead of `origin/build` — **not pushed yet**. This file is the only
 uncommitted change.
 
-## One thing is blocked on you
+## Nothing is blocked on you
 
-**Can a cash or bank account go negative?** Probed today: it already can, two
-ways. Posting an expense of 4000 against an empty drawer succeeds and leaves
-cash at **−4000.00** — `_write_money` (`docs/posting.py:133`) writes ledger
-rows with no balance check at all. Voiding an opening-cash document after the
-money was spent does the same. Stock has a DB CHECK constraint that makes this
-impossible; money has nothing.
-
-I did **not** fix it, because the fix depends on your answer and the wrong
-choice blocks legitimate work:
-
-- **If cash may never go negative:** the guard belongs at posting time, and
-  staff will be stopped from recording a payment before the opening balance is
-  entered or the drawer is counted.
-- **If it may go negative:** nothing to build; a negative balance is a signal
-  to go and count, and the Finance page should show it in red.
-
-Related but separate: the same hole in the *withholding* bucket **was** fixed
-today (D99), because the codebase already declared that bucket must never go
-negative — the remittance form has refused to over-remit since D52. Money has
-no such existing rule, so fixing it would be inventing policy.
-
-Everything else from 2026-07-30 is answered and built.
+The one question that came up today — *can cash and bank go negative?* — you
+answered: **all three options in Settings, the owner chooses.** Built as D101,
+defaulting to today's behaviour so nothing changes until the switch moves.
 
 ## What was implemented
 
@@ -58,6 +39,7 @@ unchanged.
 |-----|--------|
 | D99 | A payment cannot be voided once its withholding was remitted |
 | D100 | Refusals name the medicine and the documents, not row ids |
+| D101 | Negative cash/bank is a settings choice — Allowed / Not when voiding / Never |
 | — | Two tests that were failing at `499cfbf` now pass |
 
 Earlier rounds D84–D91 remain as previously reported, all pushed.
@@ -83,8 +65,11 @@ All three shapes flagged this morning were probed. Results:
    that took the goods instead of advising a supplier return when a supplier
    return is what took them.
 
-**Found while probing, not fixed:** money accounts can go negative — see the
-question at the top of this file.
+**Found while probing, fixed as D101:** money accounts had no backstop at all.
+An expense of 4000 against an empty drawer posted and left cash at −4000.00;
+`_write_money` wrote ledger rows with no balance check. Now governed by
+*Settings → Cash and bank may go negative*, default Allowed (unchanged
+behaviour), with negative accounts flagged in red on the Finance page.
 
 **Also found:** `499cfbf` shipped with two failing tests. D98 changed the
 dialog titles and the D93 assertions were never updated, so the "full suite
@@ -142,7 +127,8 @@ GHCR pipeline fires on `v*` tags only. Not to be raised again.
 
 ## Recommended next steps
 
-1. **Answer the negative-money question** at the top — one sentence unblocks it.
+1. **Pick the negative-balance position in Settings** if "Allowed" is not what
+   you want — the code is in, the switch is yours.
 2. **Build the six-item improvement batch** (R48a/R48b/R50/R51/R52/R54) in one
    sitting — they are small, all decided, and R48b/R51 must land together so
    the wording agrees everywhere.

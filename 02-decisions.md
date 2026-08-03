@@ -1472,6 +1472,30 @@ cascade reverses the receipt, the customer lands at 0.00 and the cash goes
 back. Voiding **opening stock** after some of it was sold is correctly
 refused by the D4 stock rule (in D100's new words). No change needed.
 
+### D101 — Whether cash and bank may go negative is a setting
+- **What:** `CompanySettings.negative_balance_policy`, three positions:
+  **Allowed** (default) — a negative balance shows in red on the Finance page
+  with the reason; **Not when voiding** — daily entry is unrestricted but a
+  void may not push an account below zero; **Never** — any posting that would
+  overdraw an account is refused. Both refusals name the account and where the
+  balance would land, and point at the setting.
+- **Why it was found:** probing the D99 hole showed money has no backstop at
+  all. `_write_money` wrote ledger rows unconditionally: an expense of 4000
+  against an empty drawer posts and leaves cash at **−4000.00**, and voiding
+  an opening-cash document after the money was spent does the same. Stock has
+  a DB CHECK constraint (D4); money had nothing.
+- **Why a setting and not a rule:** Temesgen — *"make all options available in
+  settings, since people without a PLC may not declare all their finances they
+  can choose."* A business that does not run every birr through the books has
+  real payments with no recorded income behind them; refusing those stops real
+  work. Same principle as **D54**: the legal form is configuration, not code.
+- **Default is today's behaviour**, per the D89 rule that a new switch changes
+  nothing until it is flipped. Migration `core.0006`.
+- **Not the same as D99.** The withholding bucket was fixed outright because
+  the codebase already declared it must never go negative — the remittance
+  form has refused to over-remit since D52. Money had no such existing rule,
+  so choosing one would have been inventing policy.
+
 ### Defect found in the D98 tests (fixed, no decision needed)
 `test_document_correct.py` still asserted the **D93** dialog titles
 ("Void SI-000001?", "Post this correction?") that D98 deliberately replaced
