@@ -2,14 +2,34 @@
 
 Dear Temesgen,
 
-Working state of `build` as of 2026-08-03. `build` and `origin/build` are both
-at `499cfbf`; the working tree is clean and this file is the only change.
+Working state of `build` as of 2026-08-03. Local `build` is at `a679aa7`,
+one commit ahead of `origin/build` — **not pushed yet**. This file is the only
+uncommitted change.
 
-## Nothing is blocked on you
+## One thing is blocked on you
 
-All questions from 2026-07-30 are answered and the two that needed building are
-built. The open sub-decision from that day — *what happens when one receipt
-settles several invoices* — was closed by making it impossible (D94).
+**Can a cash or bank account go negative?** Probed today: it already can, two
+ways. Posting an expense of 4000 against an empty drawer succeeds and leaves
+cash at **−4000.00** — `_write_money` (`docs/posting.py:133`) writes ledger
+rows with no balance check at all. Voiding an opening-cash document after the
+money was spent does the same. Stock has a DB CHECK constraint that makes this
+impossible; money has nothing.
+
+I did **not** fix it, because the fix depends on your answer and the wrong
+choice blocks legitimate work:
+
+- **If cash may never go negative:** the guard belongs at posting time, and
+  staff will be stopped from recording a payment before the opening balance is
+  entered or the drawer is counted.
+- **If it may go negative:** nothing to build; a negative balance is a signal
+  to go and count, and the Finance page should show it in red.
+
+Related but separate: the same hole in the *withholding* bucket **was** fixed
+today (D99), because the codebase already declared that bucket must never go
+negative — the remittance form has refused to over-remit since D52. Money has
+no such existing rule, so fixing it would be inventing policy.
+
+Everything else from 2026-07-30 is answered and built.
 
 ## What was implemented
 
@@ -33,28 +53,43 @@ void → **owes −200**. After D95: **0**. The return case (D96) was worse — 
 warehouse gained two packs that never existed. After D96: balance 0, warehouse
 unchanged.
 
+### Round 16 (2026-08-03, commit `a679aa7`)
+| Ref | Change |
+|-----|--------|
+| D99 | A payment cannot be voided once its withholding was remitted |
+| D100 | Refusals name the medicine and the documents, not row ids |
+| — | Two tests that were failing at `499cfbf` now pass |
+
 Earlier rounds D84–D91 remain as previously reported, all pushed.
 
 ## What is left
 
-### Bug fixes — no open reproduction, but unprobed surface
+### Bug fixes — the void sweep is finished
 
-D95/D96/D97 closed every void pair that was actually probed. Three shapes have
-**not** been checked:
+All three shapes flagged this morning were probed. Results:
 
-1. **Sale ↔ WHT remittance.** `WhtRemittanceHandler` has no `check_voidable`,
-   and `WHT_REMITTANCE` is not in the `related_document` cascade
-   (`docs/posting.py:264-277`). Voiding a sale whose withholding was already
-   remitted reverses the sale's `WithholdingLedger` rows and leaves the
-   remittance standing. Structurally identical to the D95 bug.
-2. **Opening documents.** Voiding an opening stock / opening AR after later
-   transactions consumed it. No handler override; the default is *allow*.
-3. **Wording, D97 class.** Voiding a receiving after a supplier return is
-   correctly blocked, but the message reads "goods were already sold or moved"
-   (`docs/handlers.py:178-191`). Right answer, wrong words.
+1. **Withholding ↔ remittance — real, fixed (D99).** Measured: pay a 1000
+   receiving as 970 cash + 30 withheld, remit the 30, then void the payment →
+   **PAYABLE −30.00**, money already gone to the tax office. Now refused, in
+   both the direct and the cascade path, naming the remittance to void first.
+2. **Opening documents — clean.** Voiding an opening AR settled by a receipt
+   lands the customer at 0.00 and returns the cash (the D95 cascade does it).
+   Voiding opening stock after a sale is correctly refused by the D4 rule.
+   No change needed.
+3. **Wording — fixed (D100).** The shortfall message said "item 10 lot 12 in
+   WAREHOUSE"; it now reads *"AMOX — Amoxicillin, batch B-1 in Warehouse
+   (have 15, need 20)"*, and because it comes from the engine, every stock
+   refusal in the app improved. The receiving message now names the documents
+   that took the goods instead of advising a supplier return when a supplier
+   return is what took them.
 
-Method for all three is the one that worked twice: build the scenario in a
-rolled-back transaction and read the balances.
+**Found while probing, not fixed:** money accounts can go negative — see the
+question at the top of this file.
+
+**Also found:** `499cfbf` shipped with two failing tests. D98 changed the
+dialog titles and the D93 assertions were never updated, so the "full suite
+green" line in the 2026-07-30 status was wrong. Fixed in `a679aa7`; the suite
+is genuinely green now.
 
 ### Feature improvements — decided, ready to build
 
@@ -107,11 +142,12 @@ GHCR pipeline fires on `v*` tags only. Not to be raised again.
 
 ## Recommended next steps
 
-1. **Build the six-item improvement batch** (R48a/R48b/R50/R51/R52/R54) in one
+1. **Answer the negative-money question** at the top — one sentence unblocks it.
+2. **Build the six-item improvement batch** (R48a/R48b/R50/R51/R52/R54) in one
    sitting — they are small, all decided, and R48b/R51 must land together so
    the wording agrees everywhere.
-2. **Probe the three remaining void shapes**, WHT remittance first — it is the
-   one with real money behind it.
 3. **Then R49** on its own.
 4. **Cut a `v*` tag** when the client is meant to receive this build. That, not
    a branch merge, is what ships an image to their machine.
+
+Say "commit and sync" when you want `a679aa7` on GitHub.

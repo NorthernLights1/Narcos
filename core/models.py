@@ -40,6 +40,11 @@ class CompanySettings(models.Model):
         ETHIOPIAN = "ETHIOPIAN", _("Ethiopian")
         BOTH = "BOTH", _("Both")
 
+    class NegativeBalance(models.TextChoices):  # D101
+        ALLOW = "ALLOW", _("Allowed — flagged on the Finance page")
+        BLOCK_VOID = "BLOCK_VOID", _("Not when voiding")
+        BLOCK_POSTING = "BLOCK_POSTING", _("Never — refuse the posting")
+
     class PrintLayout(models.TextChoices):
         COMPACT = "COMPACT", _("Compact")
         DETAILED = "DETAILED", _("Detailed")
@@ -116,6 +121,26 @@ class CompanySettings(models.Model):
         default=PrintLayout.COMPACT,
     )
 
+    # D101: stock can never go negative (D4, enforced by a DB constraint).
+    # Money had no equivalent, so an expense could be paid from an empty
+    # drawer and a void could take an account below zero. Whether that is a
+    # bug or a fact of life is the owner's call, not ours — a business that
+    # does not run every birr through the books has real payments with no
+    # recorded income behind them, and refusing those stops real work.
+    # Default is today's behaviour, per the D89 rule that a new switch
+    # changes nothing until it is flipped.
+    negative_balance_policy = models.CharField(
+        _("Cash and bank may go negative"), max_length=14,
+        choices=NegativeBalance.choices, default=NegativeBalance.ALLOW,
+        help_text=_(
+            "Allowed: a negative balance is a warning on the Finance page, "
+            "not an error — it means income or an opening balance has not "
+            "been recorded yet. Not when voiding: day-to-day entry stays "
+            "unrestricted, but a void may not push an account below zero. "
+            "Never: any posting that would overdraw an account is refused."
+        ),
+    )
+
     AUDITED_FIELDS = [
         "name", "address", "tin", "phone", "tax_regime", "vat_rate", "tot_rate",
         "prices_tax_exclusive", "withholding_on_sales", "withholding_on_purchases",
@@ -125,6 +150,7 @@ class CompanySettings(models.Model):
         "near_expiry_months", "consignment_term_months",
         "default_credit_limit", "default_credit_action",
         "fiscal_year_start_month", "date_display", "print_layout",
+        "negative_balance_policy",
     ]
 
     class Meta:

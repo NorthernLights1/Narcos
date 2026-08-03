@@ -10,7 +10,7 @@ from django.utils import timezone
 from django.utils.translation import gettext as _
 
 from core.audit import log_event
-from core.models import NumberSequence
+from core.models import CompanySettings, NumberSequence
 from docs.models import DocType, Document, ImmutableDocumentError, PREFIXES
 from money.models import MoneyLedger, PartyLedger, WithholdingLedger
 from stock.models import StockBalance, StockLedger
@@ -135,7 +135,47 @@ def _apply_stock(doc: Document, deltas: list[StockDelta], now, actor,
         balance.save(update_fields=["qty"])
 
 
+def _check_money_stays_positive(deltas, during_void: bool) -> None:
+    """D101: stock has a no-negative CHECK constraint (D4); money never did,
+    so an expense could be paid from an empty drawer and a void could take an
+    account below zero. Whether that is wrong is the owner's call — a business
+    that does not run every birr through the books has real payments with no
+    recorded income behind them. `negative_balance_policy` decides.
+    """
+    policy = CompanySettings.load().negative_balance_policy
+    if policy == CompanySettings.NegativeBalance.ALLOW:
+        return
+    if policy == CompanySettings.NegativeBalance.BLOCK_VOID and not during_void:
+        return
+    net: dict[int, Decimal] = {}
+    for account_id, delta in deltas:
+        net[account_id] = net.get(account_id, Decimal("0.00")) + delta
+    for account_id in sorted(net):
+        delta = net[account_id]
+        if delta >= 0:
+            continue
+        balance = MoneyLedger.objects.filter(account_id=account_id).aggregate(
+            s=Sum("amount_delta"))["s"] or Decimal("0.00")
+        if balance + delta >= 0:
+            continue
+        from catalog.models import Account  # error path only
+        name = Account.objects.filter(pk=account_id).values_list(
+            "name", flat=True).first() or account_id
+        if during_void:
+            raise PostingError(
+                _("Cannot void: %(account)s would go to %(after)s. Reverse "
+                  "the documents that spent it first, or allow negative "
+                  "balances in Settings.")
+                % {"account": name, "after": balance + delta})
+        raise PostingError(
+            _("Not enough money in %(account)s (have %(have)s, need "
+              "%(need)s). Record the income or opening balance behind it "
+              "first, or allow negative balances in Settings.")
+            % {"account": name, "have": balance, "need": -delta})
+
+
 def _write_money(doc: Document, effects: Effects, now) -> None:
+    _check_money_stays_positive(effects.money, during_void=False)
     for account_id, delta in effects.money:
         MoneyLedger.objects.create(
             account_id=account_id, amount_delta=delta, document=doc, at=now
@@ -278,9 +318,12 @@ def void(document: Document, actor, reason: str) -> Document:
             for row in doc.stock_moves.filter(is_reversal=False)
         ]
         _apply_stock(doc, reversals, now, actor, is_reversal=True)
-        for row in list(doc.money_rows.filter(is_reversal=False)):
-            MoneyLedger.objects.create(account_id=row.account_id,
-                                       amount_delta=-row.amount_delta,
+        money_reversals = [(row.account_id, -row.amount_delta)
+                           for row in doc.money_rows.filter(is_reversal=False)]
+        _check_money_stays_positive(money_reversals, during_void=True)  # D101
+        for account_id, delta in money_reversals:
+            MoneyLedger.objects.create(account_id=account_id,
+                                       amount_delta=delta,
                                        document=doc, is_reversal=True, at=now)
         for row in list(doc.party_rows.filter(is_reversal=False)):
             PartyLedger.objects.create(party_type=row.party_type, party_id=row.party_id,
