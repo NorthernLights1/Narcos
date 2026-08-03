@@ -288,3 +288,37 @@ Found 2026-08-03: `DocumentReferenceForm` hardcoded its three fields, so
 turning off *Fiscal machine present* (D89) left the machine-total box on the
 posted-document Reference form. Now filtered through the same
 `fields_hidden_by_settings()` as the entry forms.
+
+---
+
+## New — client field testing, round 4 (2026-08-04)
+
+Four comments from Temesgen after using the round-17 build. **Recorded, not
+built — his explicit instruction.**
+
+### R57 — Item picking too narrow on wide screens — `TO BUILD`
+The page body is capped (`.page { max-width: 72rem }`) and the line-table
+item picker at `.table-input .choices { min-width: 14rem }` — on a wide
+monitor most of the screen is empty margin while long generic-first names
+truncate. Widen the document form page and give the Item column the freed
+space. Needs `scripts/build_css.sh` + cache-buster bump.
+
+### R58 — Printouts should carry the full item description — `TO BUILD` (scope open)
+Wanted on printing: **dosage form, strength, base unit, pack description**.
+Today: the Cash Sales Attachment prints strength + dosage but not pack
+description (unit of measure column shows the line's unit label); the
+generic layout and the picking list print only `CODE — Generic (Brand)`.
+*Open:* which layouts — assume all three unless he narrows it.
+
+### R59 — Items VAT-exempt by default — `TO BUILD`
+`Item.vat_exempt` defaults False; medicines are VAT-exempt by law (the help
+text already says so) and this trade is a pharmaceutical wholesaler, so
+staff must tick the box on nearly every item. Flip the default to True
+(migration; existing items untouched). *Open:* flat default, or per
+category (DRUG exempt, EQUIPMENT/SUPPLY not)?
+
+### R60 — Base unit should be a combobox — `TO BUILD` (form open)
+The base-unit box is a text input with a `datalist` of common units — the
+suggestions only appear once you click/type, so nobody finds them. Wanted:
+a visible dropdown (common units) that still allows a typed custom unit.
+Applies to Master → Items and the R49 dialog alike.

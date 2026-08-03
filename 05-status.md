@@ -41,6 +41,17 @@ with a verification walk-through for the receiving dialog.
 
 ## What is left
 
+### Next build queue — R57–R60 (your round-4 feedback, recorded, NOT built)
+
+| Ref | Request | Note |
+|-----|---------|------|
+| R57 | Item picking wider on wide screens | Page capped at 72rem, item column at 14rem — CSS change + rebuild |
+| R58 | Printouts carry dosage form, strength, base unit, pack description | *Open:* which layouts — all three assumed |
+| R59 | Items VAT-exempt by default | One default flip + migration. *Open:* flat, or DRUG-only? |
+| R60 | Base unit as a combobox | Today a datalist nobody discovers; wanted a visible dropdown that still takes typed units |
+
+Say "build R57–R60" (and answer the two *Open* points) when ready.
+
 ### Yours
 - **Hard-refresh and try the receiving dialog**: new receiving → *+ New
   item* → save with name + price only → it must get an auto code and land
