@@ -17,7 +17,7 @@ R59 on drugs only, R60 combobox.
 ## The server is up
 
 `http://127.0.0.1:8000` answers. **Hard-refresh** — both app.css and app.js
-changed (`?v=20260804a`).
+changed (`?v=20260804b`).
 
 ## What was implemented
 
@@ -63,7 +63,7 @@ R55 recurring.
 ## Environment
 
 - Migrations on the dev DB: through `core.0006` and `docs.0009`.
-- Assets rebuilt (`build_css.sh`); cache-buster `?v=20260804a`.
+- Assets rebuilt (`build_css.sh`); cache-buster `?v=20260804b`.
 - `master` stays behind by decision; the GHCR pipeline fires on `v*` tags.
 
 ## Recommended next steps

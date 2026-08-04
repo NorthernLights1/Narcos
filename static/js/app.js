@@ -46,6 +46,9 @@
         allowHTML: false,
         searchResultLimit: 30,
         searchPlaceholderValue: el.dataset.searchPlaceholder || "",
+        /* D113: "auto" measures space against the scrollable line table and
+         * flips the list upward erratically — always open downward. */
+        position: "bottom",
       });
     });
   }

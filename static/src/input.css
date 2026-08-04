@@ -195,6 +195,9 @@
   }
   /* R57: long generic-first names need the room the wide page freed. */
   .table-input .choices { @apply min-w-[22rem]; }
+  /* D113: while a picker is open, the scrollable line table must not clip
+     the list — release the overflow so it overlays the page below. */
+  .table-wrap:has(.choices.is-open) { overflow: visible; }
   .choices__list--dropdown .choices__item { @apply text-sm; }
   .is-focused .choices__inner, .is-open .choices__inner {
     @apply border-accent ring-2 ring-accent/40;
@@ -202,6 +205,12 @@
 }
 
 /* Browser print (statement, reports): chrome off, content full-width */
+/* D113: outside @layer — the class only exists at runtime (Choices.js), so
+   inside a layer Tailwind tree-shakes it. The vendored sheet ships z-index:1,
+   which loses to cards and panels; sit above all of them, below the sticky
+   topbar (z-30). */
+.choices__list--dropdown { z-index: 25; }
+
 @media print {
   .topbar, .sidebar, .no-print, .actions, .messages, .filterbar {
     display: none !important;

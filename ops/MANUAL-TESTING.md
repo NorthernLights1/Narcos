@@ -18,7 +18,8 @@ Written for a dev machine (Linux, `.venv`, PostgreSQL on localhost).
 > fills the screen), add an item with category EQUIPMENT (exempt box
 > unticks itself), pick base unit *Other* and type "pack of 25" (saves
 > verbatim), then print any sale — every cell bordered, descriptions full.
-> **Hard-refresh** (`?v=20260804a`).
+> Item pickers now always open **downward** and overlay the page
+> cleanly (D113). **Hard-refresh** (`?v=20260804b`).
 
 > **2026-08-03 improvement batch (D102–D108):** items now read
 > **generic-first** everywhere — dropdowns, refusal messages, the items list

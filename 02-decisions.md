@@ -1617,3 +1617,13 @@ separators on printing, VAT-exempt on drugs only, combobox approved.*
   form swaps the typed unit in at clean(). A saved custom unit joins the
   dropdown on edit so nothing ever renders unselected. Applies to
   Master → Items and the D108 receiving dialog alike (same form).
+
+### D113 — Item dropdowns always open downward (bug fix)
+- **What:** the pickers flipped upward at random and sat under other parts
+  of the page. Two causes, two fixes: Choices.js ran with
+  `position: "auto"`, which measures free space against the scrollable
+  line-table container and misjudges it — now `position: "bottom"`, always
+  downward. And the vendored dropdown ships `z-index: 1`, losing to cards
+  and panels — now 25 (below only the sticky topbar), with the line table's
+  scroll container releasing its clipping while a picker is open
+  (`.table-wrap:has(.choices.is-open)`).
