@@ -293,31 +293,32 @@ posted-document Reference form. Now filtered through the same
 
 ## New — client field testing, round 4 (2026-08-04)
 
-Four comments from Temesgen after using the round-17 build. **Recorded, not
-built — his explicit instruction.**
+Four comments from Temesgen after using the round-17 build. Recorded first
+per his instruction; **all built 2026-08-04 as D109–D112** once he answered
+the open questions.
 
-### R57 — Item picking too narrow on wide screens — `TO BUILD`
+### R57 — Item picking too narrow on wide screens — `RESOLVED` (→ D109)
 The page body is capped (`.page { max-width: 72rem }`) and the line-table
 item picker at `.table-input .choices { min-width: 14rem }` — on a wide
 monitor most of the screen is empty margin while long generic-first names
 truncate. Widen the document form page and give the Item column the freed
 space. Needs `scripts/build_css.sh` + cache-buster bump.
 
-### R58 — Printouts should carry the full item description — `TO BUILD` (scope open)
+### R58 — Printouts should carry the full item description — `RESOLVED` (→ D110, all layouts + grid)
 Wanted on printing: **dosage form, strength, base unit, pack description**.
 Today: the Cash Sales Attachment prints strength + dosage but not pack
 description (unit of measure column shows the line's unit label); the
 generic layout and the picking list print only `CODE — Generic (Brand)`.
 *Open:* which layouts — assume all three unless he narrows it.
 
-### R59 — Items VAT-exempt by default — `TO BUILD`
+### R59 — Items VAT-exempt by default — `RESOLVED` (→ D111, drugs only)
 `Item.vat_exempt` defaults False; medicines are VAT-exempt by law (the help
 text already says so) and this trade is a pharmaceutical wholesaler, so
 staff must tick the box on nearly every item. Flip the default to True
 (migration; existing items untouched). *Open:* flat default, or per
 category (DRUG exempt, EQUIPMENT/SUPPLY not)?
 
-### R60 — Base unit should be a combobox — `TO BUILD` (form open)
+### R60 — Base unit should be a combobox — `RESOLVED` (→ D112)
 The base-unit box is a text input with a `datalist` of common units — the
 suggestions only appear once you click/type, so nobody finds them. Wanted:
 a visible dropdown (common units) that still allows a typed custom unit.

@@ -6,6 +6,20 @@ to do and **what you must see** — if you see something else, that's a bug.
 
 Written for a dev machine (Linux, `.venv`, PostgreSQL on localhost).
 
+> **2026-08-04 field feedback round (D109–D112):** document entry pages now
+> use the **full screen width** and the item picker column is wider. All
+> three print layouts show the **full item description** — generic (brand),
+> strength, dosage, base unit, pack — and the generic/picking-list tables
+> are full **grids** like the attachment. On the item form (Master → Items
+> and the receiving dialog): **VAT exempt starts ticked** and follows the
+> category (DRUG on, others off) until you touch the box; **Base unit is a
+> dropdown** of the common units with *"Other — type it below"* revealing a
+> free-text box. To verify: open a new Receiving on a wide monitor (form
+> fills the screen), add an item with category EQUIPMENT (exempt box
+> unticks itself), pick base unit *Other* and type "pack of 25" (saves
+> verbatim), then print any sale — every cell bordered, descriptions full.
+> **Hard-refresh** (`?v=20260804a`).
+
 > **2026-08-03 improvement batch (D102–D108):** items now read
 > **generic-first** everywhere — dropdowns, refusal messages, the items list
 > (new *Generic name* column) and the Cash Sales Attachment

@@ -1578,3 +1578,42 @@ question ("picking list for store room"), and agreed the R49 scope.*
   parallel "quick" form would bypass D81/D67 and half-formed items would
   accumulate. Employees see the same form minus the margin fields (D33).
 - **Scope:** Receiving only. Sales staff pick, they don't create.
+
+---
+
+## Round 18 (2026-08-04) — the round-4 field feedback ships
+
+*Trigger: Temesgen answered the two open questions the same day the batch
+was recorded — "make the encapsulating container wider too", grid
+separators on printing, VAT-exempt on drugs only, combobox approved.*
+
+### D109 — Document entry uses the full screen width (R57)
+- **What:** the entry form page opts out of the 72rem page cap
+  (`page_class` block → `.page-wide`), and the line-table item picker grows
+  from 14rem to 22rem so generic-first names stop truncating. Other pages
+  keep the cap — reading pages want a measure; entry pages want room.
+
+### D110 — Printouts carry the full item description, in a grid (R58)
+- **What:** one shared composition, `Item.full_description` — *generic
+  (brand), strength, dosage form, base unit, pack description*, blanks
+  skipped — used by all three layouts: the generic printout and the picking
+  list print `CODE — full description`, the Cash Sales Attachment prints it
+  under a header extended to "…Strength, Dosage, Unit, Pack". The generic
+  printout and picking-list tables switch from row-lines to a **full grid**
+  (border around every cell), matching the attachment, which already had
+  one — his "separator border between each field" ask.
+
+### D111 — New items default to VAT-exempt, following the DRUG category (R59)
+- **What:** the item form starts with *VAT exempt* ticked (the default
+  category is DRUG and medicines are exempt by law — the help text always
+  said so). Changing the category flips the box with it — DRUG → ticked,
+  anything else → unticked — **until the user touches the box**, which
+  always wins. Model default unchanged (no migration): this is a data-entry
+  default, not a data rule, and existing items are untouched.
+
+### D112 — Base unit is a dropdown that accepts a typed unit (R60)
+- **What:** the invisible datalist becomes a real `<select>` of the common
+  units plus **"Other — type it below"**, which reveals a text box; the
+  form swaps the typed unit in at clean(). A saved custom unit joins the
+  dropdown on edit so nothing ever renders unselected. Applies to
+  Master → Items and the D108 receiving dialog alike (same form).
