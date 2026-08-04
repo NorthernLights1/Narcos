@@ -103,6 +103,16 @@ class Item(AutoCodeModel):
             return f"{self.code} — {self.generic_name} ({self.name})"
         return f"{self.code} — {self.name}"
 
+    @property
+    def full_description(self) -> str:
+        """R58: everything the paper needs to identify the medicine —
+        generic (brand), strength, dosage form, base unit, pack."""
+        name = (f"{self.generic_name} ({self.name})"
+                if self.generic_name else self.name)
+        parts = [name, self.strength, self.dosage_form,
+                 self.base_unit, self.pack_description]
+        return ", ".join(part for part in parts if part)
+
 
 class ItemUnit(models.Model):
     """D62: alternate unit with a fixed whole-number factor to the base unit."""

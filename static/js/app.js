@@ -301,13 +301,13 @@
             /* Blank form for the next item; rebind the pricing toggle. */
             return fetch(form.action)
               .then(function (r) { return r.text(); })
-              .then(function (html) { fields.innerHTML = html; initPricingToggle(); });
+              .then(function (html) { fields.innerHTML = html; initItemFormControls(); });
           });
         }
         /* Invalid: the server re-renders the fields with their errors. */
         return response.text().then(function (html) {
           fields.innerHTML = html;
-          initPricingToggle();
+          initItemFormControls();
         });
       });
   });
@@ -489,6 +489,35 @@
     }
     mode.addEventListener("change", apply);
     apply();
+  }
+
+  /* R59: drugs are VAT-exempt by law, so the box follows the category —
+   * until the user touches it, which always wins. */
+  function initVatByCategory() {
+    var category = document.querySelector('select[name="category"]');
+    var box = document.querySelector('input[name="vat_exempt"]');
+    if (!category || !box) return;
+    box.addEventListener("click", function () { box.dataset.touched = "1"; });
+    category.addEventListener("change", function () {
+      if (!box.dataset.touched) box.checked = category.value === "DRUG";
+    });
+  }
+
+  /* R60: "Other — type it below" reveals the free-text unit box. */
+  function initBaseUnitOther() {
+    var unit = document.querySelector('select[name="base_unit"]');
+    var other = document.querySelector('[name="base_unit_other"]');
+    if (!unit || !other) return;
+    var wrap = other.closest(".field") || other;
+    function apply() { wrap.hidden = unit.value !== "__other__"; }
+    unit.addEventListener("change", apply);
+    apply();
+  }
+
+  function initItemFormControls() {
+    initPricingToggle();
+    initVatByCategory();
+    initBaseUnitOther();
   }
 
   /* ---------- totals previews (mirror §5; preview only) ---------- */
@@ -696,7 +725,7 @@
 
   document.addEventListener("DOMContentLoaded", function () {
     enhanceSelects(document);
-    initPricingToggle();
+    initItemFormControls();
     document.querySelectorAll("#lines-rows tr").forEach(filterBatches);
     document.querySelectorAll('select[name$="-batch"]').forEach(updateBatchHint);
     /* Server-prefilled payment drafts (D74): compute the cash line on load */

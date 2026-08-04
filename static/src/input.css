@@ -32,6 +32,8 @@
       text-slate-400 first:pt-0;
   }
   .page { @apply flex-1 min-w-0 max-w-6xl px-6 py-6; }
+  /* R57: document entry uses the whole monitor — the 72rem cap wasted it. */
+  .page-wide { @apply max-w-none; }
 
   /* ---- headers, cards, buttons ---- */
   .page-head { @apply flex flex-wrap items-start justify-between gap-3 mb-4; }
@@ -191,7 +193,8 @@
   .choices__inner {
     @apply rounded border border-slate-300 bg-white px-2 py-1 text-sm min-h-0;
   }
-  .table-input .choices { @apply min-w-[14rem]; }
+  /* R57: long generic-first names need the room the wide page freed. */
+  .table-input .choices { @apply min-w-[22rem]; }
   .choices__list--dropdown .choices__item { @apply text-sm; }
   .is-focused .choices__inner, .is-open .choices__inner {
     @apply border-accent ring-2 ring-accent/40;

@@ -10,7 +10,8 @@
     h1 { font-size: 22px; }
     h2 { font-size: 14px; margin: 20px 0 8px; }
     table { border-collapse: collapse; width: 100%; }
-    th, td { border-bottom: 1px solid #d1d5db; padding: 6px; text-align: left; }
+    /* R58: full grid — a separator around every field, not just row lines. */
+    th, td { border: 1px solid #d1d5db; padding: 6px; text-align: left; }
     th:last-child, td:last-child { text-align: right; }
     .muted { color: #6b7280; }
     .top { align-items: start; display: flex; justify-content: space-between; gap: 24px; }
@@ -89,7 +90,7 @@
     <tbody>
       {% for line in doc.lines.all %}
       <tr>
-        <td>{{ line.item }}</td>
+        <td>{{ line.item.code }} — {{ line.item.full_description }}</td>
         <td>{{ line.batch|default:line.batch_no_entered|default:"-" }}</td>
         <td>{{ line.qty_base|default:line.qty_entered }} {{ line.unit_label }}</td>
         <td>{{ line.unit_price }}</td>

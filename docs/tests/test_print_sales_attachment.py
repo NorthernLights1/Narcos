@@ -52,6 +52,7 @@ def sale(owner, buyer):
     item = Item.objects.create(
         code="AMOX", name="Amoxil", generic_name="Amoxicillin",
         strength="500mg", dosage_form="Capsule", base_unit="pack",
+        pack_description="strip of 10",
         is_batch_tracked=True, has_expiry=True, vat_exempt=True,
         maintained_price=D("15.00"),
     )
@@ -120,6 +121,24 @@ def test_line_reads_generic_before_brand(client, owner, company, buyer, sale):
         reverse("document_print", args=[sale.pk]), {"layout": "SALES_ATT"},
     ).content.decode()
     assert "Amoxicillin (Amoxil), 500mg, Capsule" in content
+
+
+def test_line_carries_unit_and_pack_description(client, owner, company, buyer, sale):
+    """R58: the whole description — generic (brand), strength, dosage,
+    base unit, pack — one composition shared by every layout."""
+    client.force_login(owner)
+    content = client.get(
+        reverse("document_print", args=[sale.pk]), {"layout": "SALES_ATT"},
+    ).content.decode()
+    assert "Amoxicillin (Amoxil), 500mg, Capsule, pack, strip of 10" in content
+
+
+def test_generic_layout_prints_the_full_description(client, owner, company, buyer, sale):
+    """R58 on print.html too — plus its line table becomes a real grid."""
+    client.force_login(owner)
+    content = client.get(reverse("document_print", args=[sale.pk])).content.decode()
+    assert "AMOX — Amoxicillin (Amoxil), 500mg, Capsule, pack, strip of 10" in content
+    assert "th, td { border: 1px solid" in content
 
 
 def test_csi_and_fs_receipt_slots(client, owner, company, buyer, sale):

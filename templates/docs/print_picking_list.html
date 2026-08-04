@@ -9,7 +9,8 @@
     h1, p { margin: 0; }
     h1 { font-size: 22px; }
     table { border-collapse: collapse; margin-top: 18px; width: 100%; }
-    th, td { border-bottom: 1px solid #d1d5db; padding: 8px 6px; text-align: left; }
+    /* R58: full grid — a separator around every field, not just row lines. */
+    th, td { border: 1px solid #d1d5db; padding: 8px 6px; text-align: left; }
     .muted { color: #6b7280; }
     .label { border: 1px solid #111827; display: inline-block; font-weight: 700; margin-top: 8px; padding: 4px 8px; }
     .top { align-items: start; display: flex; justify-content: space-between; gap: 24px; }
@@ -54,7 +55,7 @@
       {% for line in doc.lines.all %}
       <tr>
         <td><span class="pick-box"></span></td>
-        <td>{{ line.item }}</td>
+        <td>{{ line.item.code }} — {{ line.item.full_description }}</td>
         <td>{{ line.batch.batch_no|default:line.batch_no_entered|default:"—" }}</td>
         <td>{{ line.item.shelf_bin|default:"—" }}</td>
         <td>{{ line.qty_entered }} {{ line.unit_label }}</td>

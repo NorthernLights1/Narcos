@@ -20,6 +20,7 @@ D = Decimal
 def draft_sale(owner):
     item = Item.objects.create(code="AMOX", name="Amoxil",
                                generic_name="Amoxicillin", base_unit="pack",
+                               strength="500mg", pack_description="strip of 10",
                                shelf_bin="A3", maintained_price=D("15.00"))
     customer = Customer.objects.create(code="C1", name="Selam Pharmacy")
     doc = Document.objects.create(doc_type=DocType.SALE, created_by=owner,
@@ -39,6 +40,17 @@ def test_draft_prints_as_picking_list(client, owner, draft_sale):
     assert "A3" in content                # shelf/bin — the storeroom locator
     assert "Selam Pharmacy" in content
     assert "Draft" in content             # no number exists yet (D8)
+
+
+def test_picking_list_carries_the_full_description_in_a_grid(client, owner, draft_sale):
+    """R58: strength and pack description identify the medicine on the
+    shelf; the table gets full grid borders."""
+    client.force_login(owner)
+    content = client.get(
+        reverse("document_picking_list", args=[draft_sale.pk])).content.decode()
+    assert "500mg" in content
+    assert "strip of 10" in content
+    assert "th, td { border: 1px solid" in content
 
 
 def test_picking_list_shows_no_prices(client, owner, draft_sale):

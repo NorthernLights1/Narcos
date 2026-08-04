@@ -6,11 +6,11 @@
   <title>{% block title %}Narcos{% endblock %}</title>
   {# bump ?v= whenever app.css/app.js change so browsers refetch #}
   <link rel="stylesheet" href="{% static 'css/choices.min.css' %}">
-  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=20260802a">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=20260804a">
   <script src="{% static 'js/htmx.min.js' %}" defer></script>
   <script src="{% static 'js/alpine.min.js' %}" defer></script>
   <script src="{% static 'js/choices.min.js' %}"></script>
-  <script src="{% static 'js/app.js' %}?v=20260803a"></script>
+  <script src="{% static 'js/app.js' %}?v=20260804a"></script>
 </head>
 <body>
 <header class="topbar">
@@ -49,7 +49,8 @@
     </nav>
   </aside>
   {% endif %}
-  <main class="page">
+  {# R57: pages opt into full width via page_class — document entry needs the room. #}
+  <main class="page {% block page_class %}{% endblock %}">
     {% if messages %}
     <ul class="messages">
       {% for message in messages %}<li class="msg msg-{{ message.tags }}">{{ message }}</li>{% endfor %}

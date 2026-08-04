@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% load i18n %}
 {% block title %}{{ title }} — Narcos{% endblock %}
+{% block page_class %}page-wide{% endblock %}
 {% block content %}
 <h1>{{ title }}{% if doc.pk %} — {{ doc }}{% endif %}</h1>
 <form method="post" id="doc-form">
