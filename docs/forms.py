@@ -78,7 +78,11 @@ def fields_hidden_by_settings() -> set[str]:
     settings = CompanySettings.load()
     hidden = set()
     if not settings.fiscal_machine_present:
-        hidden.add("machine_total")
+        # R63: the receipt number is printed *by* the machine, so it is as
+        # meaningless as the total without one. Hiding only half of D18/D43
+        # left staff a box they could never fill — and, after R61, a pencil
+        # on posted documents for a number that does not exist.
+        hidden.update({"fiscal_receipt_no", "machine_total"})
     if not settings.discounts_enabled:
         hidden.update({"doc_discount", "line_discount"})
     if not settings.unit_conversion_enabled:

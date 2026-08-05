@@ -402,6 +402,7 @@ def document_detail(request, pk):
     editable = editable_post_fields(request.user) if doc.status == Document.Status.POSTED else set()
     return render(request, "docs/detail.html", {
         "doc": doc,
+        "company": CompanySettings.load(),  # R63: fiscal-machine switch
         # R61: one pencil per field the document still allows to change.
         "editable_fields": [_field_context(doc, name)
                             for name in POST_EDITABLE_ORDER if name in editable],

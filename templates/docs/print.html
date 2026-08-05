@@ -62,7 +62,10 @@
       <h1>{{ doc.doc_no }}</h1>
       <p>{{ doc.get_doc_type_display }}</p>
       <p>{{ doc.document_date }}</p>
+      {# R63: no machine, no receipt number — printing an empty label invited the question every time. #}
+      {% if company.fiscal_machine_present %}
       <p>{% translate "Fiscal receipt" %}: {{ doc.fiscal_receipt_no|default:"-" }}</p>
+      {% endif %}
     </div>
   </div>
 

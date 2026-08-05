@@ -71,7 +71,8 @@
     <div><dt>{% translate "Subtotal" %}</dt><dd>{{ doc.subtotal }}</dd></div>
     <div><dt>{% translate "Tax" %}</dt><dd>{{ doc.tax_total }}</dd></div>
     <div><dt>{% translate "Grand total" %}</dt><dd>{{ doc.grand_total }}</dd></div>
-    {% if doc.status != "POSTED" %}
+    {# R63: posted documents show this in the "Still editable" card instead. #}
+    {% if doc.status != "POSTED" and company.fiscal_machine_present %}
     <div><dt>{% translate "Fiscal receipt" %}</dt><dd>{{ doc.fiscal_receipt_no|default:"—" }}</dd></div>
     {% endif %}
     {% if doc.related_document %}

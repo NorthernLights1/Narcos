@@ -54,6 +54,21 @@ def test_no_fiscal_machine_hides_machine_total():
     assert "machine_total" not in DocumentForm(doc_type=DocType.SALE).fields
 
 
+def test_no_fiscal_machine_hides_the_receipt_number_too():
+    """R63: the receipt number is printed *by* the machine. Hiding the
+    machine total but keeping the number asked staff for a figure that
+    cannot exist — the switch now governs both halves of D18/D43."""
+    _settings(fiscal_machine_present=False)
+    fields = DocumentForm(doc_type=DocType.SALE).fields
+    assert "fiscal_receipt_no" not in fields
+    assert "machine_total" not in fields
+
+
+def test_the_receipt_number_is_there_while_the_machine_is():
+    fields = DocumentForm(doc_type=DocType.SALE).fields
+    assert "fiscal_receipt_no" in fields
+
+
 # R56/D106 moved with R61: the posted-document edits are now per field, so
 # the guarantee lives in test_inline_field_edit.py (a box switched off in
 # settings has no pencil, and its endpoint 404s).

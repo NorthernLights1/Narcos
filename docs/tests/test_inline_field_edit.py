@@ -101,6 +101,18 @@ def test_a_box_switched_off_in_settings_is_refused(client, posted):
     assert _url(posted, "machine_total") not in content
 
 
+def test_no_fiscal_machine_takes_the_receipt_pencil_away(client, posted):
+    """R63: the switch governs the receipt number as well as the machine
+    total, so neither keeps a pencil on a posted document."""
+    settings = CompanySettings.load()
+    settings.fiscal_machine_present = False
+    settings.save()
+    assert client.get(_url(posted, "fiscal_receipt_no")).status_code == 404
+    content = client.get(
+        reverse("document_detail", args=[posted.pk])).content.decode()
+    assert _url(posted, "fiscal_receipt_no") not in content
+
+
 def test_drafts_keep_the_full_edit_form(client, owner, cash, rent):
     client.force_login(owner)
     doc = make_expense(owner, cash, rent)
