@@ -43,6 +43,13 @@ changed (`?v=20260804b`).
 Verified: 1920px screenshot of the receiving form (fills the width), and
 ~46 tests across the two rounds, full suite green.
 
+### Round 19 (2026-08-05, commit `88d18e1`)
+| Ref | Change |
+|-----|--------|
+| D113 | Item dropdowns always open downward and overlay the page cleanly (was flipping erratically) |
+| D114 | The **Reference fields page is gone** — a posted document now has a "Still editable" card with a ✎ per field. Five fields: fiscal receipt no, machine total, withholding certificate no, payment due date, notes. Due date is owner-only; each edit is audited on its own |
+| R62 | Expiry correction **not built**, per your instruction — the analysis is kept in the decisions log |
+
 ## What is left
 
 ### Yours
