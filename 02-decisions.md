@@ -1678,3 +1678,65 @@ uncorrectable, because void-and-repost is refused once any of the stock has
 been sold. If it is ever revisited: owner-only, audited with a reason, and
 a D98-style dialog showing which documents share the batch and what the
 change does to stock on the shelf.
+
+---
+
+## D115 — Pre-ship audit: the fiscal-machine switch governs both halves (R63)
+
+Before shipping the 29-commit batch to the client, the whole branch was
+audited for integrity and business logic: full suite, migration graph,
+authorization sweep across every view, secrets scan, and the deployment
+path. **Nothing in the batch was broken** — 433/433 green at the time of
+the audit. Six findings came out of it; this entry records what was done
+about them.
+
+### Built — the receipt number follows the machine
+
+`fiscal_machine_present = False` hid the machine total but left
+`fiscal_receipt_no` on every entry form, on the generic printout, and — new
+in D114 — as a pencil on posted documents. The number is printed *by* the
+machine, so without one it is a box staff can never fill.
+
+`fields_hidden_by_settings()` now hides both halves of D18/D43. Everything
+else follows for free, because that one function is what the entry forms,
+the D114 pencil list and the `document_field_edit` endpoint all read: the
+box disappears, the pencil disappears, and the endpoint 404s, with no
+change at any of those call sites. The generic printout and the draft
+summary row are gated on `company.fiscal_machine_present` directly.
+
+The cash-sales attachment layout keeps its FS Receipt No line on purpose —
+that layout *is* the fiscal-machine artefact, so a business without a
+machine would not be printing it.
+
+### Built — the missing migration (`core.0007`)
+
+`makemigrations --check` wanted an `AlterField` for two help texts reworded
+in D101 and D89. `sqlmigrate` prints `(no-op)` for both operations — it
+touches no table and no data, it only brings the migration state level with
+the models. Left undone it would have been swept silently into whatever
+migration came next, and any `makemigrations` run on the client's box would
+have written a file absent from the repo, quietly forking that machine's
+history from ours.
+
+### Not built — `notes` narrowed to owner-only
+
+D114 widened the post-editable set to include `notes`, owner-gated only for
+`due_date`. But `notes` is where the engine writes provenance ("Auto
+payment for SI-000001", "Corrects SI-000123", "Stock count adjustment for
+SC-000004"), and it carries the adjustment reason that `AdjustmentHandler`
+makes owner-only to *enter* — so an employee could blank an owner's
+justification after the fact.
+
+Temesgen: *"not a problem."* Recorded rather than acted on, because the
+reasoning holds either way: every edit is audited before/after, so nothing
+is destroyed, only moved from the document's face into the log. Revisit if
+an auditor ever asks why a posted adjustment has no reason on it.
+
+### Not built — R64, R65, R66
+
+A zero-total cash sale cannot post (R64, queued at Temesgen's request); the
+pack-factor cost rounding, which the working data shows is not live for a
+wholesale business buying and selling per pack (R65); and a withholding
+remittance whose payable check runs a moment before the lock (R66,
+practically unreachable on one till). All three are written up in
+[03-open-risks.md](03-open-risks.md) with their trigger conditions.

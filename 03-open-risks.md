@@ -339,3 +339,52 @@ Offered as a setting; Temesgen declined it for now. The analysis is kept in
 the D114 entry of [02-decisions.md](02-decisions.md) — including the trap
 that a wrong expiry can currently be uncorrectable once its stock is partly
 sold. Revisit only if that bites in practice.
+
+---
+
+## From the pre-ship audit (2026-08-05)
+
+### R63 — Fiscal receipt no ignored the fiscal-machine switch — `RESOLVED` (→ D115)
+`fiscal_machine_present = False` hid the machine total but left the receipt
+number on every entry form, on the printout, and (after R61) as a pencil on
+posted documents. The number is printed *by* the machine, so it cannot
+exist without one. Both halves of D18/D43 now follow the switch.
+
+### R64 — A cash sale discounted to zero cannot post — `QUEUED` (2026-08-05)
+Confirmed on the posting path. Discount a cash sale to 0.00 and the auto
+payment (D3/D44) refuses it — *"Payment needs money lines or a withheld
+amount"* — an error naming a document the user never created. Fails safely
+inside the transaction; no data damage. Rare (giveaways booked as 100%
+discount). *Temesgen, 2026-08-05: note it for next improvement, we'll
+consider it then.* Likely shape: let a zero-total cash sale skip the auto
+payment entirely, since there is no money to move.
+
+### R65 — Pack-factor cost rounding — `NOT LIVE` (2026-08-05)
+**Downgraded after checking the actual data.** Temesgen: *"I don't buy per
+tablet, I buy per box — this is wholesale, so purchase is per pack."*
+Confirmed in the working database: `unit_conversion_enabled` is already
+**off**, every item's base unit is a whole item (`unit`, `pair`), and 36 of
+38 document lines carry `factor = 1`. When the pack *is* the base unit the
+division is exact and nothing is lost. The original finding assumed a
+retail tablet-level breakdown that does not exist in this business.
+
+Mechanism, kept for the record: [handlers.py:125](docs/handlers.py#L125)
+divides what was paid by the number of base units and rounds to 2 dp, so
+buying in a *larger* unit than the one sold loses the remainder. One dev
+lot still shows it (400.00 paid, 399.00 booked) — a leftover from a
+`factor = 100` test entry, not client data.
+
+*Trigger to watch:* the day anyone buys an outer unit and sells the inner
+one — a carton of 12 boxes, say — factor rises above 1 and the drift
+returns. Fix then, not now: widen `CostLot.unit_cost` and
+`DocumentLine.unit_cost_entered` from 2 dp to 4 dp.
+
+### R66 — Remittance payable check runs outside the lock — `OPEN` (low)
+`WhtRemittanceHandler.validate` reads the PAYABLE balance before
+`NumberSequence.take` acquires the lock, and `build_effects` never
+re-reads. `ExpenseHandler` re-checks under the lock for exactly this
+reason. Two remittances posted in the same instant could take PAYABLE
+negative — the corruption D99 guards against on the void path, unguarded
+on the post path. Needs genuine concurrency on a one-till system, so
+practically unreachable. Fix: move the balance check into
+`build_effects`.
