@@ -311,18 +311,6 @@ class DocumentForm(forms.ModelForm):
                 self.fields[name].widget.attrs["data-search"] = "1"
 
 
-class DocumentReferenceForm(forms.ModelForm):
-    class Meta:
-        model = Document
-        fields = ["fiscal_receipt_no", "machine_total", "withholding_certificate_no"]
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # R56: obey the same switches as the entry forms (D89).
-        for name in fields_hidden_by_settings():
-            self.fields.pop(name, None)
-
-
 class DocumentLineForm(forms.ModelForm):
     source_zone = forms.ChoiceField(
         choices=[

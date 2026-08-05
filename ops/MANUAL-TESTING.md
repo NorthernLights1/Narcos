@@ -6,6 +6,18 @@ to do and **what you must see** — if you see something else, that's a bug.
 
 Written for a dev machine (Linux, `.venv`, PostgreSQL on localhost).
 
+> **2026-08-05 editing in place (D114):** the **Reference fields** button is
+> gone. A posted document now has a **"Still editable"** card: fiscal
+> receipt no, machine total, withholding certificate no, payment due date
+> and notes, each with a small **✎**. Click it, the value becomes a box;
+> Save writes just that field and audits it, Cancel changes nothing. Fields
+> that moved stock or money have no pencil — that is the rule, not an
+> oversight. Payment due date is **owner-only** (it moves AR/AP overdue);
+> the rest stay open to staff. To verify: post any document, edit the
+> fiscal receipt number inline, then check Administration → Audit log for a
+> `DOCUMENT_FIELD_UPDATE` row naming only that field. **Hard-refresh**
+> (`?v=20260805a`).
+
 > **2026-08-04 field feedback round (D109–D112):** document entry pages now
 > use the **full screen width** and the item picker column is wider. All
 > three print layouts show the **full item description** — generic (brand),

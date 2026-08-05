@@ -1627,3 +1627,54 @@ separators on printing, VAT-exempt on drugs only, combobox approved.*
   and panels — now 25 (below only the sticky topbar), with the line table's
   scroll container releasing its clipping while a picker is open
   (`.table-wrap:has(.choices.is-open)`).
+
+---
+
+## Round 19 (2026-08-05) — editing where the field is
+
+*Trigger: "instead of a dedicated reference field i want to place small edit
+next to the fields that can be edited" — plus, after discussion, "pencil on
+everything that are low risk editable" and "lets not implement the expiry
+correction".*
+
+### D114 — The Reference page becomes a pencil per field (R61)
+- **What:** the *Reference fields* button and the form behind it are gone.
+  A posted document now shows a **"Still editable"** card listing each
+  field it may change, each with a ✎ that opens that one field in place
+  (htmx swaps the value for an input and back). Saving writes and audits
+  that field alone; Cancel restores the value and writes nothing.
+- **Why:** the page needed explaining — its own owner asked what "Reference
+  fields" meant (2026-08-03). A pencil beside the box explains itself, and
+  the fields *without* one now teach the D90 rule better than a separate
+  screen did: everything that moved a ledger is untouchable.
+- **The set widened to five.** D90 named `notes` and `due_date` as safe to
+  add "if the client asks"; he asked. So: `fiscal_receipt_no`,
+  `machine_total`, `withholding_certificate_no` (numbers copied off someone
+  else's paper, §7.12), `notes` (commentary), `due_date`.
+- **`due_date` is owner-only.** It moves what counts as overdue in AR/AP
+  reporting — never what is owed, so it stays ledger-free and editable, but
+  the decision belongs to the owner. The other four stay open to staff, who
+  are the ones holding the fiscal receipt.
+- **The guard did not move.** `Document.save()` still refuses any change to
+  a posted document outside `POST_EDITABLE_FIELDS` (I1), so a field outside
+  the whitelist cannot be written even if the endpoint were tricked into
+  naming one. The view whitelists as well — defence in depth, not the only
+  defence.
+- **D106 survives the move:** a box switched off in Settings has no pencil
+  and its endpoint 404s. The test moved with it.
+- **Audit action renamed** `DOCUMENT_REFERENCE_UPDATE` →
+  `DOCUMENT_FIELD_UPDATE`. Existing rows keep the old name; the diff is
+  naturally one field now.
+- **htmx finally earns its place** — it was vendored for the duplicate-name
+  search and nothing else. No new JavaScript in `app.js`.
+
+### Not built — expiry correction without voiding (R62, declined)
+Temesgen: *"lets not implement the expiry correction."* Recorded because
+the analysis is worth keeping: expiry lives on `Batch.expiry_date`, not on
+the document, so a correction would have to edit the batch every rule reads
+(D46 expired-sale block, D59 near-expiry, D61 FEFO) — and one batch number
+is shared across every receiving of it. Today a typo may be genuinely
+uncorrectable, because void-and-repost is refused once any of the stock has
+been sold. If it is ever revisited: owner-only, audited with a reason, and
+a D98-style dialog showing which documents share the batch and what the
+change does to stock on the shelf.

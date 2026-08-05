@@ -1,0 +1,12 @@
+{% load i18n %}
+{% comment %}R61: a field a posted document still allows to change, with the
+pencil that opens it. Fields without one are not editable — that absence is
+the D90 rule made visible.{% endcomment %}
+<span class="inline-field">
+  <span class="inline-field-value">{{ value|default:"—" }}</span>
+  <button type="button" class="btn-inline-edit"
+          title="{% blocktranslate %}Edit {{ label }}{% endblocktranslate %}"
+          aria-label="{% blocktranslate %}Edit {{ label }}{% endblocktranslate %}"
+          hx-get="{% url 'document_field_edit' doc.pk field %}"
+          hx-target="closest .inline-field" hx-swap="outerHTML">✎</button>
+</span>

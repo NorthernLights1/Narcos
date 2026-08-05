@@ -52,22 +52,21 @@ def test_expense_draft_create_and_post_from_ui(client, owner, cash, rent):
     assert account_balance(cash) == Decimal("-80.00")
 
 
-def test_posted_reference_edit_is_audited(client, owner, cash, rent):
+def test_posted_field_edit_is_audited(client, owner, cash, rent):
+    """R61: the Reference page became a pencil per field — full coverage
+    lives in test_inline_field_edit.py; this keeps the audit trail asserted
+    from the document side."""
     login(client, owner)
     doc = post(make_expense(owner, cash, rent), owner)
     response = client.post(
-        reverse("document_edit", args=[doc.pk]),
-        {
-            "fiscal_receipt_no": "FS-123",
-            "machine_total": "",
-            "withholding_certificate_no": "",
-        },
+        reverse("document_field_edit", args=[doc.pk, "fiscal_receipt_no"]),
+        {"fiscal_receipt_no": "FS-123"},
     )
-    assert response.status_code == 302
+    assert response.status_code == 200
     doc.refresh_from_db()
     assert doc.fiscal_receipt_no == "FS-123"
     assert AuditLog.objects.filter(
-        action="DOCUMENT_REFERENCE_UPDATE", entity_id=str(doc.pk)
+        action="DOCUMENT_FIELD_UPDATE", entity_id=str(doc.pk)
     ).exists()
 
 

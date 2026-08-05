@@ -20,6 +20,8 @@ urlpatterns = [
     path("<int:pk>/withholding-certificate/", views.withholding_certificate_print,
          name="withholding_certificate_print"),
     path("<int:pk>/edit/", views.document_edit, name="document_edit"),
+    path("<int:pk>/field/<str:field>/", views.document_field_edit,
+         name="document_field_edit"),
     path("<int:pk>/convert-sale/", views.document_convert_sale, name="document_convert_sale"),
     path("<int:pk>/post/", views.document_post, name="document_post"),
     path("<int:pk>/void/", views.document_void, name="document_void"),

@@ -1,0 +1,18 @@
+{% load i18n %}
+{% comment %}R61: the same field, open for editing in place. Saving swaps the
+value back; Cancel asks for the value partial again and changes nothing.
+{% endcomment %}
+<span class="inline-field">
+  <form class="inline-field-form" method="post"
+        hx-post="{% url 'document_field_edit' doc.pk field %}"
+        hx-target="closest .inline-field" hx-swap="outerHTML">
+    {% csrf_token %}
+    {{ form }}
+    {% if form.errors %}<p class="field-error">{{ form.errors|striptags }}</p>{% endif %}
+    <button type="submit" class="btn btn-primary btn-sm">{% translate "Save" %}</button>
+    <button type="button" class="btn btn-secondary btn-sm"
+            hx-get="{% url 'document_field_edit' doc.pk field %}?display=1"
+            hx-target="closest .inline-field" hx-swap="outerHTML">
+      {% translate "Cancel" %}</button>
+  </form>
+</span>

@@ -52,7 +52,15 @@ PREFIXES = {
 }
 
 # §7.12: the only fields editable after posting (reference-only, audited)
-POST_EDITABLE_FIELDS = {"fiscal_receipt_no", "machine_total", "withholding_certificate_no"}
+# D90/R61: the only fields a posted document may still change — none of
+# them touches a ledger. The first three are numbers copied off someone
+# else's paper (§7.12); `notes` is commentary; `due_date` moves what counts
+# as overdue but never what is owed. Every change is audited before/after.
+POST_EDITABLE_ORDER = ("fiscal_receipt_no", "machine_total",
+                       "withholding_certificate_no", "due_date", "notes")
+POST_EDITABLE_FIELDS = set(POST_EDITABLE_ORDER)
+# R61: moving a due date changes the AR/AP overdue picture — owner's call.
+OWNER_ONLY_POST_EDITS = {"due_date"}
 # Fields the void path itself must write (attnames — the diff compares attnames,
 # so the FK must appear here as voided_by_id, not voided_by)
 VOID_FIELDS = {"status", "voided_by_id", "voided_at", "void_reason"}

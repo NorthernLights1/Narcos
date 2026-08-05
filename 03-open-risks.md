@@ -323,3 +323,19 @@ The base-unit box is a text input with a `datalist` of common units — the
 suggestions only appear once you click/type, so nobody finds them. Wanted:
 a visible dropdown (common units) that still allows a typed custom unit.
 Applies to Master → Items and the R49 dialog alike.
+
+---
+
+## New — round 5 (2026-08-05)
+
+### R61 — Edit posted fields where they are, not on a page — `RESOLVED` (→ D114)
+"Instead of a dedicated reference field I want to place small edit next to
+the fields that can be edited." Scope settled in conversation: a pencil on
+every low-risk editable field, which added `notes` and `due_date` to the
+three §7.12 reference fields.
+
+### R62 — Expiry correctable without voiding — `DECLINED` (2026-08-05)
+Offered as a setting; Temesgen declined it for now. The analysis is kept in
+the D114 entry of [02-decisions.md](02-decisions.md) — including the trap
+that a wrong expiry can currently be uncorrectable once its stock is partly
+sold. Revisit only if that bites in practice.

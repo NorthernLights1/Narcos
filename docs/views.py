@@ -6,6 +6,7 @@ from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Count, Q
 from django.db.models.functions import Coalesce
+from django.forms import modelform_factory
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.translation import gettext as _
@@ -20,11 +21,19 @@ from docs.forms import (
     DOC_CONFIG,
     IMPLEMENTED_DOC_TYPES,
     DocumentForm,
-    DocumentReferenceForm,
+    fields_hidden_by_settings,
     formsets_for,
 )
 from docs.handlers_sales import outstanding_by_item_batch
-from docs.models import POST_EDITABLE_FIELDS, DocType, Document, DocumentCharge, DocumentLine
+from docs.models import (
+    OWNER_ONLY_POST_EDITS,
+    POST_EDITABLE_FIELDS,
+    POST_EDITABLE_ORDER,
+    DocType,
+    Document,
+    DocumentCharge,
+    DocumentLine,
+)
 from docs.posting import PostingError, get_handler, post, void
 from docs.preview import draft_expected_totals
 from docs.settlement import (
@@ -223,7 +232,9 @@ def _start_stock_count(request):
 def document_edit(request, pk):
     doc = get_object_or_404(Document, pk=pk)
     if doc.status == Document.Status.POSTED:
-        return _reference_form(request, doc)
+        # R61: posted documents are edited field by field, on the detail
+        # page — there is no longer a form that opens all of them at once.
+        return redirect("document_detail", pk=doc.pk)
     if doc.status != Document.Status.DRAFT:
         messages.error(request, _("Voided documents are immutable."))
         return redirect("document_detail", pk=doc.pk)
@@ -308,32 +319,60 @@ def _draft_form(request, doc: Document):
     })
 
 
-def _reference_form(request, doc: Document):
-    fields = sorted(POST_EDITABLE_FIELDS)
+def editable_post_fields(user) -> set[str]:
+    """R61: which ledger-free fields this user may still change on a posted
+    document. Settings hide boxes here exactly as on entry forms (D106)."""
+    fields = POST_EDITABLE_FIELDS - fields_hidden_by_settings()
+    if not user.is_owner:
+        fields -= OWNER_ONLY_POST_EDITS
+    return fields
+
+
+def _field_context(doc: Document, field: str) -> dict:
+    return {
+        "doc": doc,
+        "field": field,
+        "label": Document._meta.get_field(field).verbose_name,
+        "value": getattr(doc, field),
+    }
+
+
+@login_required
+def document_field_edit(request, pk, field):
+    """R61: change one ledger-free field on a posted document, in place.
+
+    The whitelist here is the same set `Document.save()` enforces (I1), so
+    a field outside it cannot be written even if this view were tricked
+    into naming one — the model refuses underneath.
+    """
+    doc = get_object_or_404(
+        Document.objects.filter(status=Document.Status.POSTED), pk=pk)
+    if field not in POST_EDITABLE_FIELDS - fields_hidden_by_settings():
+        raise Http404
+    if field in OWNER_ONLY_POST_EDITS and not request.user.is_owner:
+        raise PermissionDenied
+    widget = DocumentForm.Meta.widgets.get(field)
+    form_class = modelform_factory(Document, fields=[field],
+                                   widgets={field: widget} if widget else None)
+    context = _field_context(doc, field)
     if request.method == "POST":
-        before = snapshot(doc, fields)
-        form = DocumentReferenceForm(request.POST, instance=doc)
+        before = snapshot(doc, [field])
+        form = form_class(request.POST, instance=doc)
         if form.is_valid():
             saved = form.save()
-            after = snapshot(saved, fields)
-            log_change(
-                actor=request.user,
-                action="DOCUMENT_REFERENCE_UPDATE",
-                entity="Document",
-                entity_id=saved.pk,
-                before=before,
-                after=after,
-            )
-            messages.success(request, _("Reference fields saved."))
-            return redirect("document_detail", pk=saved.pk)
-    else:
-        form = DocumentReferenceForm(instance=doc)
-    return render(request, "docs/form.html", {
-        "doc": doc,
-        "title": _("Reference fields"),
-        "form": form,
-        "formsets": [],
-    })
+            after = snapshot(saved, [field])
+            if before != after:
+                log_change(actor=request.user, action="DOCUMENT_FIELD_UPDATE",
+                           entity="Document", entity_id=saved.pk,
+                           before=before, after=after)
+            return render(request, "docs/_field_value.html",
+                          _field_context(saved, field))
+        return render(request, "docs/_field_edit.html",
+                      context | {"form": form}, status=400)
+    if request.GET.get("display"):          # Cancel: put the value back
+        return render(request, "docs/_field_value.html", context)
+    return render(request, "docs/_field_edit.html",
+                  context | {"form": form_class(instance=doc)})
 
 
 @login_required
@@ -360,8 +399,12 @@ def document_detail(request, pk):
         doc_type__in=[DocType.CUSTOMER_PAYMENT, DocType.SUPPLIER_PAYMENT,
                       DocType.ADJUSTMENT, DocType.CUSTOMER_RETURN],
     ).order_by("pk")) if doc.status == Document.Status.POSTED else []
+    editable = editable_post_fields(request.user) if doc.status == Document.Status.POSTED else set()
     return render(request, "docs/detail.html", {
         "doc": doc,
+        # R61: one pencil per field the document still allows to change.
+        "editable_fields": [_field_context(doc, name)
+                            for name in POST_EDITABLE_ORDER if name in editable],
         "settled_by_numbers": ", ".join(p.doc_no or "" for p in settled_by),
         "void_also_reverses": ", ".join(
             f"{d.doc_no} — {d.get_doc_type_display()}"
