@@ -149,26 +149,31 @@ def test_an_already_voided_receipt_is_not_voided_twice(owner, customer, cash,
     assert _balance(customer) == D("0.00")
 
 
-def test_correcting_a_paid_sale_leaves_the_books_flat(client, owner, customer,
-                                                      cash, stocked_item):
-    """D92 + D95 together: the workflow that made this urgent."""
+def test_correcting_a_paid_sale_is_refused(client, owner, customer,
+                                           cash, stocked_item):
+    """R70: D92 and D95 together used to lose the customer's money.
+
+    Correcting voided the sale, D95 took the receipt with it, and the
+    replacement carried no receipt — so the 200.00 the customer had actually
+    handed over left the books and they were billed for it a second time.
+    The correction is refused now; void the receipt first, then correct.
+    """
     from django.urls import reverse
     sale = _credit_sale(owner, customer, stocked_item)
-    post(_receipt(owner, customer, cash, {sale: D("200.00")}), owner)
+    receipt = post(_receipt(owner, customer, cash, {sale: D("200.00")}), owner)
     client.force_login(owner)
 
-    client.post(reverse("document_correct", args=[sale.pk]),
-                {"reason": "wrong quantity"})
-    draft = Document.objects.get(doc_type=DocType.SALE,
-                                 status=Document.Status.DRAFT)
-    client.post(reverse("document_post", args=[draft.pk]))
+    response = client.post(reverse("document_correct", args=[sale.pk]),
+                           {"reason": "wrong quantity"})
 
     sale.refresh_from_db()
-    draft.refresh_from_db()
-    assert sale.status == Document.Status.VOIDED
-    assert draft.status == Document.Status.POSTED
-    # The replacement is unpaid, so the customer owes it — and only it.
-    assert _balance(customer) == D("200.00")
+    receipt.refresh_from_db()
+    assert sale.status == Document.Status.POSTED
+    assert receipt.status == Document.Status.POSTED
+    assert not Document.objects.filter(corrects=sale).exists()
+    assert _balance(customer) == D("0.00")       # settled, and it stays settled
+    assert response.status_code == 302
+    assert response.url == reverse("document_detail", args=[sale.pk])
 
 
 # --- D96: a sale takes its customer return with it ------------------------
@@ -408,3 +413,85 @@ def test_the_remittance_itself_still_voids(owner, cash, stocked_item,
     void(wr, owner, "wrong month")
 
     assert _payable() == D("30.00")
+
+
+# --- R70: a correction must not silently delete what it cannot rebuild ----
+
+def test_correcting_a_returned_sale_is_refused(client, owner, customer,
+                                               stocked_item):
+    """The D96 cascade with no way back: voiding the sale reverses its
+    customer return, and the replacement sale carries no return, so the
+    goods the customer handed back vanish from the warehouse."""
+    from django.urls import reverse
+    sale = _credit_sale(owner, customer, stocked_item, qty=5)
+    cr = _return_against(owner, sale, stocked_item, qty=2)
+    stock_before = _warehouse(stocked_item)
+    balance_before = _balance(customer)
+    client.force_login(owner)
+
+    client.post(reverse("document_correct", args=[sale.pk]),
+                {"reason": "wrong quantity"})
+
+    sale.refresh_from_db()
+    cr.refresh_from_db()
+    assert sale.status == Document.Status.POSTED
+    assert cr.status == Document.Status.POSTED
+    assert not Document.objects.filter(corrects=sale).exists()
+    assert _warehouse(stocked_item) == stock_before
+    assert _balance(customer) == balance_before
+
+
+def test_posting_a_crafted_correction_draft_is_refused(owner, customer, cash,
+                                                       stocked_item):
+    """The view's check is advisory (D92): the return or receipt can land
+    while the draft sits open. Posting is where the refusal binds."""
+    sale = _credit_sale(owner, customer, stocked_item, qty=5)
+    draft = Document.objects.create(
+        doc_type=DocType.SALE, created_by=owner, customer=customer,
+        due_date=DUE, sale_kind=Document.SaleKind.CREDIT,
+        corrects=sale, correction_reason="wrong quantity",
+    )
+    DocumentLine.objects.create(
+        document=draft, item=stocked_item, batch=Batch.objects.get(item=stocked_item),
+        qty_entered=3, unit_price=D("100.00"), unit_label="pack", factor=1,
+    )
+    # Only now does the receipt arrive — the draft was opened before it.
+    receipt = post(_receipt(owner, customer, cash, {sale: D("200.00")}), owner)
+    stock_before = _warehouse(stocked_item)
+    balance_before = _balance(customer)
+
+    with pytest.raises(PostingError):
+        post(draft, owner)
+
+    sale.refresh_from_db()
+    draft.refresh_from_db()
+    receipt.refresh_from_db()
+    assert sale.status == Document.Status.POSTED
+    assert receipt.status == Document.Status.POSTED
+    assert draft.status == Document.Status.DRAFT
+    assert not draft.doc_no                     # never numbered (D8)
+    assert _warehouse(stocked_item) == stock_before
+    assert _balance(customer) == balance_before
+
+
+def test_an_ordinary_cash_sale_still_corrects(client, owner, customer, cash,
+                                              stocked_item):
+    """The guard must not catch a cash sale's own auto payment (D3/D44):
+    the correction copies the payment lines and posting rebuilds it."""
+    from django.urls import reverse
+    sale = Document.objects.create(doc_type=DocType.SALE, created_by=owner,
+                                   customer=customer,
+                                   sale_kind=Document.SaleKind.CASH)
+    DocumentLine.objects.create(
+        document=sale, item=stocked_item, batch=Batch.objects.get(item=stocked_item),
+        qty_entered=2, unit_price=D("100.00"), unit_label="pack", factor=1,
+    )
+    PaymentLine.objects.create(document=sale, account=cash, amount=D("200.00"))
+    sale = post(sale, owner)
+    client.force_login(owner)
+
+    client.post(reverse("document_correct", args=[sale.pk]),
+                {"reason": "wrong quantity"})
+
+    assert Document.objects.filter(corrects=sale,
+                                   status=Document.Status.DRAFT).count() == 1

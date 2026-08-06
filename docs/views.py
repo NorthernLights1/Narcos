@@ -34,7 +34,9 @@ from docs.models import (
     DocumentCharge,
     DocumentLine,
 )
-from docs.posting import PostingError, get_handler, post, void
+from docs.posting import (
+    PostingError, check_correctable, get_handler, post, void,
+)
 from docs.preview import draft_expected_totals
 from docs.settlement import (
     SETTLEMENT_FILTERS,
@@ -619,6 +621,7 @@ def document_correct(request, pk):
         # posted, because the goods can move in between. Refusing here just
         # saves retyping a correction that could never land.
         get_handler(source.doc_type).check_voidable(source)
+        check_correctable(source)  # R70 — re-checked when the draft posts
     except PostingError as exc:
         messages.error(request, str(exc))
         return redirect("document_detail", pk=source.pk)

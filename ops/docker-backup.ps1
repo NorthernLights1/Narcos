@@ -12,7 +12,25 @@ param(
     [string]$BackupRoot = $env:NARCOS_BACKUP_ROOT
 )
 $ErrorActionPreference = "Stop"
-if (-not $BackupRoot) { throw "Set NARCOS_BACKUP_ROOT (e.g. C:\narcos\backups)." }
+
+# R69: DEPLOYMENT.md puts NARCOS_BACKUP_ROOT in .env, which Compose
+# interpolates but PowerShell never reads — so the first scheduled run threw
+# here before touching the database, and the nightly backup never existed.
+# Read the same file Compose does, so there is one place to set it.
+function Get-DotEnvValue([string]$Key) {
+    if (-not (Test-Path ".\.env")) { return $null }
+    foreach ($line in Get-Content ".\.env") {
+        if ($line -match "^\s*$([regex]::Escape($Key))\s*=\s*(.*)$") {
+            return $Matches[1].Trim().Trim('"').Trim("'")
+        }
+    }
+    return $null
+}
+if (-not $BackupRoot) { $BackupRoot = Get-DotEnvValue "NARCOS_BACKUP_ROOT" }
+if (-not $BackupRoot) {
+    throw ("Set NARCOS_BACKUP_ROOT in .env next to compose.yml " +
+           "(e.g. NARCOS_BACKUP_ROOT=C:\narcos\backups), or pass -BackupRoot.")
+}
 
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $target = Join-Path $BackupRoot $stamp
@@ -28,8 +46,11 @@ docker compose exec -T db pg_restore --list "/backups/$stamp/narcos.dump" | Out-
 if ($LASTEXITCODE -ne 0) { throw "Dump verification (pg_restore --list) failed." }
 
 # 3. Media (attachments) — without them, restored attachment rows point at nothing.
-docker compose exec -T app sh -c "tar czf /backups/$stamp/media.tar.gz -C /app media"
-if ($LASTEXITCODE -ne 0) { Write-Warning "Media archive step returned non-zero (no media yet?)." }
+# R69: this used to warn and carry on ("no media yet?"), which is the same
+# excuse whether the folder is empty or the step is broken. Create the folder
+# so an empty one archives cleanly, and treat anything else as a failure.
+docker compose exec -T app sh -c "mkdir -p /app/media && tar czf /backups/$stamp/media.tar.gz -C /app media"
+if ($LASTEXITCODE -ne 0) { throw "Media archive failed." }
 
 # 4. .env — makes a wiped machine fully self-recoverable.
 if (Test-Path ".\.env") { Copy-Item ".\.env" (Join-Path $target ".env") -Force }

@@ -37,9 +37,20 @@ docker compose exec -T db pg_restore -U narcos -d $TargetDb $dump
 if ($LASTEXITCODE -ne 0) { throw "pg_restore failed." }
 
 if ($MediaTarget) {
+    # R69: a disaster restore is documented as `docker compose up -d db` only,
+    # so the app container this step needs is deliberately not running. It
+    # used to warn and then print "Restored" anyway — a bare-metal recovery
+    # finished looking successful with every attachment row pointing at a file
+    # that was never unpacked. Start what the step needs, and fail if it fails.
+    docker compose up -d app
+    if ($LASTEXITCODE -ne 0) { throw "Could not start the app container for the media restore." }
+    docker compose exec -T app test -f "/backups/$Stamp/media.tar.gz"
+    if ($LASTEXITCODE -ne 0) {
+        throw "media.tar.gz is missing from /backups/$Stamp — that backup cannot restore attachments."
+    }
     docker compose exec -T app sh -c "mkdir -p '$MediaTarget' && tar xzf /backups/$Stamp/media.tar.gz -C '$MediaTarget' --strip-components=1"
-    if ($LASTEXITCODE -ne 0) { Write-Warning "Media unpack failed or media.tar.gz missing — DB restored, media skipped." }
-    else { Write-Host "Media unpacked into $MediaTarget" }
+    if ($LASTEXITCODE -ne 0) { throw "Media unpack failed — the database is restored, the attachments are not." }
+    Write-Host "Media unpacked into $MediaTarget"
 }
 
 # Best-effort audit note; during bare-metal recovery the app may not be up yet.

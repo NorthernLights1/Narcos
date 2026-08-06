@@ -396,6 +396,19 @@ class ConsignmentSettlementHandler(Handler):
             raise PostingError(_("Settlement must reference a posted consignment issue."))
         if doc.related_document.customer_id != doc.customer_id:
             raise PostingError(_("Settlement customer differs from the issue's."))
+        # R77: settlement values the goods from the issue's line_net, which
+        # never carried the issue's document discount — so the customer would
+        # be billed the undiscounted price for goods sold at the agreed one.
+        # The discount cannot be spread here (§7.5 settles part of an issue,
+        # and a whole-document deduction has no per-line share), so the issue
+        # is refused rather than silently overcharged.
+        if doc.related_document.doc_discount:
+            raise PostingError(_(
+                "%(no)s carries a document discount of %(amount)s, which a "
+                "settlement cannot apply. Put the discount on the lines of the "
+                "issue instead, then settle it."
+            ) % {"no": doc.related_document.doc_no,
+                 "amount": doc.related_document.doc_discount})
         if doc.sale_kind not in (Document.SaleKind.CASH, Document.SaleKind.CREDIT):
             raise PostingError(_("Settlement must be cash or credit."))
         lines = list(doc.lines.select_related("item"))
@@ -509,6 +522,17 @@ class CustomerReturnHandler(Handler):
                 raise PostingError(_("Return must reference a posted sale."))
             if doc.related_document.customer_id != doc.customer_id:
                 raise PostingError(_("Return customer differs from the sale's."))
+            # R67: a whole-document discount sits outside the line values this
+            # return is priced from, on either side — so a full return of a
+            # discounted sale would credit the undiscounted total, and a
+            # discount typed on the return would come off a credit that never
+            # had it. Same reasoning as R77, same answer.
+            if doc.related_document.doc_discount or doc.doc_discount:
+                raise PostingError(_(
+                    "A document discount cannot be carried through a return "
+                    "against %(no)s. Post an owner return without a sale "
+                    "reference and enter the credit directly."
+                ) % {"no": doc.related_document.doc_no})
         elif not doc.created_by.is_owner:
             # §7.6: without a sale reference the owner enters the cost
             raise PostingError(_("Returns without a sale reference are owner-only."))
@@ -523,16 +547,51 @@ class CustomerReturnHandler(Handler):
             if line.item.is_batch_tracked and line.batch_id is None:
                 raise PostingError(_("Line %(item)s: pick the batch returned (D29).")
                                    % {"item": line.item.code})
+            # R67: a negative discount is a surcharge on a credit note — it
+            # takes money off the customer for handing goods back.
+            if line.line_discount < 0 or line.unit_price < 0:
+                raise PostingError(_("Line %(item)s: negative amounts not allowed.")
+                                   % {"item": line.item.code})
 
     @staticmethod
-    def _sale_totals(sale: Document, item_id, batch_id) -> tuple[int, Decimal, object]:
+    def _sale_totals(sale: Document, item_id, batch_id):
         """Aggregate the sale's matching lines (a sale may legally carry the
-        same item+batch on several lines): (qty sold, total cogs, first line)."""
+        same item+batch on several lines): (qty sold, total cogs, total
+        invoiced, first line).
+
+        R67: the invoiced value is summed alongside the cost so both come from
+        the same set of lines. Cost used to be weighted across all of them
+        while the price was read off the first one — two different answers to
+        the same question, and neither was what the customer paid.
+        """
         matching = list(sale.lines.filter(item_id=item_id, batch_id=batch_id)
                         .order_by("pk"))
         qty_sold = sum(line.qty_base for line in matching)
         cogs = sum((line.cogs_total for line in matching), Decimal("0.00"))
-        return qty_sold, cogs, matching[0] if matching else None
+        value = sum((line.line_net for line in matching), Decimal("0.00"))
+        return qty_sold, cogs, value, matching
+
+    @staticmethod
+    def _check_one_price_to_credit(line, matching) -> None:
+        """R67: the pro-rata credit is only honest when every matching line
+        was sold at the same money per base unit.
+
+        A sale may carry the same item and batch twice at different prices.
+        Averaging them credits neither: return the unit that cost 100 beside
+        one that cost 10 and the customer gets 55. Consignment settlement
+        refuses this case rather than averaging it, and so does this — until a
+        return can name the sale line it came from, there is no way to know
+        which of the two is coming back.
+        """
+        values = {round2(other.line_net / other.qty_base)
+                  for other in matching if other.qty_base}
+        if len(values) > 1:
+            raise PostingError(_(
+                "Line %(item)s: the sale carries this item and batch at more "
+                "than one price. Which one is coming back cannot be told "
+                "apart, so it has to be credited by hand: post an owner "
+                "return without a sale reference."
+            ) % {"item": line.item.code})
 
     @staticmethod
     def _already_returned(sale: Document, item_id, batch_id) -> int:
@@ -567,12 +626,14 @@ class CustomerReturnHandler(Handler):
             original = None
             if sale is not None:
                 key = (line.item_id, line.batch_id)
-                qty_sold, sale_cogs, original = self._sale_totals(
+                qty_sold, sale_cogs, sale_value, matching = self._sale_totals(
                     sale, line.item_id, line.batch_id)
+                original = matching[0] if matching else None
                 if original is None:
                     raise PostingError(
                         _("Line %(item)s: the referenced sale has no such "
                           "item/batch.") % {"item": line.item.code})
+                self._check_one_price_to_credit(line, matching)
                 requested[key] = requested.get(key, 0) + line.qty_base
                 already = self._already_returned(sale, line.item_id, line.batch_id)
                 if requested[key] + already > qty_sold:
@@ -581,13 +642,21 @@ class CustomerReturnHandler(Handler):
                           "on the sale (%(left)d of %(sold)d base units left).")
                         % {"item": line.item.code,
                            "left": max(qty_sold - already, 0), "sold": qty_sold})
-                if not line.unit_price:
-                    line.unit_price = original.unit_price
                 line.is_taxable = original.is_taxable  # snapshot from the sale
+                # R67: credit exactly what these units were invoiced at, taken
+                # from the sale's own frozen lines. The typed price used to win
+                # whenever it was non-empty — and the entry form prefills the
+                # *current* catalogue price (D80), so a price rise between sale
+                # and return quietly refunded more than the customer ever paid.
+                line.line_discount = Decimal("0.00")   # already inside line_net
+                line.line_net = (round2(sale_value * line.qty_base / qty_sold)
+                                 if qty_sold else Decimal("0.00"))
+                line.unit_price = (round2(line.line_net / line.qty_entered)
+                                   if line.qty_entered else Decimal("0.00"))
             else:
                 line.is_taxable = not line.item.vat_exempt
-            gross = Decimal(line.qty_entered) * line.unit_price
-            line.line_net = round2(gross - line.line_discount)
+                gross = Decimal(line.qty_entered) * line.unit_price
+                line.line_net = round2(gross - line.line_discount)
             parts.append(Part(value=line.line_net, is_taxable=line.is_taxable))
 
             # §7.6: original COGS unit cost — weighted over the sale's matching
@@ -611,7 +680,13 @@ class CustomerReturnHandler(Handler):
                 qty_delta=line.qty_base, batch_id=line.batch_id, line_id=line.pk,
             ))
 
-        _freeze_totals(doc, parts, settings)
+        # R67: tax at the rate the sale was issued under, not today's. A rate
+        # change between sale and return otherwise credits a different tax
+        # than was charged. Unreferenced returns have no sale to inherit from.
+        if sale is not None:
+            _freeze_totals_at_rate(doc, parts, sale.tax_rate_snapshot)
+        else:
+            _freeze_totals(doc, parts, settings)
 
         refunds = list(doc.payment_lines.all())
         if refunds:

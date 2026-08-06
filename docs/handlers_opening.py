@@ -7,6 +7,7 @@ from django.utils.translation import gettext as _
 
 from docs.models import DocType, Document, LotConsumption
 from docs.posting import Effects, Handler, PostingError, StockDelta, register
+from docs.tax import round2
 from stock.models import Batch, CostLot, Zone
 
 
@@ -61,19 +62,39 @@ class OpeningStockBase(Handler):
                            "old": batch.expiry_date}
                     )
             qty = line.qty_entered * line.factor
+            # R76: the cost is typed per entered unit — a carton — while the
+            # lot holds base units. Receiving divides what was paid by every
+            # base unit it brought in (D21); opening stock has to land on the
+            # same number, or a carton price is stored as a tablet price and
+            # the whole opening inventory is overvalued by the factor.
+            amount = round2(Decimal(line.qty_entered) * line.unit_cost_entered)
+            unit_cost = round2(amount / qty) if qty else Decimal("0.00")
+            if amount and not unit_cost:
+                # Lot costs hold two decimals. Split finely enough — a cheap
+                # item in a large pack — and the per-base cost rounds to
+                # nothing, which would book the whole line at zero value.
+                raise PostingError(
+                    _("Line %(item)s: %(amount)s over %(qty)d %(unit)s is less "
+                      "than 0.01 each, so the value would round away to "
+                      "nothing. Enter this line in a smaller pack.")
+                    % {"item": line.item.code, "amount": amount, "qty": qty,
+                       "unit": line.item.base_unit})
             lot = CostLot.objects.create(
                 item=line.item, batch=batch, source_line=line,
-                received_at=now, qty_received=qty, unit_cost=line.unit_cost_entered,
+                received_at=now, qty_received=qty, unit_cost=unit_cost,
             )
             line.batch = batch
             line.qty_base = qty
             line.line_net = Decimal(line.qty_entered) * line.unit_price
-            line.cogs_total = Decimal(qty) * line.unit_cost_entered
+            line.cogs_total = round2(Decimal(qty) * unit_cost)
             line.save()
             zone = line.target_zone or self.zone
             if zone == Zone.CONSIGNED:
+                # R76: the same base-unit cost the lot was created at, not the
+                # entered-unit one — otherwise opening consignment freezes a
+                # carton price against tablets while its own lot holds 10.
                 LotConsumption.objects.create(line=line, lot=lot, qty=qty,
-                                              unit_cost=line.unit_cost_entered)
+                                              unit_cost=unit_cost)
             effects.stock.append(StockDelta(
                 item_id=line.item_id, lot_id=lot.pk, zone=zone,
                 qty_delta=qty, batch_id=batch.pk if batch else None,

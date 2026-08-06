@@ -1740,3 +1740,105 @@ wholesale business buying and selling per pack (R65); and a withholding
 remittance whose payable check runs a moment before the lock (R66,
 practically unreachable on one till). All three are written up in
 [03-open-risks.md](03-open-risks.md) with their trigger conditions.
+
+## D116 — A correction may not delete what it cannot put back (R70)
+
+Correcting a document duplicates it as a draft and voids the original when
+that draft posts (D92). The void cascades into the original's linked customer
+returns (D96) and the separate receipt that settled it (D95) — and the
+replacement carries none of them, because `_duplicate_as_draft` copies only
+the document's own fields, lines, charges and payment lines. So correcting a
+sale that had been returned against, or paid by a receipt, quietly reversed
+those documents and billed the customer a second time for money they had
+already handed over.
+
+Correction is now refused when the original has posted dependents that a
+replacement cannot recreate, naming them: void those first, then correct.
+A cash sale's own auto payment (D3/D44) is deliberately *not* a blocker —
+`after_post` rebuilds it from the copied payment lines. The check runs twice,
+in the view for a fast refusal and again inside `post()`, because the return
+or receipt can land while the draft sits open; the second one is the binding
+one.
+
+**This was the only defect in the batch that `v1.0.0` did not already have.**
+It is why the batch was not tagged when `05-status.md` said it was ready.
+
+## D117 — A credit note is worth what the invoice charged (R67)
+
+A referenced customer return took its price from whatever was in the box, and
+the entry form prefills the *current* catalogue price (D80) — so a price rise
+between sale and return refunded more than the customer ever paid. Cost was
+weighted across the sale's matching lines while price came off the first one:
+two different answers to the same question. Tax was frozen at today's rate,
+not the sale's.
+
+A referenced return is now valued pro rata from the sale's own frozen lines —
+`sale_value × qty_base ÷ qty_sold` over the lines matching item and batch —
+with `line_discount` forced to zero because it is already inside `line_net`,
+and totals frozen at the sale's `tax_rate_snapshot`. Cost and price now come
+from the same set of lines. Unreferenced returns are unchanged: the owner
+still enters the cost, and today's rate is the only rate there is.
+
+Codex asked for a source-line foreign key on `DocumentLine` instead. That
+needs the return form to make staff pick a specific sale line, which is a
+larger change than this round is for; the pro-rata share mirrors the
+`value_per_base` pattern consignment settlement already uses.
+
+## D118 — A return credits the invoice it came from (R68)
+
+`open_balance()` counted only payment allocations, and a return with no refund
+writes none — it credits the customer's account directly. The customer's total
+AR fell but the invoice still read fully open, so aging chased money that was
+no longer owed and a receipt could be allocated against a balance that was not
+there. Unrefunded posted returns are now subtracted from the invoice's open
+balance. Refunded returns are not: that money went back over the counter, so
+the invoice itself is still owed in full.
+
+## D119 — The owner draws a line under a closed month (R71)
+
+Voiding stamps its reversal rows at the current time but flips the document to
+VOIDED, and the reports only ever show currently-posted documents. A June sale
+voided in August therefore disappears out of June and turns up in no other
+month: a June report already printed and filed silently stops matching.
+
+The real fix is reversal-aware reporting, which is a bigger piece of work.
+Meanwhile there is a **Books closed through** date in Settings — empty by
+default, so nothing changes until it is used. Once set, documents dated on or
+before it can no longer be voided or corrected, and the message says to enter
+a correcting document dated today instead. The owner moves the date forward as
+each month is finished.
+
+## D120 — Small server-side guards that were missing (R72-R78)
+
+Six defects that all had the same shape: a rule the business obviously has,
+enforced nowhere the server could see it.
+
+- **A supplier return must go back to the supplier it came from** (R72). Lots
+  remember who sold them (D40); returning one to somebody else took the money
+  off the wrong supplier's payable. Lots with no recorded origin — opening
+  balances, stock counts, customer returns — still go wherever the owner says.
+- **Units per pack must be at least 1** (R73). Stock moves `qty × factor` while
+  revenue uses `qty` alone, so a factor of 0 invoiced the customer and moved
+  nothing. Only receiving checked it. Now `post()` checks it for every document
+  type, whichever route the draft arrived by — hidden (D89) is not absent.
+- **A stock count is refused when stock moved after its snapshot** (R74). The
+  variance is `counted − frozen` applied to whatever is on the shelf now; with
+  2 sold after the snapshot, the shelf ended up holding neither the counted
+  figure nor the real one. It was written to the audit log and posted anyway.
+  Recount those items.
+- **Reports agree with the invoice** (R75). Revenue summed `line_net`, which
+  carries line discounts but not delivery charges or whole-document discounts,
+  so reported revenue differed from invoiced revenue by `charges − discount`.
+  Both now appear as their own rows.
+- **Opening stock cost is per base unit** (R76). Receiving divides what was
+  paid by every base unit received (D21); opening stock stored the entered-unit
+  cost directly, so 10 cartons of 12 at 120 booked 120 per tablet — twelve
+  times over.
+- **A discounted consignment issue cannot be settled** (R77). Settlement values
+  goods from the issue's `line_net`, which never carried the issue's
+  document discount, so the customer was billed the undiscounted price. Put the
+  discount on the issue's lines instead.
+
+Django also moved 6.0.6 → 6.0.8, the 2026-08-04 security release (R78). No
+disclosed path was shown reachable here; this is overdue patching, not a
+demonstrated exploit.

@@ -156,3 +156,29 @@ def test_dashboard_lists_due_consignments(client, owner, customer, supplier, ite
     content = response.content.decode()
     assert cn.doc_no in content
     assert "Due within 7 days" in content
+
+
+# --- R77: an issue-level discount a settlement cannot honour --------------
+
+def test_settling_an_issue_with_a_document_discount_is_refused(
+        owner, customer, supplier, item):
+    """Settlement values goods from the issue's frozen line_net (I14), which
+    never carried the issue's whole-document discount — so the customer was
+    billed the full price for goods agreed at less."""
+    receive(owner, supplier, item)
+    cn = issue(owner, customer, item, qty=5, price="100.00")
+    Document.objects.filter(pk=cn.pk).update(doc_discount=D("50.00"))
+    cn.refresh_from_db()
+
+    cs = Document.objects.create(doc_type=DocType.CONSIGNMENT_SETTLEMENT,
+                                 created_by=owner, customer=customer,
+                                 related_document=cn, sale_kind="CREDIT")
+    DocumentLine.objects.create(document=cs, item=item,
+                                batch=Batch.objects.get(), qty_entered=5,
+                                qty_sold=5, unit_label="kit", factor=1)
+
+    with pytest.raises(PostingError, match="document discount"):
+        post(cs, owner)
+
+    cs.refresh_from_db()
+    assert cs.status == Document.Status.DRAFT

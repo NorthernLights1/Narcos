@@ -146,6 +146,18 @@ class CompanySettings(models.Model):
         ),
     )
 
+    books_closed_through = models.DateField(  # R71
+        _("Books closed through"), null=True, blank=True,
+        help_text=_(
+            "Leave empty until you start closing months. Once set, documents "
+            "dated on or before this day can no longer be voided or "
+            "corrected — a void reverses the money today but removes the "
+            "document from the month it was in, so a report you have already "
+            "printed and filed would quietly change. Move the date forward "
+            "each time you finish a month."
+        ),
+    )
+
     AUDITED_FIELDS = [
         "name", "address", "tin", "phone", "tax_regime", "vat_rate", "tot_rate",
         "prices_tax_exclusive", "withholding_on_sales", "withholding_on_purchases",
@@ -155,7 +167,7 @@ class CompanySettings(models.Model):
         "near_expiry_months", "consignment_term_months",
         "default_credit_limit", "default_credit_action",
         "fiscal_year_start_month", "date_display", "print_layout",
-        "negative_balance_policy",
+        "negative_balance_policy", "books_closed_through",
     ]
 
     class Meta:

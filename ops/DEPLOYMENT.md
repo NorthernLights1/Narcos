@@ -163,6 +163,9 @@ docker compose exec app python manage.py migrate --check   # optional sanity
    ```powershell
    powershell -File ops\docker-restore.ps1 <timestamp> narcos /app/media
    ```
+   The script starts the `app` container itself for the media step and stops
+   with an error if the attachments cannot be unpacked — a restore that prints
+   "Restored" has its files as well as its rows.
 6. Start the app: `docker compose up -d` (migrate is a no-op when versions match).
 7. Re-add the firewall rule and the Task Scheduler backup job (§2, §3).
 8. **Prove it end to end**: log in, open the dashboard, open a document *that

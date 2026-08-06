@@ -388,3 +388,215 @@ negative — the corruption D99 guards against on the void path, unguarded
 on the post path. Needs genuine concurrency on a one-till system, so
 practically unreachable. Fix: move the balance check into
 `build_effects`.
+
+---
+
+## New — joint whole-app audit, round 20 (2026-08-06)
+
+The pre-ship audit above (R63–R66) examined **the 29-commit batch**. This round
+examined **the whole application**, independently by Codex (GPT-5.6) and Claude,
+with every finding traced in the code by both before it was written down.
+R67–R78 correspond to the joint report's F1–F12.
+
+**The headline:** ten of these twelve are present in `v1.0.0` — already in the
+client's hands. Shipping the batch does not make them worse. **R70 is the
+exception**: it is new, and it is the reason this batch must not be tagged as it
+stands.
+
+### R67 — Referenced customer returns are valued from current data — `RESOLVED` (→ D117)
+A return matches its sale by item+batch only, then treats `matching[0]` as "the
+original" ([handlers_sales.py:527-535](docs/handlers_sales.py#L527-L535)). Cost is
+weighted across matching lines ([:596](docs/handlers_sales.py#L596)) while price
+falls back to the first line ([:585](docs/handlers_sales.py#L585)) and only when
+the submitted price is empty — so the prefilled *current* catalog price is
+normally accepted. Tax is frozen at today's rate, not the sale's
+`tax_rate_snapshot` ([models.py:101](docs/models.py#L101)). Negative
+`line_discount` is unvalidated ([models.py:208](docs/models.py#L208)).
+*Live now. In `v1.0.0`.* Fix needs a source-line reference on `DocumentLine`
+(migration) and reconciliation of posted returns.
+
+### R68 — Return credits never reduce the invoice's open balance — `RESOLVED` (→ D118)
+`open_balance()` counts only `PaymentAllocation` rows
+([handlers_payments.py:21-29](docs/handlers_payments.py#L21-L29)); a no-refund
+return posts a party-ledger effect and no allocation
+([handlers_sales.py:626](docs/handlers_sales.py#L626)). The customer's overall AR
+drops but the returned invoice still reads fully open, so aging and payment
+validation disagree with the ledger. *Live now. In `v1.0.0`.* Must land together
+with R67 or the books stay contradictory.
+
+### R69 — The documented backup/restore path cannot recover — `MITIGATED` (→ D120) — unverified until a drill on the Windows host
+[DEPLOYMENT.md:53](ops/DEPLOYMENT.md#L53) puts `NARCOS_BACKUP_ROOT` in `.env`,
+which Compose interpolates ([compose.yml:18](compose.yml#L18)) but PowerShell
+never sees — so [docker-backup.ps1:12](ops/docker-backup.ps1#L12) throws at
+[:15](ops/docker-backup.ps1#L15) on first run. Restore is worse: the header says
+to bring up only `db` ([docker-restore.ps1:11](ops/docker-restore.ps1#L11)), yet
+media restore runs `docker compose exec -T app`
+([:40](ops/docker-restore.ps1#L40)) and treats failure as a warning
+([:41](ops/docker-restore.ps1#L41)) before reporting success. *In `v1.0.0`.*
+Settled only by a real drill on the Windows host, not by reading the scripts.
+
+### R70 — Correction voids linked returns and receipts without recreating them — `RESOLVED` (→ D116)
+**The one finding introduced by this batch.** `_duplicate_as_draft`
+([views.py:549-589](docs/views.py#L549-L589)) copies the source document's own
+fields, lines, charges and payments. Posting the correction voids the original,
+and `void()` cascades into linked customer returns
+([posting.py:345-358](docs/posting.py#L345-L358)) and separate settling receipts
+([:361-371](docs/posting.py#L361-L371)) — which the replacement never recreates.
+Correct a sale that had a return and a receipt and both disappear from the books.
+Hiding the button is not enough: an existing correction draft still posts through
+the generic endpoint. *Absent from `v1.0.0`* (migration `docs/0008`).
+
+### R71 — Voids rewrite history instead of recording a current-period reversal — `MITIGATED` (→ D119) — interim guard, reports still not reversal-aware
+`void()` writes reversal rows at the current time but flips the original to
+VOIDED, and reports query only currently-posted documents — so a June sale voided
+in August vanishes from June and appears nowhere in August. *In `v1.0.0`;
+correction makes it more frequent.* **Not independently re-verified by Claude —
+Codex's tracing only.**
+
+### R72 — Supplier returns can reduce the wrong supplier's payable — `RESOLVED` (→ D120)
+`validate()` checks the lot's item ([handlers.py:222](docs/handlers.py#L222)) but
+never that the lot came from `doc.supplier`, then reduces that supplier's AP
+([:260](docs/handlers.py#L260)). Supplier B's lot can pay down supplier A.
+*Unconditional, ordinary UI path, no setting mitigates it. In `v1.0.0`.*
+
+### R73 — Zero conversion factor allows money without stock — `RESOLVED` (→ D120)
+Only receiving validates the factor ([handlers.py:77](docs/handlers.py#L77)).
+`factor` is a `PositiveIntegerField` ([models.py:200](docs/models.py#L200)), so 0
+is storable; sale/return revenue uses `qty_entered` while stock and COGS use
+`qty_entered × factor`. Dormant through the normal UI while conversion is off
+(the field is hidden, [forms.py:89](docs/forms.py#L89)) — reachable by a crafted
+POST, and fresh installs default conversion on. *In `v1.0.0`.*
+
+### R74 — Stock counts apply stale variances — `RESOLVED` (→ D120)
+Movement after the snapshot is detected but only logged
+([handlers.py:404-411](docs/handlers.py#L404-L411)); the variance is still
+computed against the frozen `qty_base` ([:417](docs/handlers.py#L417)) and posted
+against current stock ([:433-452](docs/handlers.py#L433-L452)), overwriting what
+moved. The owner never sees the warning before approving. *Live whenever counting
+happens while trading continues. In `v1.0.0`.*
+
+### R75 — Reports omit document discounts and charges — `RESOLVED` (→ D120)
+Revenue sums `line_net` ([reports/views.py:200](reports/views.py#L200)), which
+carries line discounts but not `doc_discount` ([models.py:96](docs/models.py#L96))
+or charges ([models.py:248](docs/models.py#L248)). Reported revenue differs from
+invoice revenue by `charges − doc_discount`. Charges are available in the live UI
+today. *In `v1.0.0`.*
+
+### R76 — Manual opening stock multiplies cost by the factor — `RESOLVED` (→ D120)
+Opening stock stores the entered-unit cost as the **base-unit** cost
+([handlers_opening.py:63-71](docs/handlers_opening.py#L63-L71)) where receiving
+correctly divides amount paid by base units
+([handlers.py:120-125](docs/handlers.py#L120-L125)). 10 cartons of 12 at 120/carton
+books 120 per tablet — a 12× overvaluation. Dormant while conversion is off; the
+CSV importer forces factor 1. *In `v1.0.0`.*
+
+### R77 — Consignment settlement discards the issue's document discount — `RESOLVED` (→ D120)
+Settlement derives value from the issue's `line_net`, which excludes the issue's
+`doc_discount`, and applies only its own (blank) discount. Dormant while discounts
+are disabled; fresh installs default them on. *In `v1.0.0`.*
+
+### R78 — Django is a security patch behind — `RESOLVED` (→ D120)
+Pinned 6.0.6 ([requirements.txt:3](requirements.txt#L3)); 6.0.8 is the 2026-08-04
+security release. No disclosed path was shown reachable here, so this is overdue
+patching, not a demonstrated Narcos exploit. *In `v1.0.0`.*
+
+### Not established by this audit
+No production data was inspected, so **the number and value of affected rows is
+unknown** — the defects are proven, the damage is not. The live settings
+(conversion off, discounts off, one till) were taken from these project records,
+not queried from the deployed database. The Windows scripts were traced but never
+executed on the real host.
+
+### Round 20 — what changed, and what is still open
+
+All twelve are addressed in the working tree, and Codex then reviewed the diff
+adversarially and returned thirteen objections. Six were acted on immediately
+(below); the rest are recorded as R79-R83. 456 tests pass on PostgreSQL,
+`manage.py check` is clean and `makemigrations --check` finds nothing pending.
+Decisions are written up as [D116-D120](02-decisions.md).
+
+Two are marked `MITIGATED` rather than `RESOLVED`, and the distinction is real:
+
+- **R69** — the scripts are fixed as code and have **never been executed**.
+  There is no Windows host here. It is settled by a restore drill on the
+  client machine and by nothing else: run `ops\docker-restore.ps1 <stamp>`
+  into the scratch database, confirm it refuses a non-empty target, and
+  confirm the media step now fails loudly instead of printing "Restored".
+- **R71** — the guard stops a closed month being rewritten; it does not make
+  reports reversal-aware. A void inside an open month still vanishes from that
+  month rather than showing as a dated reversal. The real fix is reporting
+  work, deferred.
+
+**Deferred by Temesgen's instruction, deliberately:** no reconciliation of
+data already on the client machine. Ten of these twelve defects are in
+`v1.0.0` and have been live, so rows written under the old behaviour may be
+wrong — most plausibly opening-stock lot costs (R76), referenced return values
+(R67), invoice open balances (R68) and any stock count posted while trading
+continued (R74). The agreed sequence is: deploy the fixes first, then a script
+that looks for each mistake in the live data and reports what it finds. Little
+has been entered yet and several of these workflows the client has not used at
+all, so the exposure is expected to be small — but it is unmeasured, not zero.
+
+## Codex's review of the fixes — round 20b
+
+Codex reviewed the diff on `gpt-5.6-sol`/`ultra` and returned **do-not-ship**
+with thirteen objections. Two were regressions the fixes themselves had
+introduced, and both are now fixed:
+
+- **The receiving twin of the R70 bug.** Sparing a cash sale's auto payment
+  but not a cash receiving's auto supplier payment meant correcting a paid
+  receiving was refused for no reason. `AUTO_PAYMENT_OF` now covers both.
+- **Opening consignment kept the undivided cost.** R76 divided the lot's cost
+  down to base units but left the frozen `LotConsumption` beside it at the
+  entered-unit cost, so the same goods carried two different costs.
+
+Four more were accepted and fixed in the same pass: the correction check now
+takes the original's row lock *before* looking for dependents; a referenced
+return is refused when the sale carries the same item and batch at two
+different prices (averaging them credits neither) or when either side carries
+a document discount; `open_balance()` is clamped at zero; opening stock is
+refused when the per-base cost would round away to nothing; and a supplier
+return of unknown-origin stock is now genuinely owner-only, which the code
+comment had claimed but nothing enforced.
+
+The rest are real and are **not** fixed:
+
+### R79 — Supplier returns do not reduce the receiving's open balance — `OPEN` (high)
+The AP mirror of R68, and the same shape: receive 100 on credit, return 20
+without a refund, and `open_balance(receiving)` still reads 100, so a 100
+payment is accepted and leaves the supplier 20 in credit. Not introduced by
+this batch — `open_balance` has only ever counted allocations. Needs supplier
+returns attributed to the originating receiving through
+`lot.source_line.document`.
+
+### R80 — R68 is not propagated to lists, pickers and filters — `OPEN` (medium)
+`open_balance()` now subtracts return credits, but the transaction list, the
+receipt picker and the settlement helpers compute their own figures and still
+show the uncredited total. One reusable annotation should serve all of them.
+
+### R81 — The stock-count guard is sequential, not concurrent — `OPEN` (medium)
+R74 refuses a count when movement is already recorded, but nothing holds a
+lock across the check and the adjustment it authorises, so a movement landing
+in between still applies the variance to figures that have changed. Needs a
+stable per-item lock in every stock posting path. Narrow on a one-till system.
+
+### R82 — `books_closed_through` is not a full transactional boundary — `OPEN` (medium)
+It refuses voids and corrections inside a closed period but not the posting of
+an explicitly dated opening document into one, and the settings row is not
+locked while the boundary is read, so closing a month can race a void.
+
+### R83 — The restore order still leaves a half-restored system running — `OPEN` (high)
+`docker-restore.ps1` now fails loudly on media, but only *after* the database
+is restored and after `app` has started, auto-migrated and published its port
+— so a failure leaves a partial application live, and re-running refuses the
+now-non-empty database. Media and dump should be checked before the target
+database is touched, and the extraction should use a one-shot container with
+no ports. Still unverified on Windows either way.
+
+### Codex's standing objections to R67
+Its recommended fix was a source-line foreign key on `DocumentLine`, and it
+maintains that the pro-rata credit is not equivalent: split returns can drift
+by a cent, and tax does not round-trip on a split. What ships refuses the
+cases that are demonstrably wrong (mixed prices, document discounts) rather
+than pricing them wrongly, and credits a homogeneous return exactly. The
+foreign key remains the right answer and is not in this round.

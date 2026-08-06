@@ -70,7 +70,7 @@ def _posted_documents(doc_types, start, end):
     rows = (
         Document.objects.filter(doc_type__in=doc_types, status=Document.Status.POSTED)
         .select_related("customer", "supplier", "expense_category")
-        .prefetch_related("lines__item", "lines__batch")
+        .prefetch_related("lines__item", "lines__batch", "charges")
         .order_by("document_date", "pk")
     )
     for doc in rows:
@@ -183,6 +183,14 @@ def _valuation(_start, _end, _user):
     return columns, rows, [_("Total"), "", "", "", "", _money(total)]
 
 
+def _extra_row(doc, label, amount, show_cost):
+    """A document-level amount shown on its own line, with no quantity."""
+    row = [_day(doc.document_date), doc.doc_no, doc.customer.name, label, "", amount]
+    if show_cost:
+        row.extend([_money(Decimal("0.00")), amount])
+    return row
+
+
 def _sales_line_rows(start, end, show_cost):
     rows = []
     total_revenue = Decimal("0.00")
@@ -208,6 +216,19 @@ def _sales_line_rows(start, end, show_cost):
             if show_cost:
                 row.extend([cogs, _money(revenue - cogs)])
             rows.append(row)
+        # R75: `line_net` carries line discounts only. A delivery charge is
+        # money the customer paid and a document discount is money they did
+        # not, so a report built from lines alone disagrees with the invoice
+        # it came from by exactly `charges − doc_discount`. They cost nothing
+        # to make, so they carry no COGS and are all profit or all loss.
+        for charge in doc.charges.all():
+            amount = _money(sign * charge.amount)
+            total_revenue += amount
+            rows.append(_extra_row(doc, charge.label, amount, show_cost))
+        if doc.doc_discount:
+            amount = _money(-sign * doc.doc_discount)
+            total_revenue += amount
+            rows.append(_extra_row(doc, _("Document discount"), amount, show_cost))
     return rows, total_revenue, total_cogs
 
 

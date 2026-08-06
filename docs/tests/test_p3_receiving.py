@@ -278,3 +278,64 @@ def test_supplier_return_wrong_lot_item_rejected(owner, supplier, drug, equipmen
                                 unit_label="unit", factor=1)
     with pytest.raises(PostingError):
         post(sr, owner)
+
+
+def test_supplier_return_to_the_wrong_supplier_rejected(owner, supplier, drug):
+    """R72: the lot remembers who sold it (D40 source_line). Returning it to
+    somebody else would take the money off the wrong supplier's balance."""
+    other = Supplier.objects.create(code="S002", name="Beta Pharma")
+    post(receiving(owner, supplier,
+                   {"item": drug, "qty": 10, "cost": "10.00",
+                    "batch_no": "B-1", "expiry": EXPIRY}), owner)
+    lot = CostLot.objects.get()
+    sr = Document.objects.create(doc_type=DocType.SUPPLIER_RETURN,
+                                 created_by=owner, supplier=other)
+    DocumentLine.objects.create(document=sr, item=drug, lot=lot, qty_entered=1,
+                                unit_label="pack", factor=1)
+
+    with pytest.raises(PostingError, match="Addis Pharma"):
+        post(sr, owner)
+
+    assert StockBalance.objects.get(lot=lot, zone=Zone.WAREHOUSE).qty == 10
+
+
+def test_supplier_return_of_opening_stock_is_allowed(owner, supplier, drug):
+    """An opening balance names no supplier (§7.8), so there is nothing to
+    contradict — the owner decides who the goods go back to."""
+    opening = Document.objects.create(doc_type=DocType.OPENING_STOCK,
+                                      created_by=owner)
+    DocumentLine.objects.create(
+        document=opening, item=drug, qty_entered=10,
+        unit_cost_entered=Decimal("10.00"), batch_no_entered="B-9",
+        expiry_entered=EXPIRY, unit_label="pack", factor=1,
+    )
+    post(opening, owner)
+    lot = CostLot.objects.get()
+    sr = Document.objects.create(doc_type=DocType.SUPPLIER_RETURN,
+                                 created_by=owner, supplier=supplier)
+    DocumentLine.objects.create(document=sr, item=drug, lot=lot, qty_entered=2,
+                                unit_label="pack", factor=1)
+
+    post(sr, owner)
+
+    assert StockBalance.objects.get(lot=lot, zone=Zone.WAREHOUSE).qty == 8
+
+
+def test_a_cash_receiving_can_still_be_corrected(client, owner, supplier, drug, cash):
+    """R70 must not catch a receiving's own auto supplier payment: the
+    correction copies the payment lines and posting rebuilds it, exactly as
+    for a cash sale."""
+    from django.urls import reverse
+    doc = receiving(owner, supplier,
+                    {"item": drug, "qty": 10, "cost": "10.00",
+                     "batch_no": "B-1", "expiry": EXPIRY})
+    PaymentLine.objects.create(document=doc, account=cash, amount=Decimal("100.00"))
+    doc = post(doc, owner)
+    assert Document.objects.filter(doc_type=DocType.SUPPLIER_PAYMENT,
+                                   related_document=doc).exists()
+    client.force_login(owner)
+
+    client.post(reverse("document_correct", args=[doc.pk]), {"reason": "wrong cost"})
+
+    assert Document.objects.filter(corrects=doc,
+                                   status=Document.Status.DRAFT).count() == 1

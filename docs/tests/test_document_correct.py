@@ -349,3 +349,38 @@ def test_an_ordinary_draft_posts_without_a_dialog(client, owner, customer,
     html = client.get(reverse("document_detail", args=[draft.pk])).content.decode()
     assert "This posts and voids" not in html
     assert "data-confirm-danger" not in html
+
+
+# --- R71: a closed month stays closed -------------------------------------
+
+def test_a_closed_month_cannot_be_voided(owner, customer, stocked_item):
+    """Voiding stamps the reversal today but flips the document to VOIDED,
+    and reports only show posted documents — so the sale would vanish out of
+    its own month and appear in no other. A June report already printed and
+    filed would quietly stop matching."""
+    from core.models import CompanySettings
+    from docs.posting import PostingError, void
+
+    sale = _posted_sale(owner, customer, stocked_item)
+    settings = CompanySettings.load()
+    settings.books_closed_through = datetime.date.today()
+    settings.save()
+
+    with pytest.raises(PostingError, match="books are closed"):
+        void(sale, owner, "too late")
+
+    sale.refresh_from_db()
+    assert sale.status == Document.Status.POSTED
+
+
+def test_an_open_month_is_untouched_by_the_default(owner, customer, stocked_item):
+    """Empty is the default and must stay free: nothing changes until the
+    owner starts closing months."""
+    from docs.posting import void
+
+    sale = _posted_sale(owner, customer, stocked_item)
+
+    void(sale, owner, "ordinary mistake")
+
+    sale.refresh_from_db()
+    assert sale.status == Document.Status.VOIDED

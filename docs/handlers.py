@@ -6,7 +6,6 @@ from decimal import ROUND_HALF_UP, Decimal
 from django.utils import timezone
 from django.utils.translation import gettext as _
 
-from core.audit import log_event
 from docs.models import DocType, Document, DocumentLine, LotConsumption
 from docs.posting import Effects, Handler, PostingError, StockDelta, register
 from stock.models import Batch, CostLot, StockBalance, StockLedger, Zone
@@ -205,6 +204,19 @@ class ReceivingHandler(Handler):
                 )
 
 
+def _lot_supplier(lot):
+    """R72: who sold this stock, when that is knowable.
+
+    Only a receiving names a supplier. Lots born of an opening balance, a
+    stock count or a customer return carry none, so there is nothing for the
+    return to contradict — but nothing to corroborate it either, which is why
+    those need the owner (see `_check_lot_origins`).
+    """
+    if lot.source_line_id is None:
+        return None
+    return lot.source_line.document.supplier
+
+
 class SupplierReturnHandler(Handler):
     """SR (§7.7/D41): stock − WAREHOUSE from picked lots at frozen lot cost;
     AP − by default, or money + when refund payment lines are present."""
@@ -212,7 +224,8 @@ class SupplierReturnHandler(Handler):
     def validate(self, doc: Document) -> None:
         if doc.supplier_id is None:
             raise PostingError(_("Supplier return needs a supplier."))
-        lines = list(doc.lines.select_related("item", "lot"))
+        lines = list(doc.lines.select_related(
+            "item", "lot", "lot__source_line__document__supplier"))
         if not lines:
             raise PostingError(_("Supplier return needs at least one line."))
         for line in lines:
@@ -222,6 +235,25 @@ class SupplierReturnHandler(Handler):
             if line.lot.item_id != line.item_id:
                 raise PostingError(_("Line %(item)s: lot belongs to a different item.")
                                    % {"item": line.item.code})
+            source = _lot_supplier(line.lot)
+            if source is not None and source.pk != doc.supplier_id:
+                raise PostingError(_(
+                    "Line %(item)s: that stock was bought from %(from)s, not "
+                    "%(to)s. Sending it back here would take the money off the "
+                    "wrong supplier's balance."
+                ) % {"item": line.item.code, "from": source.name,
+                     "to": doc.supplier.name})
+            # R72: a lot with no recorded origin corroborates nothing — the
+            # supplier on the form is the only thing saying these goods came
+            # from them, and posting it takes money off that supplier's
+            # payable. Staff may not make that call unaided.
+            if source is None and not getattr(
+                    doc, "_posting_actor", doc.created_by).is_owner:
+                raise PostingError(_(
+                    "Line %(item)s: the books do not record who this stock was "
+                    "bought from, so only the owner can return it to a "
+                    "supplier."
+                ) % {"item": line.item.code})
             if line.qty_entered <= 0:
                 raise PostingError(_("Line %(item)s: quantity must be positive.")
                                    % {"item": line.item.code})
@@ -395,20 +427,39 @@ class StockCountHandler(Handler):
     def validate(self, doc: Document) -> None:
         if not getattr(doc, "_posting_actor", doc.created_by).is_owner:
             raise PostingError(_("Only the owner can approve stock counts (D27)."))
-        if not list(doc.lines.all()):
+        lines = list(doc.lines.select_related("item"))
+        if not lines:
             raise PostingError(_("Stock count has no snapshot lines."))
+        self._check_the_snapshot_still_holds(doc, lines)
+
+    def _check_the_snapshot_still_holds(self, doc: Document, lines) -> None:
+        """R74: a count measures `counted − frozen`, and applies that
+        difference to whatever is on the shelf *now*.
+
+        Starting the count freezes the warehouse figures into `qty_base`. If
+        anything moves before the count is approved, the difference is
+        measured against a number that is no longer true and then applied to
+        one that is — so the shelf ends up holding neither what was counted
+        nor what was there. This used to be written to the audit log and
+        posted anyway, where nobody saw it until the stock was already wrong.
+        """
+        moved = set(StockLedger.objects.filter(
+            at__gt=doc.created_at,
+            zone=Zone.WAREHOUSE,
+            item_id__in=[line.item_id for line in lines],
+        ).values_list("item_id", flat=True))
+        if not moved:
+            return
+        codes = sorted({line.item.code for line in lines if line.item_id in moved})
+        raise PostingError(_(
+            "Stock moved after this count was started: %(items)s. The variance "
+            "would be measured against figures that are no longer true. Start a "
+            "fresh count for those items."
+        ) % {"items": ", ".join(codes)})
 
     def build_effects(self, doc: Document) -> Effects:
         effects = Effects()
         total = Decimal("0.00")
-        moved = StockLedger.objects.filter(
-            at__gt=doc.created_at,
-            zone=Zone.WAREHOUSE,
-            item_id__in=doc.lines.values_list("item_id", flat=True),
-        ).exists()
-        if moved:
-            log_event(doc.created_by, "STOCK_COUNT_MOVEMENT_WARNING", "Document", doc.pk,
-                      {"message": "Movement happened after the count snapshot."})
         for line in doc.lines.select_related("item", "batch", "lot"):
             if line.lot_id is None:
                 raise PostingError(_("Line %(item)s: snapshot line has no lot.")

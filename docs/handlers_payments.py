@@ -4,7 +4,7 @@ Registered via DocsConfig.ready()."""
 
 from decimal import Decimal
 
-from django.db.models import Sum
+from django.db.models import Count, Sum
 from django.utils.translation import gettext as _
 
 from core.models import CompanySettings
@@ -18,15 +18,45 @@ AR_TARGET_TYPES = {DocType.SALE, DocType.CONSIGNMENT_SETTLEMENT, DocType.OPENING
 AP_TARGET_TYPES = {DocType.RECEIVING, DocType.OPENING_AP}
 
 
+def _return_credits(target: Document) -> Decimal:
+    """R68: what posted customer returns have already taken off this invoice.
+
+    A return with no refund lines credits the customer's account (AR −) and
+    writes no allocation, so the invoice it came from still read as fully
+    open: aging chased money the customer no longer owed, and a receipt could
+    be allocated against a balance that was not there. Refunded returns are
+    excluded — that money went back over the counter, so the invoice itself
+    is still owed in full.
+    """
+    if target.doc_type not in AR_TARGET_TYPES:
+        return Decimal("0.00")
+    credits = (
+        Document.objects.filter(
+            related_document=target,
+            doc_type=DocType.CUSTOMER_RETURN,
+            status=Document.Status.POSTED,
+        )
+        .annotate(refund_lines=Count("payment_lines"))
+        .filter(refund_lines=0)
+        .aggregate(total=Sum("grand_total"))["total"]
+    )
+    return credits or Decimal("0.00")
+
+
 def open_balance(target: Document) -> Decimal:
     """Invoice's unsettled remainder: grand_total − allocations from POSTED
-    payments (voided payments drop out via the status filter)."""
+    payments (voided payments drop out via the status filter) − credits from
+    POSTED returns that were not refunded in cash (R68)."""
     allocated = (
         PaymentAllocation.objects.filter(
             target=target, payment__status=Document.Status.POSTED
         ).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
     )
-    return target.grand_total - allocated
+    # Never below zero: a return worth more than what is left owing (the
+    # invoice was already paid, say) leaves the customer in credit on their
+    # account — a PartyLedger balance — not a negative invoice.
+    remaining = target.grand_total - allocated - _return_credits(target)
+    return max(remaining, Decimal("0.00"))
 
 
 def withholding_balance(direction: str) -> Decimal:
