@@ -1,0 +1,70 @@
+{% load i18n %}
+{% comment %}R62/D121: the expiry open for correction, with what the change
+touches shown before it lands. One manufacturer batch has one real expiry, so
+this is never scoped to the page it was opened from.{% endcomment %}
+<span class="inline-field">
+  <form class="inline-field-form" method="post"
+        hx-post="{% url 'batch_expiry_edit' batch.pk %}"
+        hx-target="closest .inline-field" hx-swap="outerHTML">
+    {% csrf_token %}
+    {% comment %}`reviewed_expiry` is what the warnings below were computed
+    from. Change the date after reviewing and the server sends you round
+    again rather than saving something nobody looked at.{% endcomment %}
+    {% if confirming %}
+    <input type="hidden" name="confirm" value="1">
+    <input type="hidden" name="reviewed_expiry" value="{{ form.cleaned_data.expiry_date|date:'Y-m-d' }}">
+    <input type="hidden" name="reviewed_from" value="{{ current_expiry|date:'Y-m-d' }}">
+    <input type="hidden" name="reviewed_on" value="{{ today|date:'Y-m-d' }}">
+    {% endif %}
+    {{ form.expiry_date.label_tag }} {{ form.expiry_date }}
+    {{ form.reason.label_tag }} {{ form.reason }}
+    {% if form.errors %}<p class="field-error">{{ form.errors|striptags }}</p>{% endif %}
+
+    <div class="impact">
+      <p class="hint">
+        {% blocktranslate with code=batch.item.code no=batch.batch_no %}Batch {{ no }} of {{ code }} — this date is shared by every document below.{% endblocktranslate %}
+      </p>
+      {% if confirming %}
+      <p class="hint">
+        {% blocktranslate with old=current_expiry|default:"—" %}Currently {{ old }}. Check the two lines below, then confirm.{% endblocktranslate %}
+      </p>
+      {% endif %}
+
+      {% if impact.issued_after_expiry %}
+      <p class="field-error">
+        {% translate "This batch already left the building after the date you are entering:" %}
+        {% for doc in impact.issued_after_expiry %}<a href="{% url 'document_detail' doc.pk %}">{{ doc.doc_no }}</a> ({{ doc.document_date|date:"Y-m-d" }}){% if not forloop.last %}, {% endif %}{% endfor %}.
+        {% translate "If the new date is the true one, those went out expired — check whether the customers need telling." %}
+      </p>
+      {% endif %}
+
+      {% if impact.becomes_sellable %}
+      <p class="field-error">{% blocktranslate with qty=impact.warehouse_qty %}This puts {{ qty }} in the warehouse back on sale. Check the carton before confirming.{% endblocktranslate %}</p>
+      {% elif impact.becomes_expired %}
+      <p class="field-error">{% blocktranslate with qty=impact.warehouse_qty %}This stops {{ qty }} in the warehouse from selling.{% endblocktranslate %}</p>
+      {% endif %}
+
+      {% if impact.on_hand %}
+      <p class="hint">{% translate "On hand:" %}
+        {% for row in impact.on_hand %}{{ row.zone }} {{ row.total }}{% if not forloop.last %} · {% endif %}{% endfor %}
+      </p>
+      {% else %}
+      <p class="hint">{% translate "Nothing of this batch is on hand." %}</p>
+      {% endif %}
+
+      {% if impact.documents %}
+      <p class="hint">{% translate "Documents sharing this batch:" %}
+        {% for doc in impact.documents %}<a href="{% url 'document_detail' doc.pk %}">{{ doc.doc_no }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}
+      </p>
+      {% endif %}
+    </div>
+
+    <button type="submit" class="btn btn-primary btn-sm">
+      {% if confirming %}{% translate "Confirm the change" %}{% else %}{% translate "Review the change" %}{% endif %}
+    </button>
+    <button type="button" class="btn btn-secondary btn-sm"
+            hx-get="{% url 'batch_expiry_edit' batch.pk %}?display=1"
+            hx-target="closest .inline-field" hx-swap="outerHTML">
+      {% translate "Cancel" %}</button>
+  </form>
+</span>

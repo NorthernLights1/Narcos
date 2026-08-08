@@ -1,0 +1,14 @@
+{% load i18n %}
+{% comment %}R62/D121: the batch expiry with the pencil that opens it. Owners
+only — the pencil is absent for staff, and the endpoint refuses them too.
+{% endcomment %}
+<span class="inline-field">
+  <span class="inline-field-value">{{ batch.expiry_date|default:"—" }}</span>
+  {% if user.is_owner and batch.item.has_expiry %}
+  <button type="button" class="btn-inline-edit"
+          title="{% translate "Correct this expiry date" %}"
+          aria-label="{% translate "Correct this expiry date" %}"
+          hx-get="{% url 'batch_expiry_edit' batch.pk %}"
+          hx-target="closest .inline-field" hx-swap="outerHTML">✎</button>
+  {% endif %}
+</span>

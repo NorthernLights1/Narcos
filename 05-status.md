@@ -2,112 +2,92 @@
 
 Dear Temesgen,
 
-**The previous version of this file was wrong.** It said "436 / 436 green, the
-batch is ready to tag." The tests were green, but the audit behind that
-sentence had only covered the 29-commit batch — not the application. A
-whole-app audit has now been done jointly with Codex, and it found twelve
-defects, one of which the batch itself introduced.
+**`v1.1.0` is tagged and pushed.** The twelve whole-app findings and the
+thirteen Codex objections behind them are committed as `307cd37`; the tag points
+at that commit and so does `origin`. `build` is level with the remote, 34
+commits past `v1.0.0`. The previous version of this file said "nothing is
+committed yet" — that was true when it was written and has not been true for a
+while.
 
-All twelve are fixed in the working tree, and Codex has since attacked the
-diff and found thirteen more things — six acted on, five recorded, two of them
-regressions the fixes themselves introduced. **456 / 456 tests green**,
-`manage.py check` clean, `makemigrations --check` clean, Django 6.0.8.
-Nothing is committed yet.
+Uncommitted right now: two documentation files, both from today, both described
+below. No code has changed since the tag.
 
-## How this round was done
+## Today — round 21, a disposition review
 
-You asked the two of us to talk to each other instead of you carrying messages
-between us. Codex ran read-only on `gpt-5.6-sol` at `ultra` effort, resuming
-its own session so it kept full context; I drove it from a script and read its
-reports directly. It audited, I verified every finding in the code myself, I
-implemented, and then I handed it the diff to attack. It corrected itself under
-challenge on one claim and sharpened two others.
+Six findings were put to you. I verified every one against the working tree
+before asking, rather than trusting the summary they arrived in. All six are
+real. **You chose to write them up rather than fix them**, so no code moved;
+they are now R85–R90 in [03-open-risks.md](03-open-risks.md).
 
-I re-derived eleven of the twelve independently. **R71 I did not** — that one
-rests on Codex's tracing, and the file says so.
+| # | What it does | Disposition |
+|---|--------------|-------------|
+| R85 | Changing an item's base unit reinterprets 120 tablets as 120 cartons; turning batch tracking off strands batched stock as unsellable | `OPEN` (high) |
+| R86 | Nothing on the server refuses one item paired with another item's batch — the check is browser-side only | `OPEN` (medium) |
+| R87 | The item form commits the price, *then* validates conversions; on failure you are told it did not save, but it did, unaudited | `OPEN` (medium) |
+| R88 | Reprinting an old invoice shows today's customer details, not the ones it was printed with | `WATCH` — you accepted it |
+| R89 | `vat_exempt` would suppress TOT as well as VAT | `WATCH` — dormant here |
+| R90 | Opening consignment freezes no tax rate, so settlement charges none | `WATCH` — dormant here |
 
-## What was actually wrong
+R79 (a supplier return not reducing the receiving's open balance) was confirmed
+again and stands unchanged from round 20b.
 
-Twelve findings, recorded as R67–R78 in [03-open-risks.md](03-open-risks.md),
-decided as [D116–D120](02-decisions.md).
+## The thing your answer actually surfaced
 
-**Ten of the twelve are in `v1.0.0` — already on the client's machine.**
-Shipping this batch does not make them worse; it fixes them.
+I asked which tax regime you run, expecting VAT or TOT. You said **neither** —
+no sales tax at all, just the 3% a PLC withholds when it pays you.
 
-| # | What it did | Fix |
-|---|-------------|-----|
-| R70 | Correcting a sale that had a return or a receipt against it voided those too and never put them back — the customer was billed again for money they had paid | D116 |
-| R67 | A credit note used today's catalogue price, not the price the invoice charged; tax at today's rate, not the sale's | D117 |
-| R68 | A return never reduced the invoice it came from, so aging chased money no longer owed | D118 |
-| R71 | Voiding a June sale in August erased it from June and put it in no month at all | D119 (interim) |
-| R72 | A supplier return could pay down the wrong supplier's balance | D120 |
-| R73 | Units-per-pack of 0 invoiced the customer and moved no stock | D120 |
-| R74 | A stock count applied its variance to figures that had already changed | D120 |
-| R75 | Reports left out delivery charges and document discounts, so they disagreed with the invoices | D120 |
-| R76 | Opening stock booked a carton price as a tablet price — twelve times over | D120 |
-| R77 | Settling a discounted consignment issue billed the undiscounted price | D120 |
-| R78 | Django one security release behind | D120 |
-| R69 | The documented backup could not run and the restore reported success without your attachments | D120 |
+That makes R89 and R90 dormant: under the *None* regime the rate resolves to
+zero for every line anyway, so R89 suppresses a tax that is already nothing, and
+R90's frozen zero is the *correct* answer rather than a wrong one. Both are
+recorded so that registering for VAT later does not wake them silently.
 
-**R70 is the one this batch introduced.** It is the reason the old "ready to
-tag" was not merely optimistic but unsafe.
+But it exposed something with real money attached. The code ships with
+`tax_regime` defaulting to **VAT** and `withholding_on_sales` defaulting to
+**off**. If Settings on the client machine is not changed, every invoice adds
+15% VAT that does not exist and no withholding is ever shown. The withholding
+rate already defaults to 3, so that part is fine. I have written the concrete
+values into `ops/RELEASE-CHECKLIST.md` §1.
 
-## What is fixed but not proven
+**This is configuration, not a defect — and it is the highest-consequence
+setup step you have left.** Worth checking on the machine before the next real
+sale, not at leisure.
 
-**R69 — the backup and restore scripts have never been executed.** There is no
-Windows host here, so I have fixed them as code and that is all I can honestly
-claim. The backup now reads `NARCOS_BACKUP_ROOT` from the same `.env` Compose
-reads (before, PowerShell never saw it and the first scheduled run threw before
-touching the database). The restore now starts the container the media step
-needs and fails loudly instead of printing "Restored" with no attachments.
+## What I did not do
 
-This is settled by a drill on the client machine and by nothing else.
-
-**R71 — the guard is interim.** There is now a *Books closed through* date in
-Settings, empty by default. Once you set it, documents dated on or before it
-cannot be voided or corrected. It stops a closed month being rewritten. It does
-**not** make reports show a void as a dated reversal — that is real reporting
-work, deferred.
-
-## Deliberately not done — your instruction
-
-No reconciliation of data already on the client machine. Ten of these twelve
-have been live, so rows written under the old behaviour may be wrong: most
-plausibly opening-stock lot costs, referenced return values, invoice open
-balances, and any stock count posted while trading continued.
-
-Your call was to fix and deploy first, then write a script that checks the live
-data for each mistake and reports what it finds. That script is **not written
-yet** — it is the next piece of work after this ships. Little has been entered
-and several of these workflows the client has not touched, so the exposure is
-expected to be small. Expected, not measured.
+- **No code changes.** Your instruction was to write up first.
+- **No fix for R88.** You chose "as they are today"; master records stay live
+  and reprints follow them. Recorded, not silently dropped.
+- **No reconciliation script** for data already on the client machine. Still
+  the next piece of work after this, unchanged from the last round.
+- **No restore drill.** R69 remains fixed-as-code and unproven — there is no
+  Windows host here, and it is still the one finding whose failure mode is
+  losing everything.
 
 ## Where the numbers stand
 
-- `build` is **33 commits ahead of `v1.0.0`** — the old file said 29.
-- Nothing from this round is committed. `git status` shows 22 modified files
-  and one new migration (`core.0008`, the closed-through date). Say the word
-  and I will commit it.
-- The client image is built by the `v*` tag, so a tag is what ships this.
+- `v1.1.0` → `307cd37`, tagged and pushed. `build` level with `origin/build`.
+- 34 commits past `v1.0.0`.
+- Uncommitted: `03-open-risks.md` (R85–R90), `ops/RELEASE-CHECKLIST.md` (the
+  regime note). Say the word and I will commit them.
+- Tests were 456/456 green at the tag. I have not re-run them today — nothing
+  executable changed.
 
 ## Recommended next steps
 
-1. Read D116 and D119 — those two change how the app behaves for you, not just
-   internally. A correction can now be refused, and the closed-through date is
-   a new lever you own.
-2. Hard-refresh and walk `ops/MANUAL-TESTING.md`.
-3. **Run the restore drill on the Windows host.** R69 stays unproven until you
-   do, and it is the one finding whose failure mode is losing everything.
-4. Commit, then tag.
-5. Then the data-checking script.
+1. **Check Settings on the client machine**: regime → *None*, withholding on
+   sales → on. Then post one real sale and read the printed total.
+2. Run the restore drill on the Windows host.
+3. Decide R85 — it is the only one of the six that can corrupt stock silently,
+   and the fix does not restrict ordinary editing.
+4. Then the data-checking script.
 
 ## Still yours, unchanged
 
 Company phone still blank in Settings · negative-balance policy still
 "Allowed" · UPS + backup drive · R43 parallel run · R40 accountant confirms the
-3% base and the 20,000/10,000 thresholds · R39 legal form → withholding
-switches.
+3% base and the 20,000/10,000 thresholds.
 
 **Watch, deliberately not queued:** R46 per-customer price lists · R8b
 master-data merge · R9 broader returns · R55 recurring · R64 zero-total sale ·
-R65 pack rounding · R66 remittance timing.
+R65 pack rounding · R66 remittance timing · R83 restore ordering · R84 granular
+draft permissions · R88 document identity snapshot.

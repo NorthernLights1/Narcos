@@ -51,7 +51,9 @@
       <tr>
         <td>{{ row.balance.batch.batch_no|default:"—" }}</td>
         <td>
-          {{ row.balance.batch.expiry_date|default:"—" }}
+          {% if row.balance.batch %}
+            {% include "stock/_batch_expiry_value.html" with batch=row.balance.batch %}
+          {% else %}—{% endif %}
           {% if row.expiry_status == "EXPIRED" %}<span class="badge badge-OUT">{% translate "Expired" %}</span>
           {% elif row.expiry_status == "NEAR" %}<span class="badge badge-LOW">{% translate "Near expiry" %}</span>{% endif %}
         </td>

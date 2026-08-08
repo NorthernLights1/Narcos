@@ -1842,3 +1842,64 @@ enforced nowhere the server could see it.
 Django also moved 6.0.6 → 6.0.8, the 2026-08-04 security release (R78). No
 disclosed path was shown reachable here; this is overdue patching, not a
 demonstrated exploit.
+
+## D121 — A mistyped expiry can be corrected, by the owner, in the open (R62)
+
+*Trigger: it happened. The client typed 22/07/2026 for batch EP241208S of
+ITM-0032 on a multi-item opening stock, had already sold from that document,
+and every route was closed.*
+
+R62 was declined on 2026-08-05 with the trap written down: *"a typo may be
+genuinely uncorrectable, because void-and-repost is refused once any of the
+stock has been sold."* Three days later it bit, and the only fix available was
+editing the database by hand on the live machine — unaudited, unreviewed, and
+undoable only from a backup.
+
+**What was built** is exactly what that note specified if it were ever
+revisited: owner-only, audited with a reason, and a dialog showing which
+documents share the batch and what the change does to stock on the shelf.
+
+- **A pencil on the expiry, on the inventory page.** Owners only — staff see
+  no pencil, and the endpoint refuses them too, because hiding a control is
+  not access control.
+- **Two steps, not one.** Type the date and the reason, and the first submit
+  *reviews* rather than saves: it names every document sharing the batch, the
+  stock on hand by zone, and what the date does. Confirm posts a second time.
+  All three inputs to those warnings are echoed back — the date proposed, the
+  date it replaces, and the day it was judged on — and any of them differing
+  at confirm time sends you round again, because what was on screen no longer
+  describes what would happen. The no-change check runs under the row lock,
+  not before it, so a retry cannot log "from X to X".
+- **The reason is mandatory** and lands in the audit row beside the old date,
+  the new date, and the documents affected.
+- **Warnings name the direction.** Pushing a date out puts warehouse stock
+  back on sale; pulling it back stops it selling. Both are stated with the
+  quantity, and only about warehouse stock — consigned and expired goods do
+  not move because a date moved.
+- **The recall case is called out.** If the new date is earlier than a sale or
+  consignment issue of that batch, the dialog names those documents and says
+  the goods went out expired. It does not block the correction: the truth is
+  the truth. It makes sure nobody records it without seeing what it implies.
+- **The change and its audit row commit together**, under a row lock, or
+  neither does.
+
+**Why the batch and not the document.** Expiry lives on `Batch.expiry_date`,
+never on the line. One manufacturer batch has one real expiry, so every
+document that ever received or moved it shares the answer — which is why the
+dialog lists them rather than pretending the edit is local to one page.
+
+**What was declined.** Codex asked for a server-signed review token binding
+the reviewed values. The reviewed date is carried in a plain hidden field
+instead. Signing would defend the change against the only person permitted to
+make it; the review step is a guard against a mistake, not against an
+attacker.
+
+**Still open, with a rule instead of a fix:** the correction does not
+serialize against posting. An owner changing an expiry in the same instant a
+sale is being posted could let that sale commit against the old date. Locking
+the posting path against batch rows is a change to the posting engine, and the
+last small change made there cost a money-losing bug. So it is R91, and until
+it is closed the rule is: **correct an expiry when nothing is being posted** —
+not mid-sale, not from a second tab with a document open. One till makes that
+easy to honour. Codex accepted the deferral only on condition that rule was
+written down; it is also in the release checklist.

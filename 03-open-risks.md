@@ -334,11 +334,14 @@ the fields that can be edited." Scope settled in conversation: a pencil on
 every low-risk editable field, which added `notes` and `due_date` to the
 three §7.12 reference fields.
 
-### R62 — Expiry correctable without voiding — `DECLINED` (2026-08-05)
-Offered as a setting; Temesgen declined it for now. The analysis is kept in
-the D114 entry of [02-decisions.md](02-decisions.md) — including the trap
-that a wrong expiry can currently be uncorrectable once its stock is partly
-sold. Revisit only if that bites in practice.
+### R62 — Expiry correctable without voiding — `RESOLVED` (→ D121, 2026-08-08)
+Declined on 2026-08-05, with the trap written down: a wrong expiry is
+uncorrectable once its stock is partly sold, and the note said *"revisit only
+if that bites in practice."* It bit on 2026-08-08 — batch EP241208S of
+ITM-0032, typed 2026 for 2029, on an opening stock already sold from. Built as
+[D121](02-decisions.md) to the shape that note specified: owner-only, a
+mandatory reason, a two-step review naming every document that shares the
+batch, and the change committed together with its audit row.
 
 ---
 
@@ -585,13 +588,23 @@ It refuses voids and corrections inside a closed period but not the posting of
 an explicitly dated opening document into one, and the settings row is not
 locked while the boundary is read, so closing a month can race a void.
 
-### R83 — The restore order still leaves a half-restored system running — `OPEN` (high)
+### R83 — The restore order still leaves a half-restored system running — `WATCH` (accepted for v1.1)
 `docker-restore.ps1` now fails loudly on media, but only *after* the database
 is restored and after `app` has started, auto-migrated and published its port
 — so a failure leaves a partial application live, and re-running refuses the
 now-non-empty database. Media and dump should be checked before the target
 database is touched, and the extraction should use a one-shot container with
-no ports. Still unverified on Windows either way.
+no ports. Still unverified on Windows either way. Temesgen accepted this
+operational risk for v1.1 on 2026-08-07; revisit before the deployment model or
+recovery requirements expand.
+
+### R84 — Granular draft permissions — `WATCH` (accepted for v1.1)
+The current draft boundary is intentionally accepted for this installation:
+the only users are the owner and his trusted sister, so per-creator draft
+permissions and finer owner/employee RBAC do not block v1.1. Revisit before
+adding less-trusted staff or expanding beyond this trusted two-person setup.
+At that point, make owner-only posting checks use the current posting actor and
+restrict editing, deleting, or posting another user's drafts.
 
 ### Codex's standing objections to R67
 Its recommended fix was a source-line foreign key on `DocumentLine`, and it
@@ -600,3 +613,135 @@ by a cent, and tax does not round-trip on a split. What ships refuses the
 cases that are demonstrably wrong (mixed prices, document discounts) rather
 than pricing them wrongly, and credits a homogeneous return exactly. The
 foreign key remains the right answer and is not in this round.
+
+## Disposition review — round 21 (2026-08-07)
+
+Six findings, each verified against the working tree rather than taken from a
+summary, and dispositioned with Temesgen the same day. **No code was changed:**
+the decision was to write them up first and choose later. Every entry names the
+line that proves it, so whoever picks one up starts from evidence.
+
+Two are dormant *because of how this shop is configured*, not because the code
+is right. They are recorded precisely so that registering for VAT or TOT later
+does not quietly wake them.
+
+The regime answer also settled a live setup question. This business runs **no
+sales tax at all** — its only tax path is the 3% withholding a PLC customer
+keeps back when paying. `withholding_rate` already defaults to `3`
+(`core/models.py:70`), but `tax_regime` defaults to **VAT** (`core/models.py:61`)
+and `withholding_on_sales` defaults to **False** (`core/models.py:68`). Those two
+must be changed on the client machine or every invoice adds 15% VAT that does
+not exist and no withholding is ever shown. That is configuration, not a
+defect — see `ops/RELEASE-CHECKLIST.md` §1.
+
+### R85 — Stock-defining fields stay editable after the item has stock — `OPEN` (high)
+`base_unit`, `is_batch_tracked` and `has_expiry` are ordinary editable fields on
+`ItemForm` (`catalog/forms.py:45-51`), and `clean()` checks only that expiry
+implies batch tracking — never whether stock or documents already exist. The
+stored quantity is a bare number in the base unit, so changing `base_unit` from
+"tablet" to "carton" reinterprets 120 tablets as 120 cartons and converts
+nothing. Turning `is_batch_tracked` off strands batched stock outright: a sale
+then looks for `batch_id=None` lots (`docs/handlers_sales.py:67`) and finds
+none, while the goods sit on the shelf. Fix: keep the three editable until the
+item has a `CostLot`, a `StockBalance` or a posted line, and after that require
+a controlled conversion or a new item. Name, price, shelf and reorder level
+stay freely editable throughout — this is not a general edit lock.
+
+### R86 — Nothing on the server checks that a batch belongs to its item — `OPEN` (medium)
+The batch picker carries `data-item` so the browser can filter the list
+(`docs/forms.py:58`), and that is the whole of the enforcement:
+`DocumentLineForm.clean()` validates the selling price and nothing else
+(`docs/forms.py:429-443`). A posted line can therefore pair Amoxicillin with
+Paracetamol's batch — via a stale form, a replayed POST, or any client that
+does not run the script. Fix: one check in `clean()` refusing a batch whose
+`item_id` is not the line's. Small, and it closes the hole for every document
+type at once.
+
+### R87 — The item form saves before it validates the unit conversions — `OPEN` (medium)
+`master_form` calls `form.save()` and only then validates `ItemUnitFormSet`
+(`catalog/views.py:103-111`). An invalid conversion — a duplicate "carton", say
+— re-renders the page with an error while the item's own changes are already
+committed, and the `log_change` below is never reached. So the user is told the
+save failed, the price changed anyway, and the audit trail has no record of it.
+Nothing in that view is inside a transaction. Fix: validate form and formset
+together, wrap both saves and the audit row in one `transaction.atomic()`, and
+write nothing at all when either is invalid.
+
+### R88 — Posted documents read today's master record, not the one they were printed from — `WATCH` (accepted for v1.1)
+`Document` links to `Customer`/`Supplier` by foreign key (`docs/models.py:84-87`)
+and keeps no copy of the name, TIN or item description, so a reprint always
+renders current master data. Correct a customer's phone in August and March's
+invoice reprints with the new number: the copy in the customer's file and the
+copy in yours no longer agree, and nothing records that they ever diverged. The
+fix is to freeze the identity fields onto the document at posting and print from
+the frozen copy — a migration plus posting and template work, the largest of
+these six. **Temesgen accepted the current behaviour on 2026-08-07:** master
+records stay live and reprints follow them. Revisit if reprints of old
+documents start being relied on as evidence, or if master corrections become
+routine.
+
+### R89 — `vat_exempt` suppresses TOT as well as VAT — `WATCH` (dormant by configuration)
+`line.is_taxable = not line.item.vat_exempt` (`docs/handlers_sales.py:30`) is
+blind to the regime, so under TOT an exempt item escapes turnover tax too —
+which contradicts D30 in as many words: "The TOT and none regimes are
+unaffected." **Dormant here:** this shop runs the *None* regime, where the rate
+resolves to zero for every line anyway (`docs/handlers_sales.py:42-45`), so the
+flag suppresses a tax that is already nothing. Under VAT the same line is
+correct. It goes live only if the business registers for **TOT**, and the rule
+is worth confirming with the accountant before it is fixed.
+
+### R90 — Opening consignment does not freeze a tax rate — `WATCH` (dormant by configuration)
+`OpeningConsignmentHandler` (`docs/handlers_opening.py:162-184`) never assigns
+`tax_rate_snapshot`, so it keeps the model default of `0` (`docs/models.py:101`),
+and a later settlement reads that frozen zero (`docs/handlers_sales.py:482`) and
+charges no tax on goods that should carry it. Under VAT at 15%, settling two
+items issued at 100 each would bill 200 instead of 230. **Dormant here:** under
+the *None* regime zero is the right answer, and whether any opening consignment
+will be entered at all is still unknown. Fix alongside R89 if the regime
+changes.
+
+### Still open from earlier rounds, unchanged
+**R79** (supplier returns do not reduce the receiving's open balance) was
+confirmed again in this pass and stands exactly as written above. The wording
+that caused confusion is worth restating: the "unrefunded" case is the ordinary
+**credit-note** one — you receive 1,000 on credit, return 200 of damaged goods
+before paying, and the supplier reduces what you owe to 800 rather than handing
+back cash. The supplier's overall balance reads 800 correctly; the receiving
+itself still reads open for 1,000, so the payment screen accepts 1,000 and
+leaves the supplier 200 in credit. It is a normal purchasing scenario, not an
+exotic one, and the application supports both settlement styles explicitly.
+
+## From building D121 (2026-08-08)
+
+Codex reviewed the feature on `gpt-5.6-sol`/`ultra`, scoped to it alone, and
+returned **do-not-ship** with eight objections. Six were acted on before this
+was committed: the impact preview counted DISPOSED stock as on hand and
+claimed consigned goods would "become sellable" (only the warehouse feeds a
+sale); voided documents were left out of the list of what shares the batch; an
+unchanged date wrote a pointless audit row; the save and its audit row were
+separate commits with no row lock; the confirm step was not bound to the date
+actually reviewed; and validation errors were returned as `400`, which htmx
+does not render at all. Two remain:
+
+### R91 — Expiry correction does not serialize against posting — `OPEN` (medium)
+`batch_expiry_edit` locks the `Batch` row; `post()` does not. A sale can
+validate a batch's expiry, have the date corrected underneath it, and still
+commit — leaving a posted sale of what is now expired stock. The fix is a
+stable per-batch lock taken by every posting path, which is a change to the
+posting engine; deferred on the same reasoning as R81, and for the same
+reason — this is a one-till business, so the window needs two people acting in
+the same instant. **Until it is closed the operating rule is: correct an expiry
+when nothing is being posted** — not mid-sale, not from a second tab with a
+document open. Codex accepted the deferral only on that condition. Revisit if
+a second till is ever added.
+
+### R92 — htmx never renders a 4xx, so some form errors are invisible — `OPEN` (medium)
+Vendored htmx 2.0.4 defaults `{code:"[45]..", swap:false}`, so any fragment
+returned with a 4xx status is discarded and the user sees nothing happen at
+all. D121 returns `200` for bound-form errors because of this. **The shipped
+D114 inline field edit does not** — [views.py:373](docs/views.py#L373) returns
+`400`, so a rejected `fiscal_receipt_no` or `machine_total` on a posted
+document fails silently in the browser today. In `v1.1.0`. Found by Codex
+while reviewing D121; left unfixed only because it is outside that feature and
+this round was scoped to it. One line each way: return 200, or configure
+`htmx.config.responseHandling`.

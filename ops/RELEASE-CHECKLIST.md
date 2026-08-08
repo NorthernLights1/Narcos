@@ -32,6 +32,12 @@ Work top to bottom — later sections reuse the data earlier ones create.
       *(Phone was still blank at last check.)*
 - [ ] Tax regime, VAT/TOT rate and "prices entered tax-exclusive" match how
       the business actually quotes prices.
+      *For this client (confirmed 2026-08-07): **regime = None** — they charge
+      no VAT and no TOT. The code ships defaulting to **VAT**, so this must be
+      changed or every invoice adds 15% that does not exist. Their only tax is
+      the **3% withholding** a PLC customer keeps back when paying, so
+      **withholding on sales = on** (it ships off) and the rate stays 3.
+      Tick this only after posting one real sale and reading the printed total.*
 - [ ] Fiscal year start month, near-expiry months, consignment term set.
 - [ ] Default credit limit + credit action (warn / block) set.
 - [ ] Changing any setting writes an audit row naming the old and new value.
@@ -359,3 +365,15 @@ Worth more than any single tick above:
 
 **Tested by:** ______________  **Date:** ____________
 **Version tag shipped:** `v________`
+
+## Batch expiry corrections (D121 / R91)
+
+The owner can correct a mistyped batch expiry from the inventory page. Until
+R91 is closed, **do it when nothing is being posted** — not mid-sale, not from
+a second tab with a document open. The correction does not lock against
+posting, so a sale in flight could commit against the old date.
+
+Every correction is audited with the reason, the old and new dates, and the
+documents that share the batch. If the new date is earlier than a sale of that
+batch, the dialog says so before you confirm — that is a recall question, not
+a bookkeeping one.
