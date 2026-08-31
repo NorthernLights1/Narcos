@@ -10,8 +10,25 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RemoveField(
-            model_name='companysettings',
-            name='unit_conversion_enabled',
+        # D122 release A: keep the column, drop it only from model state.
+        # NOT NULL with a Django-level default only, so it needs a database
+        # default the moment Django stops writing it. False is the honest
+        # value now — pack conversion is not in use and cannot be.
+        # TODO(release B): drop the column. Tracked in 03-open-risks.md.
+        migrations.SeparateDatabaseAndState(
+            state_operations=[
+                migrations.RemoveField(
+                    model_name='companysettings',
+                    name='unit_conversion_enabled',
+                ),
+            ],
+            database_operations=[
+                migrations.RunSQL(
+                    "ALTER TABLE core_companysettings "
+                    "ALTER COLUMN unit_conversion_enabled SET DEFAULT false",
+                    reverse_sql="ALTER TABLE core_companysettings "
+                                "ALTER COLUMN unit_conversion_enabled DROP DEFAULT",
+                ),
+            ],
         ),
     ]

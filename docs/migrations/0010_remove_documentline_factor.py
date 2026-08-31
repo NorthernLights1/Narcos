@@ -92,8 +92,30 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.RunPython(quarantine_pack_scaled_drafts, unquarantine),
-        migrations.RemoveField(
-            model_name='documentline',
-            name='factor',
+        # D122 ships as "release A": the column STAYS in the database and only
+        # leaves Django's model state, so no code reads or writes it. Dropping
+        # it is not reversible on the client's box — NARCOS_IMAGE is an
+        # unpinned `:latest` (compose.yml:27) and ops/docker-restore.ps1
+        # refuses a database that already has tables, so there is no way back
+        # to the old image once the data is gone. The historical per-line
+        # factors are also the only record of what pre-D122 documents meant.
+        #
+        # `factor` is NOT NULL with only a Django-level default, so the moment
+        # Django stops naming it in INSERTs every new line would violate the
+        # constraint. A database default of 1 fixes that and is exactly right
+        # semantically: after D122 every new line is on a single scale.
+        #
+        # TODO(release B): drop the column once this has run clean at the
+        # client for a full cycle. Tracked in 03-open-risks.md.
+        migrations.SeparateDatabaseAndState(
+            state_operations=[
+                migrations.RemoveField(model_name='documentline', name='factor'),
+            ],
+            database_operations=[
+                migrations.RunSQL(
+                    "ALTER TABLE docs_documentline ALTER COLUMN factor SET DEFAULT 1",
+                    reverse_sql="ALTER TABLE docs_documentline ALTER COLUMN factor DROP DEFAULT",
+                ),
+            ],
         ),
     ]

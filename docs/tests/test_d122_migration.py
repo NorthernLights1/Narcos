@@ -110,11 +110,73 @@ def test_the_migration_records_what_it_did(at_0009):
     assert any("PARA" in str(r.after) for r in rows)
 
 
-def test_the_column_is_gone_afterwards(at_0009):
-    _migrate(AFTER)
+def test_release_a_keeps_the_columns_and_new_rows_still_insert():
+    """D122 ships as release A: the columns stay in the database and only
+    leave Django's model state.
+
+    The failure this guards is specific and total: `factor` and
+    `unit_conversion_enabled` are NOT NULL with Django-level defaults only, so
+    the moment Django stops naming them in INSERTs every write would violate
+    the constraint. The migrations add database defaults; this proves it.
+    """
+    from decimal import Decimal as D
+
+    from catalog.models import Item, Supplier
+    from core.models import CompanySettings, User
+    from docs.models import Document, DocType, DocumentLine
+
     with connection.cursor() as cursor:
         cursor.execute("""
-            SELECT 1 FROM information_schema.columns
-            WHERE table_name = 'docs_documentline' AND column_name = 'factor'
+            SELECT column_name, is_nullable, column_default
+            FROM information_schema.columns
+            WHERE (table_name, column_name) IN
+                  (('docs_documentline', 'factor'),
+                   ('core_companysettings', 'unit_conversion_enabled'))
+            ORDER BY column_name
         """)
-        assert cursor.fetchone() is None
+        columns = {name: (nullable, default) for name, nullable, default in cursor.fetchall()}
+
+    assert "factor" in columns, "release A must KEEP docs_documentline.factor"
+    assert "unit_conversion_enabled" in columns, \
+        "release A must KEEP core_companysettings.unit_conversion_enabled"
+    assert columns["factor"][1] is not None, \
+        "factor is NOT NULL and Django no longer writes it — it needs a DB default"
+    assert columns["unit_conversion_enabled"][1] is not None, \
+        "unit_conversion_enabled is NOT NULL and Django no longer writes it"
+
+    # The columns are gone from the model, so nothing can read or write them.
+    assert not any(f.name == "factor" for f in DocumentLine._meta.get_fields())
+    assert not hasattr(CompanySettings(), "unit_conversion_enabled")
+
+    # And the real write paths still work.
+    settings = CompanySettings.load()
+    assert settings.pk == 1
+
+    owner = User.objects.create_user("boss_a", password="pw", role=User.Role.OWNER)
+    supplier = Supplier.objects.create(code="S-RA", name="Addis")
+    item = Item.objects.create(code="RA-1", name="Paracetamol", base_unit="pack",
+                               is_batch_tracked=False, has_expiry=False,
+                               maintained_price=D("10.00"))
+    doc = Document.objects.create(doc_type=DocType.RECEIVING, created_by=owner,
+                                  supplier=supplier)
+    line = DocumentLine.objects.create(document=doc, item=item, qty_entered=7,
+                                       unit_cost_entered=D("5.00"), unit_label="pack")
+    assert line.pk
+
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT factor FROM docs_documentline WHERE id = %s", [line.pk])
+        assert cursor.fetchone()[0] == 1, \
+            "a row written without factor should take the database default of 1"
+
+
+def test_the_itemunit_table_is_kept():
+    """Release A: the alternate-unit table leaves model state, not the database."""
+    from django.apps import apps
+
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT to_regclass('catalog_itemunit')")
+        assert cursor.fetchone()[0] is not None, \
+            "release A must KEEP the catalog_itemunit table"
+
+    with pytest.raises(LookupError):
+        apps.get_model("catalog", "ItemUnit")

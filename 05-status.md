@@ -1,5 +1,9 @@
 # Status
 
+> Resuming in a fresh session? Read **[handover.md](handover.md)** first —
+> it carries the cross-session state, the gotchas, and the one decision that
+> was made by default rather than by you.
+
 Dear Temesgen,
 
 **D122 is implemented: unit conversion and `factor` are gone.** Suite green at

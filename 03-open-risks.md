@@ -787,3 +787,38 @@ switch on and types a factor — which the UI invites, since the box is shown by
 default on a fresh install.
 
 *This is the finding that decides D62. See 05-status.md.*
+
+### R94 — D122 leaves three orphaned database objects — `OPEN` (low, tracked for release B)
+D122 ships as **release A**: the pack-conversion columns leave Django's model
+state but stay in the database. Nothing reads or writes them.
+
+| object | state | why kept |
+|---|---|---|
+| `docs_documentline.factor` | kept, DB default `1` | the only record of what pre-D122 lines meant |
+| `core_companysettings.unit_conversion_enabled` | kept, DB default `false` | trivial, but free to keep |
+| `catalog_itemunit` (table + rows) | kept, **FK to `catalog_item` dropped** | declared pack sizes are data; R65 only sampled the DB, it is not proof the table is empty |
+
+**Why not just drop them.** On the client's box a dropped column cannot be put
+back: `NARCOS_IMAGE` is an unpinned `:latest` ([compose.yml:27](compose.yml#L27))
+so rollback is not a pinned operation, and
+[docker-restore.ps1:32](ops/docker-restore.ps1#L32) refuses a database that
+already has tables, so restore-in-place is blocked by design. Release A is
+reversible by pulling the previous image; release B is not.
+
+**Two traps this had to avoid**, both found by test rather than by reasoning:
+
+1. `factor` and `unit_conversion_enabled` are `NOT NULL` with **Django-level
+   defaults only**. The moment Django stopped naming them in `INSERT`s every
+   write would have violated the constraint. Both now carry a database default.
+2. Leaving `catalog_itemunit`'s foreign key in place was **not** harmless, as
+   first assumed. A table Django no longer manages, still referencing one it
+   does, **blocks `TRUNCATE` on the parent** — which is how Django flushes
+   between tests, and it failed at once. The FK is dropped; the rows stay.
+
+**Release B — the removal, once D122 has run clean at the client for a cycle:**
+drop `docs_documentline.factor`, drop
+`core_companysettings.unit_conversion_enabled`, drop the `catalog_itemunit`
+table and its two constraints. Take a backup first; it is a one-way door.
+Guarded by `test_release_a_keeps_the_columns_and_new_rows_still_insert`, which
+must be deleted or inverted as part of that change — it currently asserts the
+columns are present.
