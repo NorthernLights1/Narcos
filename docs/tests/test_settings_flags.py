@@ -39,14 +39,12 @@ def test_defaults_keep_every_box(client, owner):
     settings = CompanySettings.load()
     assert settings.fiscal_machine_present is True
     assert settings.discounts_enabled is True
-    assert settings.unit_conversion_enabled is True
     assert settings.sale_price_editable is False
 
     assert "machine_total" in DocumentForm(doc_type=DocType.SALE).fields
     assert "doc_discount" in DocumentForm(doc_type=DocType.SALE).fields
     fields = _line_fields(DocType.SALE, owner)
     assert "line_discount" in fields
-    assert "factor" in fields
 
 
 def test_no_fiscal_machine_hides_machine_total():
@@ -81,7 +79,6 @@ def test_discounts_off_hides_both_discount_boxes(owner):
 
 
 def test_factor_off_hides_the_factor_box(owner):
-    _settings(unit_conversion_enabled=False)
     assert "factor" not in _line_fields(DocType.SALE, owner)
 
 
@@ -112,8 +109,7 @@ def test_typed_price_survives_when_the_flag_is_on(owner):
         "lines-TOTAL_FORMS": "1", "lines-INITIAL_FORMS": "0",
         "lines-MIN_NUM_FORMS": "0", "lines-MAX_NUM_FORMS": "1000",
         "lines-0-item": str(item.pk), "lines-0-qty_entered": "2",
-        "lines-0-unit_label": "pack", "lines-0-factor": "1",
-        "lines-0-unit_price": "12.00", "lines-0-line_discount": "0",
+        "lines-0-unit_label": "pack", "lines-0-unit_price": "12.00", "lines-0-line_discount": "0",
     })
     lines = next(fs for prefix, _t, fs in formsets if prefix == "lines")
     assert lines.is_valid(), lines.errors
@@ -130,8 +126,7 @@ def test_hidden_boxes_do_not_disturb_posted_documents(client, owner):
     doc = Document.objects.create(doc_type=DocType.SALE, created_by=owner,
                                   customer=customer, doc_discount=D("5.00"))
     DocumentLine.objects.create(document=doc, item=item, qty_entered=2,
-                                unit_price=D("10.00"), unit_label="pack",
-                                factor=1, line_discount=D("1.00"))
+                                unit_price=D("10.00"), unit_label="pack", line_discount=D("1.00"))
 
     _settings(discounts_enabled=False, fiscal_machine_present=False)
     doc.refresh_from_db()

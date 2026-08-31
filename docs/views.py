@@ -35,7 +35,8 @@ from docs.models import (
     DocumentLine,
 )
 from docs.posting import (
-    PostingError, check_correctable, get_handler, post, void,
+    PostingError, _refuse_a_pack_scaled_copy, check_correctable, get_handler,
+    post, void,
 )
 from docs.preview import draft_expected_totals
 from docs.settlement import (
@@ -195,7 +196,6 @@ def _start_consignment_settlement(request, issue_pk):
                 item=group["item"],
                 batch=group["batch"],
                 unit_label=group["item"].base_unit,
-                factor=1,
                 qty_entered=group["outstanding"],
                 qty_base=group["outstanding"],
             )
@@ -220,7 +220,6 @@ def _start_stock_count(request):
                 batch=balance.batch,
                 lot=balance.lot,
                 unit_label=balance.item.base_unit,
-                factor=1,
                 qty_entered=balance.qty,
                 qty_base=balance.qty,
                 source_zone=Zone.WAREHOUSE,
@@ -496,6 +495,12 @@ def document_convert_sale(request, pk):
         .prefetch_related("lines", "charges"),
         pk=pk,
     )
+    try:
+        # D122: a proforma typed in packs would convert to a sale in base units
+        _refuse_a_pack_scaled_copy(source, _("Converting it to a sale"))
+    except PostingError as exc:
+        messages.error(request, str(exc))
+        return redirect("document_detail", pk=source.pk)
     with transaction.atomic():
         sale = Document.objects.create(
             doc_type=DocType.SALE,
@@ -507,7 +512,7 @@ def document_convert_sale(request, pk):
         for line in source.lines.all():
             DocumentLine.objects.create(
                 document=sale, item=line.item, batch=line.batch,
-                unit_label=line.unit_label, factor=line.factor,
+                unit_label=line.unit_label,
                 qty_entered=line.qty_entered, unit_price=line.unit_price,
                 line_discount=line.line_discount,
             )
@@ -553,7 +558,7 @@ def _duplicate_as_draft(source: Document, actor, reason: str) -> Document:
     entry forms use — so whatever a doc type asks staff to type is exactly
     what gets carried over, and nothing computed at posting is.
 
-    DOC_CONFIG is read unfiltered on purpose: a discount or pack factor
+    DOC_CONFIG is read unfiltered on purpose: a discount
     captured before those boxes were switched off (D89) still belongs to
     the document being corrected.
     """
@@ -567,10 +572,14 @@ def _duplicate_as_draft(source: Document, actor, reason: str) -> Document:
         correction_reason=reason, **fields,
     )
     for line in source.lines.all():
-        DocumentLine.objects.create(
-            document=draft,
-            **{name: getattr(line, name) for name in config["lines"]},
-        )
+        carried = {name: getattr(line, name) for name in config["lines"]}
+        # D122/Codex-HIGH: `free_qty` is engine-live (D21) but off every form
+        # since D84, so the config-driven copy above silently dropped it —
+        # correcting "100 + 10 free" voided 110 units and re-posted 100, and
+        # moved the lot cost with it. Carried explicitly, never typed.
+        if "free_qty" not in carried and line.free_qty:
+            carried["free_qty"] = line.free_qty
+        DocumentLine.objects.create(document=draft, **carried)
     if config.get("charges"):
         for charge in source.charges.all():
             DocumentCharge.objects.create(

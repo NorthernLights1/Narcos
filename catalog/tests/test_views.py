@@ -28,9 +28,6 @@ ITEM_POST = {
     "name": "Amoxicillin 500mg", "category": "DRUG",
     "is_batch_tracked": "on", "has_expiry": "on", "base_unit": "pack of 10",
     "maintained_price": "150.00", "pricing_mode": "MANUAL", "is_active": "on",
-    # units formset management form (no units)
-    "units-TOTAL_FORMS": "0", "units-INITIAL_FORMS": "0",
-    "units-MIN_NUM_FORMS": "0", "units-MAX_NUM_FORMS": "1000",
 }
 
 
@@ -96,12 +93,7 @@ def test_every_list_page_renders(client, owner, kind):
     assert client.get(reverse("master_list", args=[kind])).status_code == 200
 
 
-def test_item_with_units_saves_and_lists(client, owner):
-    post = ITEM_POST | {
-        "units-TOTAL_FORMS": "1",
-        "units-0-unit_label": "carton", "units-0-factor_to_base": "12",
-    }
-    response = client.post(reverse("master_create", args=["items"]), post)
+def test_item_saves_and_lists(client, owner):
+    response = client.post(reverse("master_create", args=["items"]), ITEM_POST)
     assert response.status_code == 302
-    item = Item.objects.get(name="Amoxicillin 500mg")
-    assert item.units.get().factor_to_base == 12
+    assert Item.objects.filter(name="Amoxicillin 500mg").exists()

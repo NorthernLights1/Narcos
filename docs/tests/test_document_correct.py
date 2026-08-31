@@ -46,7 +46,7 @@ def stocked_item(owner, supplier):
     DocumentLine.objects.create(
         document=grn, item=item, qty_entered=10, unit_cost_entered=D("10.00"),
         batch_no_entered="B-1", expiry_entered=FAR_EXPIRY,
-        unit_label=item.base_unit, factor=1,
+        unit_label=item.base_unit,
     )
     post(grn, owner)
     return item
@@ -61,7 +61,7 @@ def _posted_sale(owner, customer, item, qty=2):
     DocumentLine.objects.create(
         document=sale, item=item, batch=Batch.objects.get(item=item),
         qty_entered=qty, unit_price=D("15.00"),
-        unit_label=item.base_unit, factor=1,
+        unit_label=item.base_unit,
     )
     DocumentCharge.objects.create(document=sale, label="Delivery",
                                   amount=D("3.00"), is_taxable=False)

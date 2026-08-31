@@ -319,8 +319,8 @@
         <td>{{ line.item }}</td>
         <td>{{ line.batch|default:line.batch_no_entered|default:"—" }}</td>
         <td>
-          {{ line.qty_entered }} {{ line.unit_label }}{% if line.factor > 1 %}
-            × {{ line.factor }} = {% widthratio line.qty_entered 1 line.factor %} {{ line.item.base_unit }}{% endif %}
+          {{ line.qty_entered }} {{ line.unit_label }}{% if line.qty_base and line.qty_base != line.qty_entered %}
+            <span class="cell-hint">({{ line.qty_base }} {{ line.item.base_unit }})</span>{% endif %}
         </td>
         {% if doc.doc_type == "RECEIVING" %}
           <td class="num">{{ line.unit_cost_entered|default:"—" }}</td>

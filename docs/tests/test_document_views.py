@@ -90,8 +90,7 @@ def test_posted_proforma_converts_to_draft_sale(client, owner):
         doc_discount=Decimal("1.00"),
     )
     DocumentLine.objects.create(
-        document=proforma, item=item, qty_entered=2, unit_label="box",
-        factor=1, unit_price=Decimal("10.00"),
+        document=proforma, item=item, qty_entered=2, unit_label="box", unit_price=Decimal("10.00"),
     )
     DocumentCharge.objects.create(
         document=proforma, label="Delivery", amount=Decimal("3.00"), is_taxable=True,
@@ -126,7 +125,7 @@ def test_receiving_ui_has_no_free_units(client, owner):
                                   created_by=owner, supplier=supplier)
     DocumentLine.objects.create(
         document=grn, item=item, qty_entered=5,
-        unit_cost_entered=Decimal("4.00"), unit_label="pack", factor=1,
+        unit_cost_entered=Decimal("4.00"), unit_label="pack",
     )
     detail_html = client.get(
         reverse("document_detail", args=[grn.pk])

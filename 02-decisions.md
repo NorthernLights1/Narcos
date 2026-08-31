@@ -1903,3 +1903,88 @@ it is closed the rule is: **correct an expiry when nothing is being posted** —
 not mid-sale, not from a second tab with a document open. One till makes that
 easy to honour. Codex accepted the deferral only on condition that rule was
 written down; it is also in the release checklist.
+
+---
+
+## Round 22 (2026-08-30) — unit conversion is removed
+
+### D122 — Pack conversion (`factor`) removed; `qty_base` kept (supersedes D62)
+- **What:** `DocumentLine.factor` is deleted, along with `catalog.ItemUnit`
+  (model, formset, item-form block, CSV `alt_units` column) and
+  `CompanySettings.unit_conversion_enabled`. Stock now moves `qty_entered`
+  base units. **`DocumentLine.qty_base` stays** — it is not a copy of
+  `qty_entered`: receiving writes `qty_entered + free_qty` (D21), a stock count
+  freezes the pre-count snapshot, a settlement writes
+  `qty_sold + qty_returned + qty_expired_unfit`, an adjustment writes
+  `|qty_delta|`, and eleven consumers read it as the uniform base-unit figure.
+  Three pure-schema migrations plus one data step: `docs/0010`, `catalog/0003`,
+  `core/0009`.
+
+- **Why.** D62 reversed D58 the same day on retrofit fear alone — never on a
+  business need — and D58's premise (wholesaler, never breaks packs) was never
+  contradicted. R65 confirmed it against the live database. What settled it was
+  **R93: `factor` and D80 master pricing are mutually incompatible.** D80 forces
+  the price from the item's `maintained_price`, which is per *base* unit, while
+  `factor` makes `qty_entered` a *pack* count. Verified by running the code: a
+  sale of 5 cartons of 12 ships 60 packs costing 600.00 and invoices 75.00, and
+  staff cannot compensate because D80 overwrites the typed price. A *correct*
+  factor makes the invoice wrong. "Keep it and validate it" was therefore never
+  an option without reopening D80.
+
+- **What D62 got right, and is kept.** D62 bought two things: the base-unit
+  skeleton (`Item.base_unit`, `DocumentLine.qty_base`) *and* the live
+  multiplier. The skeleton is what makes a future retrofit cheap — re-adding
+  `factor DEFAULT 1` needs no back-fill, because `qty_base` is stored
+  explicitly and every historical row keeps meaning exactly what it says. Only
+  the multiplier is deleted. D58 vs D62 is not re-litigated; the two halves are
+  separated.
+
+- **The one piece of new code.** `lines_posted_on_a_pack_scale`
+  ([posting.py](docs/posting.py)) refuses to copy a legacy row into a fresh
+  draft — a D92 correction or a proforma→sale conversion — because the copy
+  would re-post `qty_entered` alone and register a different quantity than the
+  original moved. The marker is `qty_base != qty_entered + free_qty`, which
+  needs no `factor` column and so survives the migration, scoped to the doc
+  types whose `qty_base` actually means "the typed quantity in base units".
+
+- **What Codex found, and what changed because of it.** Round 1 returned
+  DO NOT SHIP with six findings, all accepted:
+  1. `_duplicate_as_draft` copies line fields from `DOC_CONFIG["lines"]`, and
+     D84 took `free_qty` off that list — so **correcting a receiving with bonus
+     goods voided 110 units and re-posted 100**, moving the lot cost with it.
+     A bug predating this round; `free_qty` is now carried explicitly.
+  2. A **draft** carries `factor` but `qty_base` is still 0, so the marker
+     could not see it and a "5 × 12" draft would post as five base units.
+     `docs/0010` now converts draft quantities before dropping the column,
+     stamps the document's `notes` and writes an `AuditLog` row. It does **not**
+     raise: `docker-entrypoint.sh` runs `migrate` under `set -e`, so a raising
+     migration exits the container and Docker restarts it forever with nothing
+     on screen. Unit prices are deliberately left per-pack — a total that reads
+     twelve times too high gets noticed before posting; a quantity twelve times
+     too small does not.
+  3. A historical `factor = 0` row stored `qty_base` 0 against a positive
+     `qty_entered`; the marker's truthiness gate skipped exactly the rows it
+     most needed to refuse. Gate removed.
+  4. The marker ran against every doc type, so it refused legitimate
+     corrections of stock counts and settlements. Now scoped, and the scope is
+     shared with the diagnostic rather than duplicated.
+  5. `diagnose_quantities` called `CompanySettings.load()`, whose
+     `get_or_create` can INSERT — in a command advertised as read-only.
+  6. A vacuous test and a release-checklist step for a switch that no longer
+     exists.
+
+- **Pre-flight, required.** `manage.py diagnose_quantities` CHECK 0b must
+  report no draft carrying a multiplier, and CHECK 1 no line whose registered
+  quantity differs from the typed one, **before** the image ships. It is in the
+  release checklist. The guard is deliberately not a migration.
+
+- **What this closes.** R93; R73's unfixed half; R76's guard; R65 becomes
+  structurally impossible (`lot_cost = amount_paid / total_base` is exact once
+  `total_base = qty_entered + free_qty`); and R87 — the item form's
+  save-then-validate hole existed only because the units formset was validated
+  after `form.save()`.
+
+- **What it does not close.** R85 (`base_unit` is still a label on a bare
+  number, and rises in priority), the unguarded number inputs, and
+  `print.html` pairing `qty_base` with `unit_label` — that one stops mattering
+  once the two numbers agree, but it is still wrong.

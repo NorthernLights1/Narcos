@@ -51,7 +51,7 @@ def scenario(owner):
     DocumentLine.objects.create(
         document=grn, item=item, qty_entered=10, unit_cost_entered=D("10.00"),
         batch_no_entered="B-1", expiry_entered=FAR_EXPIRY,
-        unit_label=item.base_unit, factor=1,
+        unit_label=item.base_unit,
     )
     post(grn, owner)
     batch = Batch.objects.get(item=item)
@@ -63,7 +63,7 @@ def scenario(owner):
     )
     DocumentLine.objects.create(
         document=credit, item=item, batch=batch, qty_entered=2,
-        unit_price=D("15.00"), unit_label=item.base_unit, factor=1,
+        unit_price=D("15.00"), unit_label=item.base_unit,
     )
     post(credit, owner)
 
@@ -73,7 +73,7 @@ def scenario(owner):
     )
     DocumentLine.objects.create(
         document=cash_sale, item=item, batch=batch, qty_entered=1,
-        unit_price=D("15.00"), unit_label=item.base_unit, factor=1,
+        unit_price=D("15.00"), unit_label=item.base_unit,
     )
     PaymentLine.objects.create(document=cash_sale, account=cash, amount=D("15.00"))
     post(cash_sale, owner)
@@ -119,7 +119,7 @@ def test_finance_splits_consigned_stock(client, owner, scenario):
     DocumentLine.objects.create(
         document=issue, item=item, batch=Batch.objects.get(item=item),
         qty_entered=3, unit_price=D("15.00"),
-        unit_label=item.base_unit, factor=1,
+        unit_label=item.base_unit,
     )
     post(issue, owner)
     client.force_login(owner)

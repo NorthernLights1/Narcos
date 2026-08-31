@@ -19,7 +19,6 @@ from catalog.forms import (
     ExpenseCategoryForm,
     FixedAssetForm,
     ItemForm,
-    ItemUnitFormSet,
     SupplierForm,
 )
 from catalog.models import (
@@ -94,21 +93,11 @@ def master_form(request, kind, pk=None):
     if cfg.form is ItemForm:
         form_kwargs["is_owner"] = request.user.is_owner
 
-    units_formset = None
     if request.method == "POST":
         form = cfg.form(request.POST, **form_kwargs)
         before = snapshot(instance, cfg.model.AUDITED_FIELDS) if instance else {}
         if form.is_valid():
             saved = form.save()
-            if cfg.model is Item:
-                units_formset = ItemUnitFormSet(request.POST, instance=saved)
-                if not units_formset.is_valid():
-                    return render(request, "catalog/form.html", {
-                        "cfg": cfg, "kind": kind, "form": form,
-                        "units_formset": units_formset, "instance": instance,
-                        "common_units": COMMON_UNITS,
-                    })
-                units_formset.save()
             after = snapshot(saved, cfg.model.AUDITED_FIELDS)
             log_change(
                 actor=request.user,
@@ -122,11 +111,8 @@ def master_form(request, kind, pk=None):
             return redirect("master_list", kind=kind)
     else:
         form = cfg.form(**form_kwargs)
-    if cfg.model is Item and units_formset is None:
-        units_formset = ItemUnitFormSet(instance=instance)
     return render(request, "catalog/form.html", {
-        "cfg": cfg, "kind": kind, "form": form,
-        "units_formset": units_formset, "instance": instance,
+        "cfg": cfg, "kind": kind, "form": form, "instance": instance,
         "common_units": COMMON_UNITS if cfg.model is Item else None,
     })
 

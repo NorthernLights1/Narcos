@@ -49,8 +49,13 @@ Work top to bottom — later sections reuse the data earlier ones create.
       printout, and from posted documents. ← *newly fixed, check it*
 - [ ] **Discounts in use → off:** both the document and line discount boxes
       vanish. Documents posted earlier still show their discounts.
-- [ ] **Pack conversion → off:** the factor box vanishes; lines count in
-      base units. *(This is your live setting.)*
+- [ ] **D122 pre-flight, BEFORE deploying:** run
+      `docker compose exec app python manage.py diagnose_quantities`
+      (service is `app`, not `web`). Start with `NARCOS_AUTO_MIGRATE=0` so the
+      entrypoint does not migrate before you have looked.
+      CHECK 0b must report no draft carrying a pack multiplier — any it
+      finds will be CLEARED and need re-entering — and CHECK 1 no
+      line whose registered quantity differs from the typed one. Photograph it.
 - [ ] **Sale price editable → off:** the price comes from the item and
       cannot be typed; use a discount to charge less.
 - [ ] **Negative balances:** try each of the three positions and confirm the

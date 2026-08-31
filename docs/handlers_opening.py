@@ -61,12 +61,11 @@ class OpeningStockBase(Handler):
                         % {"no": batch.batch_no, "item": line.item.code,
                            "old": batch.expiry_date}
                     )
-            qty = line.qty_entered * line.factor
+            qty = line.qty_entered
             # R76: the cost is typed per entered unit — a carton — while the
             # lot holds base units. Receiving divides what was paid by every
             # base unit it brought in (D21); opening stock has to land on the
             # same number, or a carton price is stored as a tablet price and
-            # the whole opening inventory is overvalued by the factor.
             amount = round2(Decimal(line.qty_entered) * line.unit_cost_entered)
             unit_cost = round2(amount / qty) if qty else Decimal("0.00")
             if amount and not unit_cost:

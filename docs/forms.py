@@ -85,8 +85,6 @@ def fields_hidden_by_settings() -> set[str]:
         hidden.update({"fiscal_receipt_no", "machine_total"})
     if not settings.discounts_enabled:
         hidden.update({"doc_discount", "line_discount"})
-    if not settings.unit_conversion_enabled:
-        hidden.add("factor")
     return hidden
 
 
@@ -98,7 +96,7 @@ DOC_CONFIG = {
         # D84: free_qty stays in the model/engine (D21) but off the form —
         # this business never receives bonus goods and the box confused staff.
         "lines": [
-            "item", "batch_no_entered", "expiry_entered", "unit_label", "factor",
+            "item", "batch_no_entered", "expiry_entered", "unit_label",
             "qty_entered", "unit_cost_entered",
         ],
         "payments": True,
@@ -112,7 +110,7 @@ DOC_CONFIG = {
             "customer", "sale_kind", "due_date", "doc_discount",
             "customer_will_withhold", "fiscal_receipt_no", "machine_total", "notes",
         ],
-        "lines": ["item", "batch", "unit_label", "factor", "qty_entered",
+        "lines": ["item", "batch", "unit_label", "qty_entered",
                   "unit_price", "line_discount"],
         "charges": True,
         "payments": True,
@@ -121,7 +119,7 @@ DOC_CONFIG = {
     DocType.PROFORMA: {
         "title": _("Proforma"),
         "fields": ["customer", "doc_discount", "notes"],
-        "lines": ["item", "batch", "unit_label", "factor", "qty_entered",
+        "lines": ["item", "batch", "unit_label", "qty_entered",
                   "unit_price", "line_discount"],
         "charges": True,
         "master_priced": True,  # D80
@@ -132,7 +130,7 @@ DOC_CONFIG = {
         # it depends on who the buyer is (PLC), known when goods go out.
         "fields": ["customer", "due_date", "doc_discount",
                    "customer_will_withhold", "notes"],
-        "lines": ["item", "batch", "unit_label", "factor", "qty_entered",
+        "lines": ["item", "batch", "unit_label", "qty_entered",
                   "unit_price", "line_discount"],
         "master_priced": True,  # D80 — the CN-000002 lesson
     },
@@ -143,7 +141,7 @@ DOC_CONFIG = {
             "customer", "related_document", "sale_kind", "due_date", "doc_discount",
             "fiscal_receipt_no", "machine_total", "notes",
         ],
-        # No unit/factor/price: settlement quantities are base units and the
+        # No unit/price: settlement quantities are base units and the
         # money comes from the issue's own prices (§7.5).
         "lines": [
             "item", "batch", "qty_entered",
@@ -158,7 +156,7 @@ DOC_CONFIG = {
             "fiscal_receipt_no", "machine_total", "notes",
         ],
         "lines": [
-            "item", "batch", "unit_label", "factor", "qty_entered", "unit_price",
+            "item", "batch", "unit_label", "qty_entered", "unit_price",
             "unit_cost_entered", "line_discount", "target_zone",
         ],
         "payments": True,
@@ -166,7 +164,7 @@ DOC_CONFIG = {
     DocType.SUPPLIER_RETURN: {
         "title": _("Supplier return"),
         "fields": ["supplier", "notes"],
-        "lines": ["item", "lot", "unit_label", "factor", "qty_entered"],
+        "lines": ["item", "lot", "unit_label", "qty_entered"],
         "payments": True,
     },
     DocType.CUSTOMER_PAYMENT: {
@@ -199,7 +197,7 @@ DOC_CONFIG = {
         "title": _("Zone move"),
         "fields": ["notes"],
         "lines": ["item", "lot", "source_zone", "target_zone",
-                  "unit_label", "factor", "qty_entered"],
+                  "unit_label", "qty_entered"],
     },
     DocType.ADJUSTMENT: {
         "title": _("Adjustment"),
@@ -215,7 +213,7 @@ DOC_CONFIG = {
         "title": _("Opening stock"),
         "fields": ["document_date", "notes"],
         "lines": [
-            "item", "batch_no_entered", "expiry_entered", "unit_label", "factor",
+            "item", "batch_no_entered", "expiry_entered", "unit_label",
             "qty_entered", "unit_cost_entered",
         ],
     },
@@ -223,7 +221,7 @@ DOC_CONFIG = {
         "title": _("Opening expired/unfit"),
         "fields": ["document_date", "notes"],
         "lines": [
-            "item", "batch_no_entered", "expiry_entered", "unit_label", "factor",
+            "item", "batch_no_entered", "expiry_entered", "unit_label",
             "qty_entered", "unit_cost_entered", "target_zone",
         ],
     },
@@ -231,7 +229,7 @@ DOC_CONFIG = {
         "title": _("Opening consignment"),
         "fields": ["customer", "document_date", "due_date", "notes"],
         "lines": [
-            "item", "batch_no_entered", "expiry_entered", "unit_label", "factor",
+            "item", "batch_no_entered", "expiry_entered", "unit_label",
             "qty_entered", "unit_cost_entered", "unit_price",
         ],
     },
@@ -338,7 +336,7 @@ class DocumentLineForm(forms.ModelForm):
         model = DocumentLine
         fields = [
             "item", "batch", "batch_no_entered", "expiry_entered", "lot",
-            "unit_label", "factor", "qty_entered", "qty_base", "unit_price",
+            "unit_label", "qty_entered", "qty_base", "unit_price",
             "unit_cost_entered", "free_qty", "line_discount", "qty_sold",
             "qty_returned", "qty_expired_unfit", "qty_delta", "source_zone",
             "target_zone",

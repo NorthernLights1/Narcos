@@ -6,6 +6,29 @@ to do and **what you must see** — if you see something else, that's a bug.
 
 Written for a dev machine (Linux, `.venv`, PostgreSQL on localhost).
 
+> **2026-08-31 unit conversion removed (D122):** the **units per pack**
+> box is gone from every document line, and so is the **Pack conversion**
+> switch in Settings and the **Alternate units** table on the item form.
+> Quantity is now a single scale: what you type is what moves. The unit
+> beside it is a **label only** — it prints, it never multiplies. To verify:
+> receive 10 of something and confirm inventory shows exactly 10; open an
+> item and confirm there is no alternate-units table; open Settings and
+> confirm there is no pack-conversion switch.
+>
+> **Before deploying this to a client**, run the pre-flight — it is in the
+> release checklist and it is not optional:
+> `docker compose exec app python manage.py diagnose_quantities`
+> (start the container with `NARCOS_AUTO_MIGRATE=0` so it does not migrate
+> first). **CHECK 0b must find no draft carrying a pack multiplier.** Any it
+> finds will have its quantities **cleared to zero** by the migration and
+> must be re-typed — that is deliberate, so such a draft cannot post the
+> wrong number, but it does mean losing what was typed.
+>
+> Documents posted *before* this change keep their original quantities;
+> history is not rewritten. Trying to **correct** one of those, or convert
+> such a proforma to a sale, is refused with a message naming the item —
+> void it and enter a new one instead.
+
 > **2026-08-05 editing in place (D114):** the **Reference fields** button is
 > gone. A posted document now has a **"Still editable"** card: fiscal
 > receipt no, machine total, withholding certificate no, payment due date

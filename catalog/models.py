@@ -114,25 +114,6 @@ class Item(AutoCodeModel):
         return ", ".join(part for part in parts if part)
 
 
-class ItemUnit(models.Model):
-    """D62: alternate unit with a fixed whole-number factor to the base unit."""
-
-    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name="units")
-    unit_label = models.CharField(_("Unit label"), max_length=50)
-    factor_to_base = models.PositiveIntegerField(_("Units of base per 1"))
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(fields=["item", "unit_label"], name="uniq_item_unit_label"),
-            models.CheckConstraint(
-                condition=models.Q(factor_to_base__gt=1), name="unit_factor_gt_1"
-            ),
-        ]
-
-    def __str__(self) -> str:
-        return f"{self.unit_label} ×{self.factor_to_base}"
-
-
 class Customer(AutoCodeModel):
     class CreditAction(models.TextChoices):  # D25; null on customer = company default
         WARN = "WARN", _("Warn and allow")

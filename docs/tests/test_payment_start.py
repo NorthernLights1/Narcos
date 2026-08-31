@@ -44,7 +44,7 @@ def receive(actor, supplier, item, qty=100, cost="10.00"):
                                   supplier=supplier)
     DocumentLine.objects.create(document=doc, item=item, qty_entered=qty,
                                 unit_cost_entered=D(cost), batch_no_entered="B-1",
-                                expiry_entered=FAR_EXPIRY, unit_label="kit", factor=1)
+                                expiry_entered=FAR_EXPIRY, unit_label="kit")
     return post(doc, actor)
 
 
@@ -55,7 +55,7 @@ def credit_sale(actor, customer, item, qty=100, price="15.00", withhold=False):
                                   customer_will_withhold=withhold)
     DocumentLine.objects.create(document=doc, item=item, batch=Batch.objects.get(),
                                 qty_entered=qty, unit_price=D(price),
-                                unit_label="kit", factor=1)
+                                unit_label="kit")
     return post(doc, actor)
 
 

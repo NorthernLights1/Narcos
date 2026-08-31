@@ -24,7 +24,7 @@ def move_doc(actor, item, lot, source, target, qty):
     doc = Document.objects.create(doc_type=DocType.ZONE_MOVE, created_by=actor)
     DocumentLine.objects.create(
         document=doc, item=item, lot=lot, source_zone=source, target_zone=target,
-        unit_label=item.base_unit, factor=1, qty_entered=qty,
+        unit_label=item.base_unit, qty_entered=qty,
     )
     return doc
 
@@ -63,7 +63,7 @@ def test_owner_adjustment_adds_and_consumes_stock(owner):
     add = Document.objects.create(doc_type=DocType.ADJUSTMENT, created_by=owner,
                                   notes="opening correction")
     DocumentLine.objects.create(document=add, item=item, source_zone=Zone.WAREHOUSE,
-                                unit_label=item.base_unit, factor=1,
+                                unit_label=item.base_unit,
                                 qty_entered=1, qty_delta=5,
                                 unit_cost_entered=D("9.00"))
     post(add, owner)
@@ -74,7 +74,7 @@ def test_owner_adjustment_adds_and_consumes_stock(owner):
     sub = Document.objects.create(doc_type=DocType.ADJUSTMENT, created_by=owner,
                                   notes="count correction")
     DocumentLine.objects.create(document=sub, item=item, source_zone=Zone.WAREHOUSE,
-                                unit_label=item.base_unit, factor=1,
+                                unit_label=item.base_unit,
                                 qty_entered=1, qty_delta=-3)
     post(sub, owner)
     assert sum(StockBalance.objects.filter(item=item).values_list("qty", flat=True)) == 2
@@ -85,7 +85,7 @@ def test_adjustment_requires_owner(employee):
     doc = Document.objects.create(doc_type=DocType.ADJUSTMENT, created_by=employee,
                                   notes="not allowed")
     DocumentLine.objects.create(document=doc, item=item, source_zone=Zone.WAREHOUSE,
-                                unit_label=item.base_unit, factor=1,
+                                unit_label=item.base_unit,
                                 qty_entered=1, qty_delta=-1)
     with pytest.raises(PostingError):
         post(doc, employee)
@@ -95,8 +95,7 @@ def test_i16_stock_count_uses_frozen_snapshot(owner):
     item, lot, _balance = make_stocked_item(qty=10, cost="4.00")
     count = Document.objects.create(doc_type=DocType.STOCK_COUNT, created_by=owner)
     DocumentLine.objects.create(document=count, item=item, lot=lot,
-                                source_zone=Zone.WAREHOUSE, unit_label=item.base_unit,
-                                factor=1, qty_base=10, qty_entered=7)
+                                source_zone=Zone.WAREHOUSE, unit_label=item.base_unit, qty_base=10, qty_entered=7)
 
     count = post(count, owner)
 
@@ -119,8 +118,7 @@ def test_a_count_is_refused_when_stock_moved_after_the_snapshot(owner):
     item, lot, _balance = make_stocked_item(qty=10, cost="4.00")
     count = Document.objects.create(doc_type=DocType.STOCK_COUNT, created_by=owner)
     DocumentLine.objects.create(document=count, item=item, lot=lot,
-                                source_zone=Zone.WAREHOUSE, unit_label=item.base_unit,
-                                factor=1, qty_base=10, qty_entered=7)
+                                source_zone=Zone.WAREHOUSE, unit_label=item.base_unit, qty_base=10, qty_entered=7)
 
     post(move_doc(owner, item, lot, Zone.WAREHOUSE, Zone.EXPIRED, 2), owner)
     assert zone_qty(lot, Zone.WAREHOUSE) == 8

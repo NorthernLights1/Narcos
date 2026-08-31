@@ -18,9 +18,9 @@ def as_file(text: str) -> io.BytesIO:
 
 
 ITEMS_CSV = (
-    "code,name,category,base_unit,vat_exempt,maintained_price,alt_units\n"
-    "AMOX-500,Amoxicillin 500mg,DRUG,pack of 10,1,150.00,carton:12\n"
-    "STETH-01,Stethoscope,EQUIPMENT,unit,0,900.00,\n"
+    "code,name,category,base_unit,vat_exempt,maintained_price\n"
+    "AMOX-500,Amoxicillin 500mg,DRUG,pack of 10,1,150.00\n"
+    "STETH-01,Stethoscope,EQUIPMENT,unit,0,900.00\n"
 )
 
 
@@ -30,7 +30,6 @@ def test_clean_items_file_imports_all():
     assert result.created == 2
     amox = Item.objects.get(code="AMOX-500")
     assert amox.vat_exempt is True
-    assert amox.units.get().factor_to_base == 12
     steth = Item.objects.get(code="STETH-01")
     assert steth.is_batch_tracked is False  # equipment defaults off (D29)
 
@@ -63,16 +62,6 @@ def test_duplicate_code_within_file_rejected():
     result = import_items(as_file(dupes))
     assert not result.is_clean
     assert Item.objects.count() == 0
-
-
-def test_bad_alt_units_reported_with_row():
-    bad = (
-        "code,name,category,base_unit,alt_units\n"
-        "X-1,Item,DRUG,pack,carton:one\n"
-    )
-    result = import_items(as_file(bad))
-    assert not result.is_clean
-    assert "row 2" in result.errors[0]
 
 
 def test_customers_import_with_withholding_flag():

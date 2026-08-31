@@ -41,14 +41,14 @@ def sold_sale(owner, customer, supplier, drug, cash):
                                   supplier=supplier)
     DocumentLine.objects.create(document=grn, item=drug, qty_entered=100,
                                 unit_cost_entered=D("10.00"), batch_no_entered="B-1",
-                                expiry_entered=FAR_EXPIRY, unit_label="pack", factor=1)
+                                expiry_entered=FAR_EXPIRY, unit_label="pack")
     post(grn, owner)
     batch = Batch.objects.get()
     sale = Document.objects.create(doc_type=DocType.SALE, created_by=owner,
                                    customer=customer, sale_kind="CASH")
     DocumentLine.objects.create(document=sale, item=drug, batch=batch,
                                 qty_entered=20, unit_price=D("15.00"),
-                                unit_label="pack", factor=1)
+                                unit_label="pack")
     PaymentLine.objects.create(document=sale, account=cash, amount=D("300.00"))
     return post(sale, owner)
 
@@ -59,7 +59,7 @@ def return_draft(actor, sale, drug, qty, zone=Zone.WAREHOUSE, price=None) -> Doc
     DocumentLine.objects.create(
         document=doc, item=drug, batch=sale.lines.get().batch, qty_entered=qty,
         unit_price=price if price is not None else D("0.00"),
-        target_zone=zone, unit_label="pack", factor=1,
+        target_zone=zone, unit_label="pack",
     )
     return doc
 
@@ -114,7 +114,7 @@ def test_unreferenced_return_is_owner_only(owner, employee, sold_sale, drug):
                                  created_by=employee, customer=sold_sale.customer)
     DocumentLine.objects.create(document=cr, item=drug, batch=batch, qty_entered=1,
                                 unit_price=D("15.00"), unit_cost_entered=D("10.00"),
-                                target_zone=Zone.WAREHOUSE, unit_label="pack", factor=1)
+                                target_zone=Zone.WAREHOUSE, unit_label="pack")
     with pytest.raises(PostingError):
         post(cr, employee)
 
@@ -125,7 +125,7 @@ def test_unreferenced_return_needs_entered_cost(owner, sold_sale, drug):
                                  created_by=owner, customer=sold_sale.customer)
     DocumentLine.objects.create(document=cr, item=drug, batch=batch, qty_entered=1,
                                 unit_price=D("15.00"),
-                                target_zone=Zone.WAREHOUSE, unit_label="pack", factor=1)
+                                target_zone=Zone.WAREHOUSE, unit_label="pack")
     with pytest.raises(PostingError):
         post(cr, owner)
 
@@ -146,7 +146,7 @@ def test_two_lines_same_item_capped_together(owner, sold_sale, drug):
     cr = return_draft(owner, sold_sale, drug, 15)
     DocumentLine.objects.create(
         document=cr, item=drug, batch=sold_sale.lines.get().batch, qty_entered=15,
-        unit_price=D("15.00"), target_zone=Zone.WAREHOUSE, unit_label="pack", factor=1,
+        unit_price=D("15.00"), target_zone=Zone.WAREHOUSE, unit_label="pack",
     )
     with pytest.raises(PostingError):
         post(cr, owner)
@@ -159,7 +159,7 @@ def test_return_of_item_not_on_sale_rejected(owner, sold_sale, customer):
                                  customer=customer, related_document=sold_sale)
     DocumentLine.objects.create(document=cr, item=other, qty_entered=1,
                                 unit_price=D("5.00"), target_zone=Zone.WAREHOUSE,
-                                unit_label="pack", factor=1)
+                                unit_label="pack")
     with pytest.raises(PostingError):
         post(cr, owner)
 
@@ -172,7 +172,7 @@ def test_returned_goods_resellable_from_new_lot(owner, sold_sale, drug, customer
                                     customer=customer, sale_kind="CASH")
     DocumentLine.objects.create(document=sale2, item=drug, batch=batch,
                                 qty_entered=85, unit_price=D("15.00"),
-                                unit_label="pack", factor=1)
+                                unit_label="pack")
     PaymentLine.objects.create(document=sale2, account=cash, amount=D("1275.00"))
     sale2 = post(sale2, owner)  # 80 left in lot1 + 5 in the return lot
     assert sale2.lines.get().cogs_total == D("850.00")  # all at 10.00
@@ -210,13 +210,12 @@ def test_a_return_uses_the_sales_frozen_tax_rate(owner, customer, supplier, cash
     grn = Document.objects.create(doc_type=DocType.RECEIVING, created_by=owner,
                                   supplier=supplier)
     DocumentLine.objects.create(document=grn, item=item, qty_entered=10,
-                                unit_cost_entered=D("50.00"), unit_label="unit",
-                                factor=1)
+                                unit_cost_entered=D("50.00"), unit_label="unit")
     post(grn, owner)
     sale = Document.objects.create(doc_type=DocType.SALE, created_by=owner,
                                    customer=customer, sale_kind="CASH")
     DocumentLine.objects.create(document=sale, item=item, qty_entered=2,
-                                unit_price=D("100.00"), unit_label="unit", factor=1)
+                                unit_price=D("100.00"), unit_label="unit")
     PaymentLine.objects.create(document=sale, account=cash, amount=D("230.00"))
     sale = post(sale, owner)
     assert sale.tax_rate_snapshot == D("15.00")
@@ -229,7 +228,7 @@ def test_a_return_uses_the_sales_frozen_tax_rate(owner, customer, supplier, cash
                                  customer=customer, related_document=sale)
     DocumentLine.objects.create(document=cr, item=item, qty_entered=2,
                                 unit_price=D("100.00"), target_zone=Zone.WAREHOUSE,
-                                unit_label="unit", factor=1)
+                                unit_label="unit")
     cr = post(cr, owner)
 
     assert cr.tax_rate_snapshot == D("15.00")
@@ -255,14 +254,14 @@ def credit_sale(owner, customer, supplier, drug):
                                   supplier=supplier)
     DocumentLine.objects.create(document=grn, item=drug, qty_entered=100,
                                 unit_cost_entered=D("10.00"), batch_no_entered="B-1",
-                                expiry_entered=FAR_EXPIRY, unit_label="pack", factor=1)
+                                expiry_entered=FAR_EXPIRY, unit_label="pack")
     post(grn, owner)
     sale = Document.objects.create(doc_type=DocType.SALE, created_by=owner,
                                    customer=customer, sale_kind="CREDIT",
                                    due_date=datetime.date(2026, 12, 31))
     DocumentLine.objects.create(document=sale, item=drug, batch=Batch.objects.get(),
                                 qty_entered=20, unit_price=D("15.00"),
-                                unit_label="pack", factor=1)
+                                unit_label="pack")
     return post(sale, owner)
 
 

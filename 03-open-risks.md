@@ -745,3 +745,45 @@ document fails silently in the browser today. In `v1.1.0`. Found by Codex
 while reviewing D121; left unfixed only because it is outside that feature and
 this round was scoped to it. One line each way: return 200, or configure
 `htmx.config.responseHandling`.
+
+### R93 — R73 was closed with half of it unfixed; D80 makes the other half un-workaroundable — `OPEN` (critical, latent)
+**Correction to the register, not a new discovery.** R73 above is marked
+`RESOLVED (→ D120)`, but D120 only added the `factor >= 1` guard
+([posting.py:293](docs/posting.py#L293)). R73's *second* sentence — "sale/return
+revenue uses `qty_entered` while stock and COGS use `qty_entered × factor`" —
+describes a separate defect that was never addressed and is still live. R93
+records what D80 adds to it.
+
+**A money bug, not a quantity bug.** D80 forces every sale line's price from the
+item's `maintained_price`, which is denominated in the **base unit**. `factor`
+lets `qty_entered` be denominated in a **pack**. Revenue is
+`qty_entered × unit_price` ([handlers_sales.py:26](docs/handlers_sales.py#L26))
+while COGS and stock are `qty_entered × factor`
+([handlers_sales.py:24](docs/handlers_sales.py#L24)). The two disagree by
+exactly `factor`.
+
+Verified by running the code, not by reading it. Receive 10 cartons × 12 at
+120.00/carton (lot cost 10.00/pack); sell 5 cartons with `maintained_price`
+15.00/pack:
+
+| | value |
+|---|---|
+| stock leaving the warehouse | **60 packs** |
+| `cogs_total` | **600.00** |
+| `line_net` (invoiced) | **75.00** |
+| net result | **525.00 loss, silently, per line** |
+
+Staff cannot work around it **under the default settings**: typing the carton
+price is overwritten by D80 in [`DocumentLineForm.clean`](docs/forms.py#L432) —
+a typed 180.00 comes back as 15.00. The lockdown is conditional —
+`master_priced = config["master_priced"] and not settings.sale_price_editable`
+([forms.py:574](docs/forms.py#L574)) — so switching `sale_price_editable` on
+restores the typed price and makes the loss avoidable. Both switches are off by
+default, which is the dangerous combination.
+
+Latent today only because R65's condition still holds (`unit_conversion_enabled`
+off, every live line at `factor = 1`). It arms the moment anyone turns the
+switch on and types a factor — which the UI invites, since the box is shown by
+default on a fresh install.
+
+*This is the finding that decides D62. See 05-status.md.*

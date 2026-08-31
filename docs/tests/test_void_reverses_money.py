@@ -56,7 +56,7 @@ def stocked_item(owner):
                                   created_by=owner, supplier=supplier)
     DocumentLine.objects.create(
         document=grn, item=item, qty_entered=20, unit_cost_entered=D("50.00"),
-        batch_no_entered="B-1", expiry_entered=FAR, unit_label="pack", factor=1,
+        batch_no_entered="B-1", expiry_entered=FAR, unit_label="pack",
     )
     post(grn, owner)
     return item
@@ -68,7 +68,7 @@ def _credit_sale(owner, customer, item, qty=2):
                                    sale_kind=Document.SaleKind.CREDIT)
     DocumentLine.objects.create(
         document=sale, item=item, batch=Batch.objects.get(item=item),
-        qty_entered=qty, unit_price=D("100.00"), unit_label="pack", factor=1,
+        qty_entered=qty, unit_price=D("100.00"), unit_label="pack",
     )
     return post(sale, owner)
 
@@ -186,7 +186,7 @@ def _return_against(owner, sale, item, qty=2):
     DocumentLine.objects.create(
         document=cr, item=item, batch=Batch.objects.get(item=item),
         qty_entered=qty, unit_price=D("100.00"), target_zone=Zone.WAREHOUSE,
-        unit_label="pack", factor=1,
+        unit_label="pack",
     )
     return post(cr, owner)
 
@@ -240,7 +240,7 @@ def test_voiding_a_settled_issue_explains_itself(owner, customer,
                                     due_date=DUE)
     DocumentLine.objects.create(
         document=issue, item=stocked_item, batch=Batch.objects.get(item=stocked_item),
-        qty_entered=10, unit_price=D("100.00"), unit_label="pack", factor=1,
+        qty_entered=10, unit_price=D("100.00"), unit_label="pack",
     )
     post(issue, owner)
     settlement = Document.objects.create(
@@ -251,7 +251,7 @@ def test_voiding_a_settled_issue_explains_itself(owner, customer,
     DocumentLine.objects.create(
         document=settlement, item=stocked_item,
         batch=Batch.objects.get(item=stocked_item),
-        qty_entered=10, qty_sold=6, qty_returned=4, unit_label="pack", factor=1,
+        qty_entered=10, qty_sold=6, qty_returned=4, unit_label="pack",
     )
     post(settlement, owner)
 
@@ -374,7 +374,7 @@ def test_a_stock_shortfall_names_the_medicine(owner, customer):
     DocumentLine.objects.create(document=opening, item=item, qty_entered=20,
                                 unit_cost_entered=D("50.00"),
                                 batch_no_entered="B-1", expiry_entered=FAR,
-                                unit_label="pack", factor=1)
+                                unit_label="pack")
     post(opening, owner)
     _credit_sale(owner, customer, item, qty=5)
 
@@ -453,7 +453,7 @@ def test_posting_a_crafted_correction_draft_is_refused(owner, customer, cash,
     )
     DocumentLine.objects.create(
         document=draft, item=stocked_item, batch=Batch.objects.get(item=stocked_item),
-        qty_entered=3, unit_price=D("100.00"), unit_label="pack", factor=1,
+        qty_entered=3, unit_price=D("100.00"), unit_label="pack",
     )
     # Only now does the receipt arrive — the draft was opened before it.
     receipt = post(_receipt(owner, customer, cash, {sale: D("200.00")}), owner)
@@ -484,7 +484,7 @@ def test_an_ordinary_cash_sale_still_corrects(client, owner, customer, cash,
                                    sale_kind=Document.SaleKind.CASH)
     DocumentLine.objects.create(
         document=sale, item=stocked_item, batch=Batch.objects.get(item=stocked_item),
-        qty_entered=2, unit_price=D("100.00"), unit_label="pack", factor=1,
+        qty_entered=2, unit_price=D("100.00"), unit_label="pack",
     )
     PaymentLine.objects.create(document=sale, account=cash, amount=D("200.00"))
     sale = post(sale, owner)

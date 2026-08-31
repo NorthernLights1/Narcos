@@ -257,6 +257,55 @@ def dependents_a_correction_cannot_restore(doc: Document) -> list:
     return [found[pk] for pk in sorted(found)]
 
 
+# Doc types whose lines are copied into a fresh draft AND whose `qty_base`
+# means "qty_entered (+ free_qty) in base units". Everything else writes
+# qty_base from something else entirely — a stock count freezes the pre-count
+# snapshot, a settlement stores sold+returned+expired, an adjustment stores
+# |qty_delta| — so the pack-scale marker is meaningless for them and would
+# refuse perfectly good corrections.
+PACK_SCALE_CHECKED_TYPES = (
+    DocType.RECEIVING, DocType.SALE, DocType.PROFORMA,
+    DocType.CONSIGNMENT_ISSUE, DocType.CUSTOMER_RETURN, DocType.SUPPLIER_RETURN,
+    DocType.ZONE_MOVE, DocType.OPENING_STOCK, DocType.OPENING_CONSIGNMENT,
+    DocType.OPENING_EXPIRED,
+)
+
+
+def lines_posted_on_a_pack_scale(doc: Document) -> list:
+    """D122: lines posted before unit conversion was removed.
+
+    Until D122 a line could be typed in packs and stored in base units as
+    `qty_entered x factor`. The multiplier is gone, so copying such a line into
+    a fresh draft would re-post `qty_entered` alone and register a different
+    quantity than the original moved. `qty_base != qty_entered + free_qty`
+    identifies those rows without needing the dropped column.
+
+    Deliberately NOT gated on `qty_base` being non-zero: a historical
+    `factor = 0` row (reachable by a crafted POST before D120 closed it) stored
+    qty_base 0 against a positive qty_entered, and re-posting it would register
+    stock the original never moved. That is exactly a row we must refuse.
+    """
+    if doc.doc_type not in PACK_SCALE_CHECKED_TYPES:
+        return []
+    return [
+        line for line in doc.lines.select_related("item")
+        if line.qty_base != line.qty_entered + line.free_qty
+    ]
+
+
+def _refuse_a_pack_scaled_copy(doc: Document, what: str) -> None:
+    legacy = lines_posted_on_a_pack_scale(doc)
+    if not legacy:
+        return
+    raise PostingError(_(
+        "%(no)s was entered on a pack scale, before unit conversion was "
+        "removed (%(items)s). %(what)s would re-post it in base units and "
+        "register a different quantity than the original moved. Void %(no)s "
+        "and enter a new document instead."
+    ) % {"no": doc.doc_no, "what": what,
+         "items": ", ".join(sorted({ln.item.code for ln in legacy}))})
+
+
 def check_correctable(doc: Document) -> None:
     """R70: refuse a correction that would silently delete linked documents."""
     blockers = dependents_a_correction_cannot_restore(doc)
@@ -265,6 +314,7 @@ def check_correctable(doc: Document) -> None:
             "%(no)s cannot be corrected: %(list)s would be reversed with it and "
             "nothing brings them back. Void those first, then correct %(no)s."
         ) % {"no": doc.doc_no, "list": ", ".join(d.doc_no for d in blockers)})
+    _refuse_a_pack_scaled_copy(doc, _("Correcting it"))
 
 
 def _void_the_document_being_corrected(draft: Document, actor) -> None:
@@ -290,23 +340,6 @@ def _void_the_document_being_corrected(draft: Document, actor) -> None:
     void(original, actor, draft.correction_reason)
 
 
-def _check_conversion_factors(doc: Document) -> None:
-    """R73: a pack factor below 1 charges money and moves no goods.
-
-    Quantities are typed in packs and stored in base units as
-    `qty_entered × factor`, while revenue uses `qty_entered` alone — so a
-    factor of 0 invoices the customer for stock that never leaves. Only
-    receiving checked it. The box is hidden while unit conversion is off
-    (D89), but hidden is not absent: the field still posts, and a fresh
-    install has conversion on. Checked here so every document type is
-    covered, whichever route the draft arrived by.
-    """
-    bad = doc.lines.filter(factor__lt=1).select_related("item").first()
-    if bad is not None:
-        raise PostingError(_("Line %(item)s: units per pack must be at least 1.")
-                           % {"item": bad.item.code})
-
-
 def post(document: Document, actor, override_reason: str = "") -> Document:
     """§4 Post(): single transaction, serialized by row locks (D14).
     override_reason: owner-only escape for credit BLOCK (D25) — never for
@@ -330,7 +363,6 @@ def post(document: Document, actor, override_reason: str = "") -> Document:
         doc._override_reason = override_reason  # read by handlers (credit check)
         doc._posting_actor = actor  # read by owner-only handlers
         handler = get_handler(doc.doc_type)
-        _check_conversion_factors(doc)
         handler.validate(doc)
 
         number = NumberSequence.take(doc.doc_type)  # locks the sequence row (D8/D14)
