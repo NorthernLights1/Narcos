@@ -26,7 +26,8 @@ def draft_sale(owner):
     doc = Document.objects.create(doc_type=DocType.SALE, created_by=owner,
                                   customer=customer)
     DocumentLine.objects.create(document=doc, item=item, qty_entered=4,
-                                unit_price=D("15.00"), unit_label="pack")
+                                unit_price=D("15.00"), unit_label="pack",
+                                factor=1)
     return doc
 
 

@@ -73,6 +73,8 @@ class ReceivingHandler(Handler):
             if line.qty_entered + line.free_qty <= 0:
                 raise PostingError(_("Line %(item)s: quantity must be positive.")
                                    % {"item": item.code})
+            if line.factor < 1:
+                raise PostingError(_("Line %(item)s: bad unit factor.") % {"item": item.code})
             if line.unit_cost_entered is None or line.unit_cost_entered < 0:
                 raise PostingError(_("Line %(item)s: unit cost is required (D42).")
                                    % {"item": item.code})
@@ -114,7 +116,9 @@ class ReceivingHandler(Handler):
                         % {"no": batch.batch_no, "item": item.code,
                            "old": batch.expiry_date, "new": line.expiry_entered}
                     )
-            total_base = line.qty_entered + line.free_qty
+            paid_base = line.qty_entered * line.factor
+            free_base = line.free_qty * line.factor
+            total_base = paid_base + free_base
             amount_paid = round2(Decimal(line.qty_entered) * line.unit_cost_entered)
             # D21: actual unit cost = amount paid ÷ ALL units received (paid + free)
             lot_cost = round2(amount_paid / total_base) if total_base else Decimal("0.00")
@@ -259,7 +263,7 @@ class SupplierReturnHandler(Handler):
         total = Decimal("0.00")
         for line in doc.lines.select_related("item", "lot"):
             lot = line.lot
-            qty_base = line.qty_entered
+            qty_base = line.qty_entered * line.factor
             value = round2(Decimal(qty_base) * lot.unit_cost)
             line.qty_base = qty_base
             line.line_net = value
@@ -323,7 +327,7 @@ class ZoneMoveHandler(Handler):
         effects = Effects()
         total = Decimal("0.00")
         for line in doc.lines.select_related("item", "lot"):
-            qty_base = line.qty_entered
+            qty_base = line.qty_entered * line.factor
             line.batch = line.lot.batch
             line.qty_base = qty_base
             line.cogs_total = round2(Decimal(qty_base) * line.lot.unit_cost)
@@ -460,7 +464,7 @@ class StockCountHandler(Handler):
             if line.lot_id is None:
                 raise PostingError(_("Line %(item)s: snapshot line has no lot.")
                                    % {"item": line.item.code})
-            counted = line.qty_entered
+            counted = line.qty_entered * line.factor
             diff = counted - line.qty_base
             line.qty_delta = diff
             line.cogs_total = round2(Decimal(abs(diff)) * line.lot.unit_cost)
@@ -491,6 +495,7 @@ class StockCountHandler(Handler):
                 lot=line.lot if line.qty_delta < 0 else None,
                 source_zone=Zone.WAREHOUSE,
                 unit_label=line.unit_label,
+                factor=1,
                 qty_entered=abs(line.qty_delta),
                 qty_delta=line.qty_delta,
                 unit_cost_entered=line.lot.unit_cost,

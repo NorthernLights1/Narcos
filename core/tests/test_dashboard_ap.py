@@ -38,7 +38,7 @@ def test_dashboard_lists_overdue_payables(client, owner):
     )
     DocumentLine.objects.create(
         document=grn, item=item, qty_entered=10, unit_cost_entered=D("5.00"),
-        unit_label=item.base_unit,
+        unit_label=item.base_unit, factor=1,
     )
     grn = post(grn, owner)
     client.force_login(owner)

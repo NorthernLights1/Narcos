@@ -44,7 +44,7 @@ def receive(actor, supplier, item, qty=100, cost="10.00"):
                                   supplier=supplier)
     DocumentLine.objects.create(document=doc, item=item, qty_entered=qty,
                                 unit_cost_entered=D(cost), batch_no_entered="B-1",
-                                expiry_entered=FAR_EXPIRY, unit_label="kit")
+                                expiry_entered=FAR_EXPIRY, unit_label="kit", factor=1)
     return post(doc, actor)
 
 
@@ -54,7 +54,7 @@ def credit_sale(actor, customer, item, qty=100, price="15.00"):
                                   due_date=datetime.date(2026, 8, 1))
     DocumentLine.objects.create(document=doc, item=item, batch=Batch.objects.get(),
                                 qty_entered=qty, unit_price=D(price),
-                                unit_label="kit")
+                                unit_label="kit", factor=1)
     return post(doc, actor)
 
 
@@ -71,7 +71,7 @@ def consignment_issue(actor, customer, item, qty=5, price="100.00"):
                                   created_by=actor, customer=customer)
     DocumentLine.objects.create(document=doc, item=item, batch=Batch.objects.get(),
                                 qty_entered=qty, unit_price=D(price),
-                                unit_label="kit")
+                                unit_label="kit", factor=1)
     return post(doc, actor)
 
 
@@ -82,7 +82,7 @@ def settle(actor, customer, issue, sold=0, returned=0):
     DocumentLine.objects.create(document=doc, item=issue.lines.get().item,
                                 batch=Batch.objects.get(),
                                 qty_entered=sold + returned, qty_sold=sold,
-                                qty_returned=returned, unit_label="kit")
+                                qty_returned=returned, unit_label="kit", factor=1)
     return post(doc, actor)
 
 
@@ -127,7 +127,7 @@ def test_cash_sale_and_drafts_have_no_settlement_state(owner, customer,
                                   customer=customer, sale_kind="CASH")
     DocumentLine.objects.create(document=doc, item=item, batch=Batch.objects.get(),
                                 qty_entered=1, unit_price=D("15.00"),
-                                unit_label="kit")
+                                unit_label="kit", factor=1)
     assert settlement_state(doc) is None  # draft
     PaymentLine.objects.create(document=doc, account=cash, amount=D("15.00"))
     doc = post(doc, owner)

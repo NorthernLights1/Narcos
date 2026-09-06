@@ -58,7 +58,7 @@ def receive(actor, supplier, item, qty=10, cost="10.00"):
     DocumentLine.objects.create(
         document=doc, item=item, qty_entered=qty, unit_cost_entered=D(cost),
         batch_no_entered="B-1", expiry_entered=FAR_EXPIRY,
-        unit_label=item.base_unit,
+        unit_label=item.base_unit, factor=1,
     )
     return post(doc, actor)
 
@@ -71,7 +71,7 @@ def credit_sale(actor, customer, item, qty=2, price="15.00"):
                                   + datetime.timedelta(days=30))
     DocumentLine.objects.create(
         document=doc, item=item, batch=Batch.objects.get(item=item),
-        qty_entered=qty, unit_price=D(price), unit_label=item.base_unit,
+        qty_entered=qty, unit_price=D(price), unit_label=item.base_unit, factor=1,
     )
     return post(doc, actor)
 
@@ -90,7 +90,7 @@ def cash_sale(actor, customer, item, account, qty=1, price="15.00"):
                                   sale_kind=Document.SaleKind.CASH)
     DocumentLine.objects.create(
         document=doc, item=item, batch=Batch.objects.get(item=item),
-        qty_entered=qty, unit_price=D(price), unit_label=item.base_unit,
+        qty_entered=qty, unit_price=D(price), unit_label=item.base_unit, factor=1,
     )
     PaymentLine.objects.create(document=doc, account=account,
                                amount=D(price) * qty)

@@ -197,11 +197,9 @@ class DocumentLine(models.Model):
     lot = models.ForeignKey("stock.CostLot", null=True, blank=True,
                             on_delete=models.PROTECT, related_name="+")
     unit_label = models.CharField(max_length=50)  # ※
+    factor = models.PositiveIntegerField(default=1)  # ※ D62
     qty_entered = models.PositiveIntegerField()
-    # ※ Base units this line actually moved. NOT simply a copy of qty_entered:
-    # receiving adds bonus goods, a stock count freezes the pre-count snapshot,
-    # a settlement stores sold+returned+expired, an adjustment stores |qty_delta|.
-    qty_base = models.PositiveIntegerField(default=0)
+    qty_base = models.PositiveIntegerField(default=0)  # ※ = qty_entered × factor
     unit_price = models.DecimalField(max_digits=14, decimal_places=2, default=0)  # ※
     unit_cost_entered = models.DecimalField(  # receivings (D42); paid amount basis for D21
         max_digits=14, decimal_places=2, null=True, blank=True

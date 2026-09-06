@@ -61,7 +61,7 @@ def sale(owner, buyer):
     DocumentLine.objects.create(
         document=grn, item=item, qty_entered=10, unit_cost_entered=D("10.00"),
         batch_no_entered="BX-77", expiry_entered=FAR_EXPIRY,
-        unit_label=item.base_unit,
+        unit_label=item.base_unit, factor=1,
     )
     post(grn, owner)
     doc = Document.objects.create(doc_type=DocType.SALE, created_by=owner,
@@ -70,6 +70,7 @@ def sale(owner, buyer):
     DocumentLine.objects.create(
         document=doc, item=item, batch=Batch.objects.get(item=item),
         qty_entered=2, unit_price=D("15.00"), unit_label=item.base_unit,
+        factor=1,
     )
     PaymentLine.objects.create(document=doc, account=cash, amount=D("30.00"))
     return post(doc, owner)

@@ -15,6 +15,7 @@ class CompanySettingsForm(forms.ModelForm):
                     "withholding_rate"]),
         (_("What this business uses"), ["fiscal_machine_present",
                                         "discounts_enabled",
+                                        "unit_conversion_enabled",
                                         "sale_price_editable"]),
         (_("Money rules"), ["negative_balance_policy", "default_credit_limit",
                             "default_credit_action"]),

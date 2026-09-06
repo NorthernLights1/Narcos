@@ -49,7 +49,7 @@ def stocked_item(owner, supplier):
     DocumentLine.objects.create(
         document=grn, item=item, qty_entered=10, unit_cost_entered=D("10.00"),
         batch_no_entered="B-1", expiry_entered=FAR_EXPIRY,
-        unit_label=item.base_unit,
+        unit_label=item.base_unit, factor=1,
     )
     post(grn, owner)
     return item
@@ -63,7 +63,7 @@ def _posted_cash_sale(owner, customer, item):
     DocumentLine.objects.create(
         document=sale, item=item, batch=Batch.objects.get(item=item),
         qty_entered=2, unit_price=D("15.00"),
-        unit_label=item.base_unit,
+        unit_label=item.base_unit, factor=1,
     )
     PaymentLine.objects.create(document=sale, account=cash, amount=D("30.00"))
     return post(sale, owner)
@@ -86,7 +86,7 @@ def test_consignment_issue_print_has_watermark(client, owner, customer,
         document=issue, item=stocked_item,
         batch=Batch.objects.get(item=stocked_item),
         qty_entered=3, unit_price=D("15.00"),
-        unit_label=stocked_item.base_unit,
+        unit_label=stocked_item.base_unit, factor=1,
     )
     post(issue, owner)
     client.force_login(owner)

@@ -10,7 +10,7 @@ from datetime import datetime, time, timezone as datetime_timezone
 from django.db import transaction
 from django.utils.translation import gettext as _
 
-from catalog.models import Account, Customer, Item, Supplier
+from catalog.models import Account, Customer, Item, ItemUnit, Supplier
 from docs.models import Document, DocType, DocumentLine
 from docs.posting import post
 from money.models import PaymentLine
@@ -114,6 +114,30 @@ def _check_duplicate_codes(rows: list[dict], model, errors: list[str]) -> None:
                           % {"n": row_no, "c": code})
 
 
+def _parse_alt_units(value: str, row_no: int, errors: list[str]) -> list[tuple[str, int]]:
+    """Format: 'carton:12; box:144' — label:whole-number factor pairs."""
+    units: list[tuple[str, int]] = []
+    if not value:
+        return units
+    for part in value.split(";"):
+        part = part.strip()
+        if not part:
+            continue
+        label, sep, factor_text = part.partition(":")
+        try:
+            factor = int(factor_text)
+        except ValueError:
+            factor = 0
+        if not sep or not label.strip() or factor <= 1:
+            errors.append(
+                _("row %(n)d: bad alt_units part '%(p)s' (need label:factor, factor > 1)")
+                % {"n": row_no, "p": part}
+            )
+            continue
+        units.append((label.strip(), factor))
+    return units
+
+
 def import_items(uploaded_file) -> ImportResult:
     rows, errors = _read_rows(uploaded_file)
     result = ImportResult(errors=errors)
@@ -166,14 +190,17 @@ def import_items(uploaded_file) -> ImportResult:
                 _("row %(n)d: maintained_price must be greater than 0 — "
                   "every item needs a selling price") % {"n": i}
             )
-        parsed.append(fields)
+        units = _parse_alt_units(row.get("alt_units", ""), i, result.errors)
+        parsed.append((fields, units))
 
     if not result.is_clean:
         return result
 
     with transaction.atomic():
-        for fields in parsed:
-            Item.objects.create(**fields)
+        for fields, units in parsed:
+            item = Item.objects.create(**fields)
+            for label, factor in units:
+                ItemUnit.objects.create(item=item, unit_label=label, factor_to_base=factor)
             result.created += 1
     return result
 
@@ -269,7 +296,7 @@ def import_opening_stock(uploaded_file, actor) -> ImportResult:
         for item, batch_no, expiry, qty, cost, _document_date in parsed:
             DocumentLine.objects.create(
                 document=doc, item=item, batch_no_entered=batch_no,
-                expiry_entered=expiry, unit_label=item.base_unit,
+                expiry_entered=expiry, unit_label=item.base_unit, factor=1,
                 qty_entered=qty, unit_cost_entered=cost,
             )
         post(doc, actor)

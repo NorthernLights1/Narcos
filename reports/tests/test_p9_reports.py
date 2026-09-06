@@ -63,7 +63,7 @@ def receive(actor, supplier, item, qty=10, cost="10.00", expiry=FAR_EXPIRY):
     DocumentLine.objects.create(
         document=doc, item=item, qty_entered=qty, unit_cost_entered=D(cost),
         batch_no_entered="B-1", expiry_entered=expiry,
-        unit_label=item.base_unit,
+        unit_label=item.base_unit, factor=1,
     )
     return post(doc, actor)
 
@@ -73,7 +73,7 @@ def cash_sale(actor, customer, item, cash, qty=2, price="15.00"):
                                   customer=customer, sale_kind=Document.SaleKind.CASH)
     DocumentLine.objects.create(
         document=doc, item=item, batch=Batch.objects.get(item=item),
-        qty_entered=qty, unit_price=D(price), unit_label=item.base_unit,
+        qty_entered=qty, unit_price=D(price), unit_label=item.base_unit, factor=1,
     )
     PaymentLine.objects.create(document=doc, account=cash, amount=D(price) * qty)
     return post(doc, actor)
@@ -154,7 +154,7 @@ def test_dashboard_alerts_render(client, owner, customer, supplier, drug):
     )
     DocumentLine.objects.create(
         document=doc, item=drug, batch=Batch.objects.get(item=drug),
-        qty_entered=1, unit_price=D("15.00"), unit_label=drug.base_unit,
+        qty_entered=1, unit_price=D("15.00"), unit_label=drug.base_unit, factor=1,
     )
     doc = post(doc, owner)
 
@@ -216,7 +216,7 @@ def test_sales_report_revenue_matches_the_invoice(client, owner, customer,
                                    doc_discount=D("5.00"))
     DocumentLine.objects.create(
         document=sale, item=drug, batch=Batch.objects.get(item=drug),
-        qty_entered=2, unit_price=D("15.00"), unit_label=drug.base_unit,
+        qty_entered=2, unit_price=D("15.00"), unit_label=drug.base_unit, factor=1,
     )
     DocumentCharge.objects.create(document=sale, label="Delivery",
                                   amount=D("3.00"), is_taxable=False)

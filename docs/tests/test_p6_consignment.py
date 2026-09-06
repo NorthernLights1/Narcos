@@ -43,7 +43,7 @@ def receive(actor, supplier, item, qty=10, cost="60.00"):
                                   supplier=supplier)
     DocumentLine.objects.create(document=doc, item=item, qty_entered=qty,
                                 unit_cost_entered=D(cost), batch_no_entered="B-1",
-                                expiry_entered=FAR_EXPIRY, unit_label="kit")
+                                expiry_entered=FAR_EXPIRY, unit_label="kit", factor=1)
     return post(doc, actor)
 
 
@@ -54,7 +54,7 @@ def issue(actor, customer, item, qty=5, price="100.00", due_date=None):
                                   due_date=due_date)
     DocumentLine.objects.create(document=doc, item=item, batch=batch,
                                 qty_entered=qty, unit_price=D(price),
-                                unit_label="kit")
+                                unit_label="kit", factor=1)
     return post(doc, actor)
 
 
@@ -90,7 +90,7 @@ def test_i14_settlement_uses_frozen_issue_price_tax_and_taxability(
                                  related_document=cn, sale_kind="CREDIT")
     DocumentLine.objects.create(document=cs, item=item, batch=Batch.objects.get(),
                                 qty_entered=2, qty_sold=2,
-                                unit_label="kit")
+                                unit_label="kit", factor=1)
     cs = post(cs, owner)
     assert cs.doc_no == "CS-000001"
     assert cs.subtotal == D("200.00")
@@ -113,7 +113,7 @@ def test_i15_consigned_expired_goods_return_through_settlement(
     DocumentLine.objects.create(document=cs, item=item, batch=Batch.objects.get(),
                                 qty_entered=4, qty_returned=1,
                                 qty_expired_unfit=2, target_zone=Zone.EXPIRED,
-                                unit_label="kit")
+                                unit_label="kit", factor=1)
     post(cs, owner)
     assert qty(Zone.CONSIGNED, lot, customer) == 1
     assert qty(Zone.WAREHOUSE, lot) == 7
@@ -128,7 +128,7 @@ def test_cash_consignment_settlement_moves_money(owner, customer, supplier, item
                                  related_document=cn, sale_kind="CASH")
     DocumentLine.objects.create(document=cs, item=item, batch=Batch.objects.get(),
                                 qty_entered=2, qty_sold=2,
-                                unit_label="kit")
+                                unit_label="kit", factor=1)
     PaymentLine.objects.create(document=cs, account=cash, amount=D("230.00"))
     post(cs, owner)
     assert account_balance(cash) == D("230.00")
@@ -142,7 +142,7 @@ def test_settlement_cannot_exceed_issue_outstanding(owner, customer, supplier, i
                                  related_document=cn, sale_kind="CREDIT")
     DocumentLine.objects.create(document=cs, item=item, batch=Batch.objects.get(),
                                 qty_entered=3, qty_sold=3,
-                                unit_label="kit")
+                                unit_label="kit", factor=1)
     with pytest.raises(PostingError):
         post(cs, owner)
 
@@ -175,7 +175,7 @@ def test_settling_an_issue_with_a_document_discount_is_refused(
                                  related_document=cn, sale_kind="CREDIT")
     DocumentLine.objects.create(document=cs, item=item,
                                 batch=Batch.objects.get(), qty_entered=5,
-                                qty_sold=5, unit_label="kit")
+                                qty_sold=5, unit_label="kit", factor=1)
 
     with pytest.raises(PostingError, match="document discount"):
         post(cs, owner)

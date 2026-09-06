@@ -35,7 +35,7 @@ def equipment(db):
 
 
 def receiving(actor, supplier, *line_specs) -> Document:
-    """line_specs: dicts with item, qty, cost, plus optional free/batch_no/expiry."""
+    """line_specs: dicts with item, qty, cost, plus optional free/batch_no/expiry/factor."""
     doc = Document.objects.create(doc_type=DocType.RECEIVING, created_by=actor,
                                   supplier=supplier)
     for spec in line_specs:
@@ -45,6 +45,7 @@ def receiving(actor, supplier, *line_specs) -> Document:
             batch_no_entered=spec.get("batch_no", ""),
             expiry_entered=spec.get("expiry"),
             unit_label=spec.get("unit", spec["item"].base_unit),
+            factor=spec.get("factor", 1),
         )
     return doc
 
@@ -90,6 +91,16 @@ def test_non_batch_item_receives_without_batch(owner, supplier, equipment):
     lot = CostLot.objects.get()
     assert lot.batch is None
     assert warehouse_qty(lot) == 5
+
+
+def test_unit_conversion_lands_in_base_units(owner, supplier, drug):
+    # 5 cartons of 12 at 120.00/carton → 60 base at 10.00
+    post(receiving(owner, supplier,
+                   {"item": drug, "qty": 5, "cost": "120.00", "unit": "carton",
+                    "factor": 12, "batch_no": "B-1", "expiry": EXPIRY}), owner)
+    lot = CostLot.objects.get()
+    assert lot.qty_received == 60
+    assert lot.unit_cost == Decimal("10.00")
 
 
 # --- D21 bonus goods ---
@@ -200,7 +211,7 @@ def test_void_blocked_after_goods_moved(owner, supplier, drug):
     sr = Document.objects.create(doc_type=DocType.SUPPLIER_RETURN,
                                  created_by=owner, supplier=supplier)
     DocumentLine.objects.create(document=sr, item=drug, lot=lot, qty_entered=10,
-                                unit_label="pack")
+                                unit_label="pack", factor=1)
     post(sr, owner)
     with pytest.raises(PostingError):
         void(doc, owner, "should be blocked")
@@ -217,7 +228,7 @@ def test_supplier_return_reduces_stock_and_ap(owner, supplier, drug):
     sr = Document.objects.create(doc_type=DocType.SUPPLIER_RETURN,
                                  created_by=owner, supplier=supplier)
     DocumentLine.objects.create(document=sr, item=drug, lot=lot, qty_entered=20,
-                                unit_label="pack")
+                                unit_label="pack", factor=1)
     sr = post(sr, owner)
     assert sr.doc_no == "SR-000001"
     assert warehouse_qty(lot) == 80
@@ -236,7 +247,7 @@ def test_supplier_return_with_cash_refund(owner, supplier, drug, cash):
     sr = Document.objects.create(doc_type=DocType.SUPPLIER_RETURN,
                                  created_by=owner, supplier=supplier)
     DocumentLine.objects.create(document=sr, item=drug, lot=lot, qty_entered=5,
-                                unit_label="pack")
+                                unit_label="pack", factor=1)
     PaymentLine.objects.create(document=sr, account=cash, amount=Decimal("50.00"))
     post(sr, owner)
     assert account_balance(cash) == Decimal("50.00")  # refund received
@@ -251,7 +262,7 @@ def test_supplier_return_cannot_exceed_lot_balance(owner, supplier, drug):
     sr = Document.objects.create(doc_type=DocType.SUPPLIER_RETURN,
                                  created_by=owner, supplier=supplier)
     DocumentLine.objects.create(document=sr, item=drug, lot=lot, qty_entered=31,
-                                unit_label="pack")
+                                unit_label="pack", factor=1)
     with pytest.raises(PostingError):
         post(sr, owner)
 
@@ -264,7 +275,7 @@ def test_supplier_return_wrong_lot_item_rejected(owner, supplier, drug, equipmen
     sr = Document.objects.create(doc_type=DocType.SUPPLIER_RETURN,
                                  created_by=owner, supplier=supplier)
     DocumentLine.objects.create(document=sr, item=equipment, lot=lot, qty_entered=1,
-                                unit_label="unit")
+                                unit_label="unit", factor=1)
     with pytest.raises(PostingError):
         post(sr, owner)
 
@@ -280,7 +291,7 @@ def test_supplier_return_to_the_wrong_supplier_rejected(owner, supplier, drug):
     sr = Document.objects.create(doc_type=DocType.SUPPLIER_RETURN,
                                  created_by=owner, supplier=other)
     DocumentLine.objects.create(document=sr, item=drug, lot=lot, qty_entered=1,
-                                unit_label="pack")
+                                unit_label="pack", factor=1)
 
     with pytest.raises(PostingError, match="Addis Pharma"):
         post(sr, owner)
@@ -296,14 +307,14 @@ def test_supplier_return_of_opening_stock_is_allowed(owner, supplier, drug):
     DocumentLine.objects.create(
         document=opening, item=drug, qty_entered=10,
         unit_cost_entered=Decimal("10.00"), batch_no_entered="B-9",
-        expiry_entered=EXPIRY, unit_label="pack",
+        expiry_entered=EXPIRY, unit_label="pack", factor=1,
     )
     post(opening, owner)
     lot = CostLot.objects.get()
     sr = Document.objects.create(doc_type=DocType.SUPPLIER_RETURN,
                                  created_by=owner, supplier=supplier)
     DocumentLine.objects.create(document=sr, item=drug, lot=lot, qty_entered=2,
-                                unit_label="pack")
+                                unit_label="pack", factor=1)
 
     post(sr, owner)
 

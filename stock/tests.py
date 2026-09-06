@@ -49,7 +49,7 @@ def receive(actor, supplier, item, qty=100, cost="10.00"):
     DocumentLine.objects.create(document=doc, item=item, qty_entered=qty,
                                 unit_cost_entered=D(cost),
                                 batch_no_entered=f"B-{item.code}",
-                                expiry_entered=FAR_EXPIRY, unit_label="pack")
+                                expiry_entered=FAR_EXPIRY, unit_label="pack", factor=1)
     return post(doc, actor)
 
 
@@ -59,7 +59,7 @@ def consign(actor, customer, item, qty):
     DocumentLine.objects.create(document=doc, item=item,
                                 batch=Batch.objects.get(item=item),
                                 qty_entered=qty, unit_price=D("15.00"),
-                                unit_label="pack")
+                                unit_label="pack", factor=1)
     return post(doc, actor)
 
 
@@ -70,7 +70,7 @@ def sell(actor, customer, item, qty):
     DocumentLine.objects.create(document=doc, item=item,
                                 batch=Batch.objects.get(item=item),
                                 qty_entered=qty, unit_price=D("15.00"),
-                                unit_label="pack")
+                                unit_label="pack", factor=1)
     return post(doc, actor)
 
 

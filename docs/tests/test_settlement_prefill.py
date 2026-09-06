@@ -60,7 +60,7 @@ def test_prefill_subtracts_prior_settlements(client, logged_in_owner,
     from catalog.models import Account
     line = DocumentLine.objects.create(
         document=first, item=item, batch=cn.lines.get().batch,
-        unit_label="kit", qty_entered=2, qty_sold=2,
+        unit_label="kit", factor=1, qty_entered=2, qty_sold=2,
     )
     account = Account.objects.create(name="Cash", type=Account.Type.CASH)
     PaymentLine.objects.create(document=first, account=account, amount=D("230.00"))
@@ -88,7 +88,7 @@ def test_fully_settled_issue_redirects_back_with_message(client, logged_in_owner
     from catalog.models import Account
     DocumentLine.objects.create(
         document=full, item=item, batch=cn.lines.get().batch,
-        unit_label="kit", qty_entered=2, qty_sold=2,
+        unit_label="kit", factor=1, qty_entered=2, qty_sold=2,
     )
     account = Account.objects.create(name="Cash", type=Account.Type.CASH)
     PaymentLine.objects.create(document=full, account=account, amount=D("230.00"))
@@ -123,7 +123,7 @@ def test_settlement_inherits_withholding_from_issue(client, logged_in_owner,
     )
     DocumentLine.objects.create(document=cn, item=item, batch=Batch.objects.get(),
                                 qty_entered=5, unit_price=D("100.00"),
-                                unit_label="kit")
+                                unit_label="kit", factor=1)
     post(cn, logged_in_owner)
 
     cs = Document.objects.create(
@@ -133,7 +133,7 @@ def test_settlement_inherits_withholding_from_issue(client, logged_in_owner,
         due_date=datetime.date(2030, 1, 1),
     )
     DocumentLine.objects.create(document=cs, item=item, batch=Batch.objects.get(),
-                                unit_label="kit",
+                                unit_label="kit", factor=1,
                                 qty_entered=2, qty_sold=2)
     post(cs, logged_in_owner)
 

@@ -10,6 +10,7 @@ from catalog.models import (
     ExpenseCategory,
     FixedAsset,
     Item,
+    ItemUnit,
     Supplier,
 )
 
@@ -112,6 +113,10 @@ class ItemForm(forms.ModelForm):
         return data
 
 
+ItemUnitFormSet = inlineformset_factory(
+    Item, ItemUnit, fields=["unit_label", "factor_to_base"], extra=1, can_delete=True,
+    widgets={"unit_label": forms.TextInput(attrs={"list": "unit-options"})},
+)
 
 
 PARTY_PLACEHOLDERS = {

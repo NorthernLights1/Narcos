@@ -21,7 +21,7 @@ def _line_parts(doc: Document) -> tuple[list, list[Part]]:
     lines = list(doc.lines.select_related("item", "batch"))
     parts = []
     for line in lines:
-        line.qty_base = line.qty_entered
+        line.qty_base = line.qty_entered * line.factor
         gross = Decimal(line.qty_entered) * line.unit_price
         if line.line_discount > gross:
             raise PostingError(_("Line %(item)s: discount exceeds the line amount.")
@@ -622,7 +622,7 @@ class CustomerReturnHandler(Handler):
         effects = Effects()
         requested: dict[tuple, int] = {}  # cumulative within THIS document too
         for line in lines:
-            line.qty_base = line.qty_entered
+            line.qty_base = line.qty_entered * line.factor
             original = None
             if sale is not None:
                 key = (line.item_id, line.batch_id)
