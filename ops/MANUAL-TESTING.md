@@ -6,6 +6,43 @@ to do and **what you must see** — if you see something else, that's a bug.
 
 Written for a dev machine (Linux, `.venv`, PostgreSQL on localhost).
 
+> **2026-09-06 round 22 — five client requests (D123–D130):** **hard-refresh**
+> (`?v=20260906a`), then check each of these.
+>
+> - **Empty batches are gone from the sale picker (D124).** Sell a batch down
+>   to zero, then start a new **Sale** and open the batch list for that item —
+>   the empty one is not there. Now open a **Customer return**, an
+>   **Adjustment**, a **Stock count** and a **Proforma**: it must still be
+>   there in all four, and a proforma must still quote it. Then take a draft
+>   sale that names a batch, sell that batch dry from another document, and
+>   re-open the draft: it must still save, and must still show its batch.
+> - **Batch numbers suggest themselves on receiving (D128).** Start a
+>   **Receiving**, pick an item you have received before, and type the first
+>   character or two of a batch number. Existing batches appear beneath the
+>   box with expiry and quantity; click one and both the number **and the
+>   expiry** fill in. Type the same number in the wrong case (`b001` for
+>   `B001`) — you must get a warning that a different capitalisation makes a
+>   second batch.
+> - **Retired items disappear from pickers (D125).** Set an item inactive in
+>   Master → Items, then start a Sale: it is no longer offered. A draft that
+>   already names it must still save.
+> - **Two new reports (D126).** Reports → Sales & profit → **Sales by brand**
+>   and **Sales by generic**. Check the average, lowest and highest price
+>   columns against an item you have sold twice at different prices. As an
+>   employee, COGS and Profit must not appear — in the table **or** the CSV.
+> - **Who owes who (D127).** Reports → Receivables & payables → **Who owes
+>   who**. Give one customer and one supplier the same tax number typed
+>   differently (`0012345678` and `001-2345678`) and confirm they pair. They
+>   must still pair after you deactivate the supplier.
+> - **Corrections keep bonus units (D123).** Receive 100 with 10 free, post,
+>   then Correct it. The replacement draft must carry `free_qty = 10` — before
+>   this it voided 110 and re-posted 100.
+> - **Number boxes ignore the wheel (D129).** Open a **Stock count**, click
+>   into a quantity, and scroll the page. The number must not change.
+> - **Posting asks first (D130).** Post any draft. A dialog lists item, batch
+>   and quantity **in base units**, plus the total, and says a posted document
+>   cannot be edited. Cancel must change nothing.
+
 > **2026-08-05 editing in place (D114):** the **Reference fields** button is
 > gone. A posted document now has a **"Still editable"** card: fiscal
 > receipt no, machine total, withholding certificate no, payment due date

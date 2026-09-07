@@ -2,92 +2,77 @@
 
 Dear Temesgen,
 
-**`v1.1.0` is tagged and pushed.** The twelve whole-app findings and the
-thirteen Codex objections behind them are committed as `307cd37`; the tag points
-at that commit and so does `origin`. `build` is level with the remote, 34
-commits past `v1.0.0`. The previous version of this file said "nothing is
-committed yet" — that was true when it was written and has not been true for a
-while.
+**Round 22 is built.** Five client comments turned into eight decisions
+(D123–D130), and **not one of them needs a database migration** — this whole
+round deploys as an image swap, with `migrate` running as a no-op. The three
+changes that *would* need schema work are deliberately unbuilt and written up
+as R95, waiting on a copy of the client's database.
 
-Uncommitted right now: two documentation files, both from today, both described
-below. No code has changed since the tag.
+Nothing is committed yet. Say the word.
 
-## Today — round 21, a disposition review
+## What the five requests turned out to be
 
-Six findings were put to you. I verified every one against the working tree
-before asking, rather than trusting the summary they arrived in. All six are
-real. **You chose to write them up rather than fix them**, so no code moved;
-they are now R85–R90 in [03-open-risks.md](03-open-risks.md).
+| They asked for | It became |
+|---|---|
+| A log and totals per brand / per generic | Two reports, with the **price actually achieved** — average, lowest, highest |
+| Who owes who, per customer | One report across all parties, plus five repairs to the tax-number matching |
+| Empty batches off the sale picker | Exactly that, scoped to the two document types that sell from the shelf |
+| A short-cut for repeat receiving | **Refused, and replaced** — see below |
+| Enter the generic once | Deferred to R95; the report already folds case so you can see the cost |
 
-| # | What it does | Disposition |
-|---|--------------|-------------|
-| R85 | Changing an item's base unit reinterprets 120 tablets as 120 cartons; turning batch tracking off strands batched stock as unsellable | `OPEN` (high) |
-| R86 | Nothing on the server refuses one item paired with another item's batch — the check is browser-side only | `OPEN` (medium) |
-| R87 | The item form commits the price, *then* validates conversions; on failure you are told it did not save, but it did, unaudited | `OPEN` (medium) |
-| R88 | Reprinting an old invoice shows today's customer details, not the ones it was printed with | `WATCH` — you accepted it |
-| R89 | `vat_exempt` would suppress TOT as well as VAT | `WATCH` — dormant here |
-| R90 | Opening consignment freezes no tax rate, so settlement charges none | `WATCH` — dormant here |
+## The two things worth your attention
 
-R79 (a supplier return not reducing the receiving's open balance) was confirmed
-again and stands unchanged from round 20b.
+**1. One settings read decides how big the first request was (R96).**
+My first reading of this plan said sale prices cannot be typed, so "different
+prices to different customers" had to mean per-customer price lists. That was
+wrong. **D89's `sale_price_editable` hands pricing back to the counter**, and
+it is **on** in the dev database with discounts off. The posted rows prove it:
+one item sold at 3.00 and at 1000.00, another at 8.00, 0.40 and 8.01.
 
-## The thing your answer actually surfaced
+The flag ships **off** by default. If the client's machine has it off, this
+request becomes R46 instead, which is much larger. **Read the setting before
+estimating anything else.**
 
-I asked which tax regime you run, expecting VAT or TOT. You said **neither** —
-no sales tax at all, just the 3% a PLC withholds when it pays you.
+**2. Your objection to the receiving short-cut was right, and better than my
+reasoning for it.** A new delivery rarely repeats the same combination, so a
+prefilled copy saves little — and the capability already existed, with a
+passing test. Your batch-number alternative targets something sharper:
+**a batch number is the one master string here that can never be corrected.**
+Four models point at `Batch` with PROTECT, so a typo is permanent, the stock
+sits under a label nobody searches for, and a recall on that batch misses it.
+Prevention at entry is the only defence there is. It also removes a hard
+posting failure (mismatched expiry) and closes a silent duplicate path
+(`b001` vs `B001`).
 
-That makes R89 and R90 dormant: under the *None* regime the rate resolves to
-zero for every line anyway, so R89 suppresses a tax that is already nothing, and
-R90's frozen zero is the *correct* answer rather than a wrong one. Both are
-recorded so that registering for VAT later does not wake them silently.
+## Verified, not assumed
 
-But it exposed something with real money attached. The code ships with
-`tax_regime` defaulting to **VAT** and `withholding_on_sales` defaulting to
-**off**. If Settings on the client machine is not changed, every invoice adds
-15% VAT that does not exist and no withholding is ever shown. The withholding
-rate already defaults to 3, so that part is fine. I have written the concrete
-values into `ops/RELEASE-CHECKLIST.md` §1.
+- **Suite:** 506 tests, up from 479. The jump from 458 is `pytest.ini` finally
+  collecting `stock/tests.py` — 21 tests that had never run. **Count collected
+  tests, don't trust green.**
+- **Red-green checked:** with the fixes reverted, 14 of the new tests fail.
+- **Rendered in the running app:** all four new/changed pages return 200, the
+  batch index reaches the receiving form, and the empty batch `G001` is absent
+  from the sale picker while stocked `B0112` is present.
+- **A guard test caught me.** Two multi-line `{# #}` comments I wrote would
+  have printed to the page. `core/tests/test_template_comments.py` failed the
+  build over it, which is exactly what it is for.
 
-**This is configuration, not a defect — and it is the highest-consequence
-setup step you have left.** Worth checking on the machine before the next real
-sale, not at leisure.
+## Corrections to things I told you earlier
 
-## What I did not do
+- I said merging two items was **impossible** because the stock ledger refuses
+  writes. Wrong — `QuerySet.update()` bypasses those guards and moves the rows.
+  The real barriers are correctness (base-unit divergence, batch collision,
+  FIFO order), not mechanism. Recorded in R95.
+- I recommended filtering proformas to in-stock batches. Reversed: a proforma
+  has zero ledger effect, so filtering removes legitimate quoting for goods
+  that have not landed.
 
-- **No code changes.** Your instruction was to write up first.
-- **No fix for R88.** You chose "as they are today"; master records stay live
-  and reprints follow them. Recorded, not silently dropped.
-- **No reconciliation script** for data already on the client machine. Still
-  the next piece of work after this, unchanged from the last round.
-- **No restore drill.** R69 remains fixed-as-code and unproven — there is no
-  Windows host here, and it is still the one finding whose failure mode is
-  losing everything.
+## Next
 
-## Where the numbers stand
-
-- `v1.1.0` → `307cd37`, tagged and pushed. `build` level with `origin/build`.
-- 34 commits past `v1.0.0`.
-- Uncommitted: `03-open-risks.md` (R85–R90), `ops/RELEASE-CHECKLIST.md` (the
-  regime note). Say the word and I will commit them.
-- Tests were 456/456 green at the tag. I have not re-run them today — nothing
-  executable changed.
-
-## Recommended next steps
-
-1. **Check Settings on the client machine**: regime → *None*, withholding on
-   sales → on. Then post one real sale and read the printed total.
-2. Run the restore drill on the Windows host.
-3. Decide R85 — it is the only one of the six that can corrupt stock silently,
-   and the fix does not restrict ordinary editing.
-4. Then the data-checking script.
-
-## Still yours, unchanged
-
-Company phone still blank in Settings · negative-balance policy still
-"Allowed" · UPS + backup drive · R43 parallel run · R40 accountant confirms the
-3% base and the 20,000/10,000 thresholds.
-
-**Watch, deliberately not queued:** R46 per-customer price lists · R8b
-master-data merge · R9 broader returns · R55 recurring · R64 zero-total sale ·
-R65 pack rounding · R66 remittance timing · R83 restore ordering · R84 granular
-draft permissions · R88 document identity snapshot.
+1. **Read `sale_price_editable` on the client's machine** (R96).
+2. Get `narcos.dump` from their nightly backup — the folder also holds `.env`,
+   which must **not** leave that machine.
+3. Then decide R95's three migrations against real data rather than argument.
+4. Still open from before: restore drill on the Windows host, and the two
+   undiagnosed reports (180 → 189, leftover stock). D129 and D130 are the
+   cheapest candidate explanations for the first and are now in.

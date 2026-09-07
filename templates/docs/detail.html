@@ -244,7 +244,19 @@
       {% translate "Post" %}
     </button>
     {% else %}
-    <button type="submit" class="btn btn-primary">{% translate "Post" %}</button>
+    {% comment %}D130: the machinery for this dialog has existed since D93 and
+    the Post button was the one place still submitting straight through.
+    Posting is irreversible for everyone but the owner, so show what is about
+    to move — in the item's own base unit, where a mistyped quantity and a
+    pack factor both become visible — and make the operator say yes.
+    {% endcomment %}
+    <button type="submit" class="btn btn-primary"
+            data-confirm
+            data-confirm-title="{% translate 'Post this document?' %}"
+            data-confirm-list="{% for line in doc.lines.all %}{{ line.item.code }} {% if line.batch %}· {{ line.batch.batch_no }} {% elif line.batch_no_entered %}· {{ line.batch_no_entered }} {% endif %}· {{ line.base_preview }} {{ line.item.base_unit }}|{% endfor %}{% blocktranslate with total=totals_preview.grand_total|default:doc.grand_total %}Document total: {{ total }}{% endblocktranslate %}"
+            data-confirm-final="{% translate 'A posted document cannot be edited — only the owner can void it, and that is recorded. Check the quantities above before you agree.' %}">
+      {% translate "Post" %}
+    </button>
     {% endif %}
   </form>
   <form method="post" action="{% url 'document_delete' doc.pk %}">

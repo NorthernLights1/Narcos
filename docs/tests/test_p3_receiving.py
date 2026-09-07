@@ -339,3 +339,28 @@ def test_a_cash_receiving_can_still_be_corrected(client, owner, supplier, drug, 
 
     assert Document.objects.filter(corrects=doc,
                                    status=Document.Status.DRAFT).count() == 1
+
+
+# --- D123: the correction copy list is not the entry form's field list ---
+
+
+def test_correcting_a_receiving_keeps_its_bonus_units(client, owner, supplier, drug):
+    """D84 took `free_qty` off the receiving form, and the correction copied
+    the form's field list — so 100 paid + 10 free voided 110 and re-posted
+    100, moving the lot cost with it. Posting reads `free_qty` whether or not
+    a form shows it, so the copy must carry it."""
+    from django.urls import reverse
+
+    doc = post(receiving(owner, supplier,
+                         {"item": drug, "qty": 100, "cost": "10.00", "free": 10,
+                          "batch_no": "B-1", "expiry": EXPIRY}), owner)
+    original_lot = CostLot.objects.get(source_line__document=doc)
+    assert original_lot.qty_received == 110  # 100 paid + 10 bonus (D21)
+
+    client.force_login(owner)
+    client.post(reverse("document_correct", args=[doc.pk]), {"reason": "wrong cost"})
+
+    replacement = Document.objects.get(corrects=doc)
+    line = replacement.lines.get()
+    assert line.free_qty == 10, "the bonus units must survive the copy"
+    assert line.qty_entered == 100

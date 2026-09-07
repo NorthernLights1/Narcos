@@ -90,6 +90,21 @@ def fields_hidden_by_settings() -> set[str]:
     return hidden
 
 
+# D124: the doc types that take goods off the warehouse shelf, and so have no
+# use for a batch with nothing in it. PROFORMA is deliberately absent — its
+# handler returns a bare Effects() ("no stock, no money, no AR"), so posting a
+# quote is never refused for stock, and quoting from a shipment that has not
+# landed is ordinary wholesale practice. CUSTOMER_RETURN, ADJUSTMENT,
+# STOCK_COUNT and CONSIGNMENT_SETTLEMENT are absent because each legitimately
+# needs an empty batch: returns bring goods back to one, positive adjustments
+# start from nothing, a count of zero is a real count, and settlement consumes
+# the CONSIGNED zone, where warehouse quantity is the wrong question.
+SELLS_FROM_WAREHOUSE = frozenset({
+    DocType.SALE,
+    DocType.CONSIGNMENT_ISSUE,
+})
+
+
 DOC_CONFIG = {
     DocType.RECEIVING: {
         "title": _("Receiving"),
@@ -364,9 +379,10 @@ class DocumentLineForm(forms.ModelForm):
         }
 
     def __init__(self, *args, line_fields: list[str], issue=None,
-                 master_priced: bool = False, **kwargs):
+                 master_priced: bool = False, doc_type: str = "", **kwargs):
         super().__init__(*args, **kwargs)
         self._master_priced = master_priced
+        self._doc_type = doc_type
         keep = set(line_fields) - fields_hidden_by_settings()
         for name in list(self.fields):
             if name not in keep:
@@ -408,13 +424,20 @@ class DocumentLineForm(forms.ModelForm):
             # Latest lot cost feeds the AUTO price prefill (D23)
             latest = (CostLot.objects.filter(item=OuterRef("pk"))
                       .order_by("-received_at", "-pk").values("unit_cost")[:1])
-            self.fields["item"].queryset = Item.objects.annotate(
-                latest_cost=Subquery(latest)
-            )
+            items = Item.objects.annotate(latest_cost=Subquery(latest))
+            # D125: retiring an item meant nothing — `is_active` was written,
+            # audited and shown in Master, and then every picker offered the
+            # item anyway. Same rescue as the batch picker: a draft that
+            # already names a retired item keeps it, or the whole document
+            # stops saving and re-opening it submits blank.
+            keep = Q(is_active=True)
+            if self.instance.item_id:
+                keep |= Q(pk=self.instance.item_id)
+            self.fields["item"].queryset = items.filter(keep)
         if "batch" in self.fields:
             # Label shows item · batch no · expiry · warehouse on-hand, so the
             # picker carries the shelf context (display only; D4 still guards).
-            self.fields["batch"].queryset = (
+            batches = (
                 Batch.objects.select_related("item")
                 .annotate(warehouse_qty=Sum(
                     "stockbalance__qty",
@@ -422,6 +445,20 @@ class DocumentLineForm(forms.ModelForm):
                 ))
                 .order_by("item__code", "expiry_date", "batch_no")
             )
+            if self._doc_type in SELLS_FROM_WAREHOUSE:
+                # D124: an empty batch cannot be sold, so stop offering it —
+                # posting refused it anyway (D4), after the whole line was typed.
+                # The annotation is NULL, not 0, for a batch with no balance
+                # rows at all, and `> 0` excludes both.
+                keep = Q(warehouse_qty__gt=0)
+                if self.instance.batch_id:
+                    # A draft saved before the batch ran dry must still save.
+                    # Without this the whole document fails validation, and
+                    # re-opening it submits blank — silently clearing the batch,
+                    # which only surfaces at posting as "pick a batch (D29)".
+                    keep |= Q(pk=self.instance.batch_id)
+                batches = batches.filter(keep)
+            self.fields["batch"].queryset = batches
             self.fields["batch"].label_from_instance = _batch_label
         for name in ("item", "batch", "lot"):
             if name in self.fields:
@@ -574,7 +611,8 @@ def formsets_for(doc: Document, data=None):
         master_priced = (config.get("master_priced", False)
                          and not CompanySettings.load().sale_price_editable)
         line_kwargs = {"line_fields": config["lines"],
-                       "master_priced": master_priced}
+                       "master_priced": master_priced,
+                       "doc_type": doc.doc_type}
         if doc.doc_type == DocType.CONSIGNMENT_SETTLEMENT and doc.related_document_id:
             line_kwargs["issue"] = doc.related_document
         formsets.append((

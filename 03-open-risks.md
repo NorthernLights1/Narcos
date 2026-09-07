@@ -745,3 +745,44 @@ document fails silently in the browser today. In `v1.1.0`. Found by Codex
 while reviewing D121; left unfixed only because it is outside that feature and
 this round was scoped to it. One line each way: return 200, or configure
 `htmx.config.responseHandling`.
+
+### R95 — Three schema changes wait for the client's real data — `OPEN` (medium)
+Round 22 shipped every change that needed no migration. Three deliberately did
+not ship, because each is a judgement call that data settles better than
+argument, and a failing migration on the client's box is an **outage**, not a
+defect: `docker-entrypoint.sh` runs under `set -e` and applies migrations
+*before* handing off, with `restart: unless-stopped`, so a raise means a
+restart loop with nothing on screen.
+
+| Deferred | What the data decides |
+|---|---|
+| `catalog.Generic` + `Item.generic` | How many generics are really duplicates. On dev, mechanical folding merges **nothing** — the only true pair, `Acetemenophin` / `acetemenophine`, differs by a trailing letter, not by case. If that holds on real data, the migration's value is near zero and the merge tool is the whole feature. |
+| `Customer.also_supplier` FK | How many businesses have both faces, and how many tax numbers are blank or ambiguous. D127 works by tax number today. |
+| `Item.superseded_by` | Whether near-duplicate items agree on base unit, batch tracking, expiry and VAT status. If they disagree, a merge is unsafe (R85) and supersede is the only path. If they agree and no batch number collides, a guarded merge is legitimate. |
+
+**Note on "impossible".** An earlier reading of this held that merging two
+items could not be done because the stock ledger refuses `save()` and
+`delete()`. That is wrong and was corrected by executing it: `QuerySet.update()`
+bypasses both guards and moves the rows. The barriers are correctness, not
+mechanism — base-unit divergence silently reinterpreting every historical
+quantity (R85), batch-number collision under the (item, batch_no) constraint,
+FIFO order and auto-margin pricing changing after the merge, and tracking or
+tax flags disagreeing. Plus the architectural objection, which is separate and
+weaker: the guards exist to say posted history is not rewritten.
+
+**Next step:** a copy of `narcos.dump` from the client's nightly backup,
+restored into a throwaway `postgres:16` container. Send **only** that file —
+`.env` sits beside it in the same folder and holds the database password and
+the secret key.
+
+### R96 — `sale_price_editable` may not be what we think on the client's box — `OPEN` (high)
+D126's whole sizing rests on this flag being **on**. It is on in dev, and its
+default is **off**. If the client's machine has it off, every sale price comes
+from the item master, the price spread the new reports exist to show cannot
+arise from typing, and "different prices to different customers" becomes R46
+(per-customer standing price lists) — a much larger change that partly reopens
+D80. One settings read answers it. **Read it before estimating anything else.**
+
+R46's own text is now stale either way: it justifies deferral by citing "D23
+(maintained price, editable per sale)", and D80 removed that editability before
+D89 handed it back behind this switch.

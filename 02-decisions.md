@@ -1903,3 +1903,160 @@ it is closed the rule is: **correct an expiry when nothing is being posted** —
 not mid-sale, not from a second tab with a document open. One till makes that
 easy to honour. Codex accepted the deferral only on condition that rule was
 written down; it is also in the release checklist.
+
+## Round 22 (2026-09-06) — five client requests, sorted by what they actually need
+
+*Trigger: five comments from the client after real use. They arrived as five
+feature requests and turned out to be two reports, one entry-form fix, one
+duplicate-data problem, and one request that was already possible. Rounds 20
+and 21 produced risks rather than decisions, so the numbering resumes here.
+Anything needing a schema change is deliberately **not** in this round — those
+wait for a copy of the client's database (see R95).*
+
+### D123 — What a form asks for and what a correction copies are two questions
+- **What:** `_duplicate_as_draft` built its line copy from
+  `DOC_CONFIG[doc_type]["lines"]`, the same list that decides which boxes the
+  entry form shows. D84 took `free_qty` off the receiving form because the box
+  confused staff — and posting still computes stock as
+  `(qty_entered + free_qty) × factor`. So correcting a receiving of "100 paid
+  + 10 free" **voided 110 units and re-posted 100**, and moved the lot cost
+  with it. A new `ENGINE_LINE_FIELDS` tuple names the fields the posting engine
+  reads regardless of form visibility, and the copy is their union with the
+  form's list.
+- **Why:** the two lists answer different questions and only coincidentally
+  matched. Hiding a box must never silently drop a value the engine consumes.
+  Found by review, confirmed against the working tree, and reproduced.
+
+### D124 — An empty batch is not offered on documents that sell from the shelf
+- **What:** on **SALE** and **CONSIGNMENT_ISSUE** the batch picker now lists
+  only batches with warehouse stock. The annotation is `NULL`, not `0`, for a
+  batch with no balance rows at all, and `> 0` excludes both. A draft whose
+  batch has since run dry keeps **its own** batch in the queryset, scoped to
+  that line.
+- **Deliberately not filtered:** `PROFORMA`, whose handler returns a bare
+  `Effects()` — quoting from a shipment that has not landed is ordinary
+  wholesale practice and posting a quote is never refused for stock;
+  `CUSTOMER_RETURN`, where goods come back *to* an empty batch; `ADJUSTMENT`,
+  where writing stock up starts from nothing; `STOCK_COUNT`, where a count of
+  zero is a real count; and `CONSIGNMENT_SETTLEMENT`, which consumes the
+  `CONSIGNED` zone, so warehouse quantity is the wrong question entirely.
+- **Why the rescue is not optional:** without it there are two failures, and
+  the second is worse. Re-submitting a stale draft raises `invalid_choice`, and
+  because `_draft_form` gates on every formset validating, the **whole
+  document** stops saving. Then re-opening it drops the batch from the rendered
+  options, the browser submits blank, `batch` is nullable so the form **accepts
+  it and saves** — silently clearing the batch, which only surfaces at posting
+  as `pick a batch (D29)`. Correcting the very sale that emptied a batch hits
+  this too, because the original's stock returns only when the replacement
+  posts.
+- **Client's words:** "when a batch has no stock left it should not show up on
+  sale to be selected to be sold even though posting will force it not to be
+  sold to not waste the operators time." Agreed without reservation — this was
+  the best of the five requests.
+
+### D125 — Retiring an item finally stops it being offered
+- **What:** the line-item picker filters on `is_active`, with the same
+  per-line rescue as D124 for a draft that already names a retired item.
+- **Why:** `is_active` was editable in Master and written to the audit log, and
+  **no picker read it**, so deactivating an item changed nothing. Found while
+  checking whether "supersede" could work as the answer to duplicate brands; it
+  cannot until this holds. Not requested by anyone — it is a defect.
+
+### D126 — Two reports that show what each product actually sold for
+- **What:** `sales-by-brand` and `sales-by-generic`, both grouping posted
+  revenue and adding **average price achieved per base unit**, with the
+  lowest and highest. Cost and profit columns stay owner-only, decided in the
+  builder, which covers the CSV export too since it reuses the builder's rows.
+- **Two arithmetic traps, both handled:** quantity is `qty_base`, never
+  `qty_entered` — posting computes revenue as `qty_entered × unit_price`
+  while stock moves `qty_entered × factor`, so dividing by the entered
+  quantity would mix carton prices with single prices the moment a pack
+  factor appears. And `line_net` carries **line** discounts only; document
+  discounts and delivery charges live on the document (R75), so this is a
+  line-level achieved price that will not reconcile to an invoice carrying a
+  document discount. The column heading says so.
+- **Grouping by generic folds case and surrounding space** and displays the
+  most common exact spelling, tie-broken alphabetically — the same rule the
+  eventual `Generic` backfill will use, so the report previews its grouping.
+  A real misspelling is **not** folded: `Paracetamoll` stays its own row.
+  The grand total is unaffected by grouping; only the split moves, which is
+  the whole argument for giving the catalogue a generic of its own.
+- **Why the client's premise checks out:** D89's `sale_price_editable` hands
+  pricing back to the counter, and it is **on** in the development database
+  with discounts off. On this data one item shows achieved prices of 8.00,
+  0.40 and 8.01; another 3.00 and 1000.00. "Items are sold at different
+  prices to different customers" is a description of the configuration, not
+  a request to change the pricing model. **Confirm the flag on the client's
+  machine** — if it is off, this is R46 territory instead.
+
+### D127 — Who owes who, and a tax-number match that works both ways
+- **What:** a `both-faces` report listing every business that is both a
+  customer and a supplier, with what they owe, what we owe, and the
+  difference. The statement page's counterpart lookup is repaired with the
+  same normaliser.
+- **The lookup was wrong in five ways**, all now covered by tests: it
+  stripped only the *selected* party's tax number, so a stored `" 0012 "`
+  linked one way and not the other; it compared exactly, so `001-2345678`
+  linked neither way; it ended in `.first()`, so two suppliers sharing a
+  number resolved to whichever sorted first; it required `is_active`, hiding
+  a deactivated supplier still owed money — deactivating a record does not
+  settle a debt; and a blank number cannot express the relationship at all.
+  Blank still never matches: pairing empty strings would marry every business
+  without a tax number to every other.
+- **Ambiguity is shown, not resolved.** Where several records share a number,
+  every code on each side is named and their balances summed, so a human sees
+  the ambiguity instead of the system silently picking one.
+- **No netting.** D79 settled that and it stands: each side settles with its
+  own payment documents, which is what tax filing needs. The difference here
+  is information on a report, and the sign convention is in the column name.
+- **Still matched by tax number.** An explicit link needs a migration and
+  waits for a look at the real data (R95).
+
+### D128 — The receiving desk searches batch numbers instead of retyping them
+- **What:** typing in the batch-number box on receiving (and the opening
+  documents) suggests existing batches for the selected item, matched
+  case-insensitively, showing expiry and quantity on hand. Picking one fills
+  the number **and its expiry**.
+- **Why this and not a "receive again" button:** the client asked for a
+  short-cut when receiving the same brand and batch again. Temesgen's
+  objection was right — a new delivery rarely repeats the same combination,
+  so a prefilled copy saves little, and the capability already exists
+  (`get_or_create` reuses the batch, a new cost lot is written; proven by
+  `test_i7_rereceipt_same_batch_new_price_makes_second_lot`).
+- **Why batch numbers are worth more than keystrokes:** a batch number is the
+  one master string in this system that can **never** be corrected. `Batch`
+  is unique on (item, batch_no) and four models point at it with PROTECT —
+  cost lots, the stock ledger, balances, document lines. A typo, once posted,
+  is permanent: the stock sits under a label nobody will search for, and a
+  recall on that batch misses it. Generics can be merged and items can be
+  retired; a batch has neither escape, so entry is the only place to defend.
+- **Two things it also fixes:** posting refuses an existing batch whose
+  expiry differs from the one typed, so filling the expiry turns a hard
+  failure at posting into no failure at all. And `get_or_create` matches
+  case-sensitively, so `b001` silently becomes a second batch of the same
+  goods — the suggestion warns when the typed value differs only in case.
+- **Delivered client-side** from a JSON index, not HTMX: rows are cloned from
+  a template and nothing re-processes them, which is the same reason
+  `filterBatches` works the way it does.
+
+### D129 — Number boxes ignore the scroll wheel and arrow keys
+- **What:** a focused `<input type="number">` blurs on wheel and refuses
+  arrow keys. The page still scrolls normally.
+- **Why:** the stock-count screen pre-fills every line with the system's own
+  figure and is long enough to force scrolling, so a scroll over a focused
+  box silently rewrote a counted quantity with no trace. This is the cheapest
+  candidate explanation for the still-undiagnosed report of a quantity of 180
+  registering as 189.
+
+### D130 — Posting asks first, and shows base units
+- **What:** the ordinary Post button now uses the shared confirmation dialog
+  (D93), listing item, batch and quantity **in the item's own base unit**,
+  the document total, and a plain statement that a posted document cannot be
+  edited. A new `DocumentLine.base_preview` derives `qty_entered × factor`,
+  because `qty_base` is zero until posting computes it.
+- **Why:** validation cannot tell a typo from an intention, so the only real
+  protection is showing people what they are about to commit and making them
+  say yes. The dialog has existed since D93 and the **correction** Post
+  button already used it well; the ordinary one was a plain form. This was
+  wiring, not machinery — and base units are exactly where a mistyped
+  quantity and a silently-applied pack factor both become visible.

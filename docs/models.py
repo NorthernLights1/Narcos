@@ -227,6 +227,16 @@ class DocumentLine(models.Model):
         gross = Decimal(self.qty_entered or 0) * (self.unit_price or 0)
         return round2(gross - (self.line_discount or 0))
 
+    @property
+    def base_preview(self) -> int:
+        """D130: how many base units this line will actually move.
+
+        `qty_base` is zero until posting computes it, so a confirmation shown
+        before posting has to derive it the same way the engine does. This is
+        exactly where a mistyped quantity becomes visible — and where a pack
+        factor quietly multiplies one."""
+        return (self.qty_entered or 0) * (self.factor or 1)
+
     def _document_is_locked(self) -> bool:
         return self.document.status != Document.Status.DRAFT
 

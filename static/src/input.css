@@ -54,6 +54,14 @@
   .hint { @apply text-xs text-slate-400; }
   .cell-hint { @apply block text-xs text-slate-500 mt-1 whitespace-nowrap; }
 
+  /* D128: batch-number suggestions on the receiving desk. A typo here can
+     never be corrected, so the existing spellings sit right under the box. */
+  .batch-suggest { @apply mt-1 flex flex-col items-start gap-1; }
+  .batch-suggest-warn { @apply text-xs text-amber-700 font-medium; }
+  .batch-chip { @apply cursor-pointer rounded border border-slate-300 bg-white
+                px-2 py-0.5 text-xs text-slate-600 whitespace-nowrap
+                hover:border-accent hover:text-accent; }
+
   /* ---- forms ---- */
   .field { @apply mb-4; }
   .field-wide { @apply sm:col-span-2; }

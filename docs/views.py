@@ -4,7 +4,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum
 from django.db.models.functions import Coalesce
 from django.forms import modelform_factory
 from django.http import Http404
@@ -46,7 +46,7 @@ from docs.settlement import (
     settlement_state,
 )
 from money.models import PaymentAllocation, PaymentLine
-from stock.models import StockBalance, Zone
+from stock.models import Batch, StockBalance, Zone
 
 
 def _config(doc_type: str):
@@ -285,6 +285,41 @@ def _totals_preview_context(config, doc: Document) -> dict | None:
     }
 
 
+def _batch_index(doc_type: str) -> dict:
+    """D128: existing batches per item, for the receiving desk's batch-number
+    box.
+
+    A batch number is the one master string in this system that can never be
+    corrected. `Batch` is unique on (item, batch_no) and four models point at
+    it with PROTECT — cost lots, the stock ledger, balances and document
+    lines — so a typo, once posted, is permanent: the stock sits under a label
+    nobody will search for, and a recall on that batch misses it. Generics can
+    be merged and items can be retired; a batch has neither escape.
+
+    Two smaller things it also fixes. Posting refuses an existing batch whose
+    expiry differs from the one typed, so picking the batch and filling its
+    expiry turns a hard failure at posting into no failure at all. And
+    `get_or_create` matches the number case-sensitively, so `b001` silently
+    becomes a second batch of the same goods — offering the existing spelling
+    is what stops that.
+    """
+    if "batch_no_entered" not in DOC_CONFIG[doc_type].get("lines", ()):
+        return {}
+    rows = (Batch.objects
+            .annotate(warehouse_qty=Coalesce(Sum(
+                "stockbalance__qty",
+                filter=Q(stockbalance__zone=Zone.WAREHOUSE)), 0))
+            .order_by("item_id", "batch_no"))
+    index: dict[str, list] = {}
+    for batch in rows:
+        index.setdefault(str(batch.item_id), []).append({
+            "no": batch.batch_no,
+            "expiry": batch.expiry_date.isoformat() if batch.expiry_date else "",
+            "qty": batch.warehouse_qty,
+        })
+    return index
+
+
 def _draft_form(request, doc: Document):
     config = _config(doc.doc_type)
     if request.method == "POST":
@@ -313,6 +348,7 @@ def _draft_form(request, doc: Document):
         "formsets": formsets,
         "totals_preview": _totals_preview_context(config, doc),
         "common_units": COMMON_UNITS,
+        "batch_index": _batch_index(doc.doc_type),
         "quick_add_item": quick_add_item,
         # R49: the dialog renders the full ItemForm — D33 still hides the
         # margin fields from employees.
@@ -548,10 +584,20 @@ def document_void(request, pk):
     return redirect("document_detail", pk=voided.pk)
 
 
+# D123: fields the posting engine reads that a doc type's form may not show.
+# D84 took `free_qty` off the receiving form because the box confused staff,
+# but posting still computes stock as (qty_entered + free_qty) × factor. A copy
+# driven by the form's list therefore voided 110 units and re-posted 100,
+# moving the lot cost with it. What a form asks for and what a correction must
+# carry are two different questions.
+ENGINE_LINE_FIELDS = ("free_qty",)
+
+
 def _duplicate_as_draft(source: Document, actor, reason: str) -> Document:
-    """An editable copy of `source`, built from the same field lists the
-    entry forms use — so whatever a doc type asks staff to type is exactly
-    what gets carried over, and nothing computed at posting is.
+    """An editable copy of `source`, built from the field lists the entry forms
+    use, plus the fields the engine reads whether or not a form shows them
+    (D123) — so nothing the posting math consumes is silently dropped, and
+    nothing computed at posting is carried over.
 
     DOC_CONFIG is read unfiltered on purpose: a discount or pack factor
     captured before those boxes were switched off (D89) still belongs to
@@ -566,10 +612,13 @@ def _duplicate_as_draft(source: Document, actor, reason: str) -> Document:
         doc_type=source.doc_type, created_by=actor, corrects=source,
         correction_reason=reason, **fields,
     )
+    line_fields = list(config["lines"]) + [
+        name for name in ENGINE_LINE_FIELDS if name not in config["lines"]
+    ]
     for line in source.lines.all():
         DocumentLine.objects.create(
             document=draft,
-            **{name: getattr(line, name) for name in config["lines"]},
+            **{name: getattr(line, name) for name in line_fields},
         )
     if config.get("charges"):
         for charge in source.charges.all():

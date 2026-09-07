@@ -6,6 +6,10 @@
 <h1>{{ title }}{% if doc.pk %} — {{ doc }}{% endif %}</h1>
 <form method="post" id="doc-form">
   {% csrf_token %}
+  {% comment %}D128: existing batches per item, so the receiving desk picks a
+  batch it already has instead of retyping it. A mistyped batch number can
+  never be corrected — four models point at Batch with PROTECT.{% endcomment %}
+  {% if batch_index %}{{ batch_index|json_script:"batch-index" }}{% endif %}
   {% if common_units %}
   <datalist id="unit-options">
     {% for unit in common_units %}<option value="{{ unit }}"></option>{% endfor %}

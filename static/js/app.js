@@ -438,6 +438,97 @@
     if (select._choices) select._choices.setChoiceByValue(String(value));
   }
 
+  /* ---------- D128: batch-number suggestions on receiving ----------
+   * A batch number is the one master string here that can never be fixed:
+   * Batch is unique on (item, batch_no) and four models point at it with
+   * PROTECT, so a typo is permanent — the stock sits under a label nobody
+   * searches for, and a recall on that batch misses it. Prevention at entry
+   * is the only defence there is.
+   *
+   * Picking an existing batch also fills its expiry, which turns a hard
+   * refusal at posting ("already exists with expiry X — you entered Y") into
+   * no refusal at all. Matching is case-insensitive because get_or_create is
+   * not: `b001` would otherwise become a second batch of the same goods. */
+
+  var BATCH_INDEX = null;
+
+  function batchIndex() {
+    if (BATCH_INDEX === null) {
+      var node = document.getElementById("batch-index");
+      try {
+        BATCH_INDEX = node ? JSON.parse(node.textContent) : {};
+      } catch (e) {
+        BATCH_INDEX = {};
+      }
+    }
+    return BATCH_INDEX;
+  }
+
+  function batchSuggestions(row, typed) {
+    var itemSelect = row.querySelector('select[name$="-item"]');
+    if (!itemSelect || !itemSelect.value) return [];
+    var all = batchIndex()[itemSelect.value] || [];
+    var needle = (typed || "").trim().toLowerCase();
+    if (!needle) return all.slice(0, 5);
+    return all.filter(function (b) {
+      return b.no.toLowerCase().indexOf(needle) !== -1;
+    }).slice(0, 5);
+  }
+
+  function applyBatch(row, batch) {
+    var input = rowInput(row, "batch_no_entered");
+    if (input) input.value = batch.no;
+    var expiry = rowInput(row, "expiry_entered");
+    if (expiry && batch.expiry) expiry.value = batch.expiry;
+    renderBatchSuggestions(row);
+  }
+
+  function renderBatchSuggestions(row) {
+    var input = rowInput(row, "batch_no_entered");
+    if (!input) return;
+    var cell = input.closest("td");
+    if (!cell) return;
+    var box = cell.querySelector(".batch-suggest");
+    var typed = input.value;
+    var matches = batchSuggestions(row, typed);
+
+    /* An exact-but-for-case match is the silent duplicate this exists to
+     * stop, so say so rather than just listing it. */
+    var clash = null;
+    var needle = typed.trim().toLowerCase();
+    matches.forEach(function (b) {
+      if (needle && b.no.toLowerCase() === needle && b.no !== typed.trim()) clash = b;
+    });
+
+    if (!matches.length) {
+      if (box) box.remove();
+      return;
+    }
+    if (!box) {
+      box = document.createElement("div");
+      box.className = "batch-suggest";
+      cell.appendChild(box);
+    }
+    box.innerHTML = "";
+    if (clash) {
+      var warn = document.createElement("p");
+      warn.className = "batch-suggest-warn";
+      warn.textContent = "\u201c" + clash.no + "\u201d already exists \u2014 "
+        + "a different capitalisation makes a second batch.";
+      box.appendChild(warn);
+    }
+    matches.forEach(function (b) {
+      var chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "batch-chip";
+      chip.textContent = b.no + " \u00b7 "
+        + (b.expiry ? "exp " + b.expiry : "no expiry")
+        + " \u00b7 " + b.qty + " in stock";
+      chip.addEventListener("click", function () { applyBatch(row, b); });
+      box.appendChild(chip);
+    });
+  }
+
   document.addEventListener("change", function (event) {
     var el = event.target;
     if (el.matches && el.matches('select[name$="-item"]')) {
@@ -447,6 +538,10 @@
     }
     if (el.matches && el.matches('select[name$="-batch"]')) {
       updateBatchHint(el);
+    }
+    if (el.matches && el.matches('select[name$="-item"]')) {
+      var itemRow = el.closest("tr");
+      if (itemRow) renderBatchSuggestions(itemRow);
     }
     if (el.matches && el.matches('select[name$="-target"]')) {
       var data = optionData(el, el.value);
@@ -723,7 +818,34 @@
     if (el.name === "withheld_amount" || el.closest("#allocations-rows")) {
       prefillPaymentFromAllocations();
     }
+    if (el.name && el.name.indexOf("-batch_no_entered") !== -1) {
+      var batchRow = el.closest("tr");
+      if (batchRow) renderBatchSuggestions(batchRow);
+    }
     recomputeTotals();
+  });
+
+  /* ---------- D129: number boxes ignore the scroll wheel ----------
+   * A focused <input type="number"> changes value on wheel and on arrow keys.
+   * The stock-count screen is the dangerous one: it pre-fills every line with
+   * the system's own figure and is long enough to force scrolling, so a
+   * scroll over a focused box silently rewrites a counted quantity with no
+   * trace. Blur on wheel rather than only preventing it, so the page still
+   * scrolls normally. */
+
+  document.addEventListener("wheel", function (event) {
+    var el = event.target;
+    if (el && el.matches && el.matches('input[type="number"]:focus')) {
+      el.blur();
+    }
+  }, { passive: true });
+
+  document.addEventListener("keydown", function (event) {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+    var el = event.target;
+    if (el && el.matches && el.matches('input[type="number"]')) {
+      event.preventDefault();
+    }
   });
 
   document.addEventListener("DOMContentLoaded", function () {
@@ -731,6 +853,7 @@
     initItemFormControls();
     document.querySelectorAll("#lines-rows tr").forEach(filterBatches);
     document.querySelectorAll('select[name$="-batch"]').forEach(updateBatchHint);
+    document.querySelectorAll("#lines-rows tr").forEach(renderBatchSuggestions);
     /* Server-prefilled payment drafts (D74): compute the cash line on load */
     prefillPaymentFromAllocations();
     recomputeTotals();
