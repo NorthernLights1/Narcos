@@ -786,3 +786,70 @@ D80. One settings read answers it. **Read it before estimating anything else.**
 R46's own text is now stale either way: it justifies deferral by citing "D23
 (maintained price, editable per sale)", and D80 removed that editability before
 D89 handed it back behind this switch.
+
+### R97 — Retention counted crashed runs as backups and deleted the real ones — `FIXED` (was critical) — verified by execution
+
+Found while rescuing the client machine on 2026-09-07, after roughly a month of
+power cuts and no backups.
+
+[docker-backup.ps1:36-37](ops/docker-backup.ps1#L36-L37) creates
+`<BackupRoot>\<stamp>\` *before* the dump runs. Every later step throws on
+failure, so a power cut or a wedged Docker leaves the folder behind holding
+nothing restorable. Retention then listed **every** directory under the backup
+root, sorted newest-first, and kept fourteen. Empty wreckage sorts exactly like
+a real backup.
+
+**The sequence, executed against the client's actual state** (one good backup
+from the v1.1.0 update on 2026-08-07, thirty crashed runs after it, then one
+successful run today):
+
+| | Folders kept | `20260807-160000` |
+|---|---|---|
+| Before the fix | 15, of which 13 were empty | **deleted** |
+| After the fix | 10, every complete backup among them | survives |
+
+Thirteen of the fourteen keep slots went to empty folders, and the monthly rule
+picked `20260831` — also empty — as August's survivor, so the only real backup
+of the client's business was pruned while the script printed success and logged
+a `BACKUP` audit event.
+
+**Fixed:** a folder counts as a backup only if it holds a non-empty
+`narcos.dump` **and** `media.tar.gz`. Retention chooses its keep set from those
+alone. Incomplete folders are kept for seven days as evidence that runs are
+failing, then pruned, and their count is warned about on every run.
+
+**Still open around it:** why the schedule stopped is not settled. The task may
+never have fired at all — R69 records that these scripts had never been
+executed on a Windows host, and the last backup is dated the same day v1.1.0
+was tagged, which is what `deploy.ps1` takes on its own. Answer it from the task's
+**Last Run Result** in Task Scheduler.
+
+### R98 — Power cuts zero-fill Docker's config and the fix on screen deletes the database — `MITIGATED`
+
+Seen on the client machine 2026-09-07, photographed. Docker Desktop refused to
+start with:
+
+```
+loading/formatting daemon.json: parsing daemon config
+C:\Users\hp\.docker\daemon.json: parsing JSON:
+invalid character '\x00' looking for beginning of value
+```
+
+NTFS commits a file's new size before its contents reach the disk. A power cut
+in between leaves the file readable but full of NUL bytes. Nothing was wrong
+with the engine, the volumes, or the database — one settings file was zeroed.
+
+**Why this is a risk and not just a fault:** the dialog Docker Desktop shows
+offers exactly two buttons, *Quit* and **Reset to factory defaults**. Reset
+deletes named volumes, and `pgdata` is a named volume. The remedy presented on
+screen to a non-technical operator, during an outage, destroys the business.
+With three power cuts a day this dialog will appear again.
+
+**Mitigated by** [ops/fix-docker-config.ps1](ops/fix-docker-config.ps1), which
+quarantines unreadable config (renames, never deletes) and lets Docker Desktop
+rebuild defaults. This deployment needs no custom daemon settings, so defaults
+are correct. Detection covers zero-length, NUL-filled and half-written JSON;
+all four cases are tested, including a valid file being left untouched.
+
+**Not fixed, and cannot be from here:** the underlying cause is the power. This
+is R11's UPS, now purchased. Until it is installed, expect recurrence.

@@ -1,4 +1,4 @@
-# ops/docker-restore.ps1 — restore a Docker-deployment backup (D83).
+# ops/docker-restore.ps1 - restore a Docker-deployment backup (D83).
 #
 #   Drill (safe, default):  ops\docker-restore.ps1 20260717-160000
 #       -> restores into scratch DB `narcos_restore`, leaves live untouched.
@@ -29,7 +29,7 @@ if ($exists -ne "1") {
 else {
     $tables = (docker compose exec -T db psql -U narcos -d $TargetDb -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'").Trim()
     if ([int]$tables -gt 0) {
-        throw "Database '$TargetDb' already has $tables tables — refusing to overwrite. Use a scratch name for a drill."
+        throw "Database '$TargetDb' already has $tables tables - refusing to overwrite. Use a scratch name for a drill."
     }
 }
 
@@ -39,17 +39,17 @@ if ($LASTEXITCODE -ne 0) { throw "pg_restore failed." }
 if ($MediaTarget) {
     # R69: a disaster restore is documented as `docker compose up -d db` only,
     # so the app container this step needs is deliberately not running. It
-    # used to warn and then print "Restored" anyway — a bare-metal recovery
+    # used to warn and then print "Restored" anyway - a bare-metal recovery
     # finished looking successful with every attachment row pointing at a file
     # that was never unpacked. Start what the step needs, and fail if it fails.
     docker compose up -d app
     if ($LASTEXITCODE -ne 0) { throw "Could not start the app container for the media restore." }
     docker compose exec -T app test -f "/backups/$Stamp/media.tar.gz"
     if ($LASTEXITCODE -ne 0) {
-        throw "media.tar.gz is missing from /backups/$Stamp — that backup cannot restore attachments."
+        throw "media.tar.gz is missing from /backups/$Stamp - that backup cannot restore attachments."
     }
     docker compose exec -T app sh -c "mkdir -p '$MediaTarget' && tar xzf /backups/$Stamp/media.tar.gz -C '$MediaTarget' --strip-components=1"
-    if ($LASTEXITCODE -ne 0) { throw "Media unpack failed — the database is restored, the attachments are not." }
+    if ($LASTEXITCODE -ne 0) { throw "Media unpack failed - the database is restored, the attachments are not." }
     Write-Host "Media unpacked into $MediaTarget"
 }
 

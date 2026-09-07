@@ -119,6 +119,17 @@ schedule. See the design in [RUNBOOK.md](RUNBOOK.md#nightly-backup).
 `narcos.dump` (verified), `media.tar.gz`, and a copy of `.env`.
 **Retention**: newest 14 nightly + one per month for a year (auto-pruned).
 
+**Take one right now, outside the schedule:**
+```powershell
+cd C:\narcos
+powershell -ExecutionPolicy Bypass -File ops\backup-now.ps1 -To E:\narcos-rescue
+```
+Only the `db` container has to be healthy. It dumps, proves the dump is
+restorable, copies onto the USB and size-checks the copy, and **deletes
+nothing** — no retention runs. Media and the audit row are best-effort, so a
+broken `app` container still gets you the database. Use this before any repair,
+upgrade, or when the schedule is in doubt.
+
 **Offsite (the human step):** weekly, copy `C:\narcos\backups\` to an external
 USB drive kept off the machine. A backup on the same disk dies with the disk.
 
@@ -186,6 +197,15 @@ make sure the owner understands this.
 | Nightly backup didn't run | PC was off at 16:00 and "run missed task" wasn't ticked (§3); or the task's "Start in" isn't `C:\narcos`. |
 | Windows feels sluggish | WSL2 memory not capped — add `.wslconfig` (§2). |
 | `pull` fails | Not logged in to GHCR, or no internet — use the USB `docker load` path. |
+| Docker Desktop hangs on "starting", app won't open | Almost always an unclean shutdown (power cut). Quit Docker Desktop from the tray; if it won't quit, end `Docker Desktop.exe` and `com.docker.backend.exe` in Task Manager. Then `wsl --shutdown` in an **admin** PowerShell, wait 10 s, relaunch Docker Desktop. Confirmed working on the client machine, 2026-09-07. |
+| Docker Desktop: "unexpected error", naming a `.json` and `invalid character '\x00'` | A power cut zero-filled that config file (NTFS commits the size before the contents). Click **Quit**, then `powershell -ExecutionPolicy Bypass -File ops\fix-docker-config.ps1`, then start Docker Desktop. It is a settings file, not your data (R98). |
+| Backups stopped appearing | Get the data off first: `ops\copy-data-out.ps1 -To E:\narcos-rescue`. Then check the task in Task Scheduler: its **Last Run Result** is what diagnoses it, and confirm its action path points at where `ops\` really is. A task pointing at `C:\narcos\ops\docker-backup.ps1` when the folder sits elsewhere fails every day, silently (R97). |
+
+> **Never click "Clean / Purge data" or "Reset to factory defaults"** in Docker
+> Desktop's Troubleshoot panel. The database lives in the `pgdata` named volume
+> and both buttons delete named volumes. It is the button an operator reaches
+> for when the whale spins forever, and it destroys the business. Power-cycling
+> the PC is always safer than either of them.
 
 Health check any time:
 ```powershell
