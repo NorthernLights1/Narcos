@@ -35,6 +35,22 @@ function Find-DeployDir {
 $deployDir = Find-DeployDir
 Set-Location $deployDir
 
+function Wait-DockerEngine([int]$Seconds = 600) {
+    # A catch-up run (StartWhenAvailable) fires minutes after login, while
+    # Docker Desktop is often still starting - on the client's 8 GB machine
+    # that takes several minutes. Without this the run throws immediately,
+    # leaves a partial folder, and the day's backup silently does not exist.
+    $deadline = (Get-Date).AddSeconds($Seconds)
+    while ((Get-Date) -lt $deadline) {
+        docker version --format "{{.Server.Version}}" 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) { return }
+        Write-Host ("Waiting for the Docker engine... {0:N0}s" -f ((Get-Date) - $deadline.AddSeconds(-$Seconds)).TotalSeconds)
+        Start-Sleep -Seconds 15
+    }
+    throw "Docker engine not available after $Seconds seconds. Is Docker Desktop running?"
+}
+Wait-DockerEngine
+
 function Get-DotEnvValue([string]$Key) {
     if (-not (Test-Path ".\.env")) { return $null }
     foreach ($line in Get-Content ".\.env") {
