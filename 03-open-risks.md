@@ -903,3 +903,35 @@ container, which is the client's current state: exit code 1, and
 fix the same run reported 0. The success path is straight-line and not yet run
 end-to-end here for want of a working app image; it is proven the first time
 the script is run by hand on the client after the app is restored.
+
+### R101 — The unattended-recovery chain was never completed at install — `OPEN` (high)
+
+Checked on the client machine 2026-09-08:
+`AutoAdminLogon = 0`, `DefaultUserName = hp`.
+
+[DEPLOYMENT.md section 2](ops/DEPLOYMENT.md) specifies a three-link boot chain
+so the machine returns on its own after a power blip: Windows auto-login, then
+Docker Desktop starting on sign-in, then `restart: unless-stopped` bringing the
+containers back. Links two and three are in place - Docker Desktop is in the
+`HKCU:\...\Run` key, and compose.yml carries the restart policy. Link one was
+never done.
+
+So the PC boots to a lock screen and stays there. Nothing starts until a person
+signs in. At a site with three power cuts a day this is the difference between
+a system that heals itself and one that needs someone present every time, and
+it also means a missed 16:00 backup only catches up once somebody logs in.
+
+**Fix:** enable auto sign-in through `netplwiz`, which stores the credential in
+LSA secrets. Do **not** set `DefaultPassword` in the registry - that writes the
+account password in plain text. On current Windows the netplwiz checkbox is
+hidden until Windows Hello sign-in is turned off in Settings, Accounts,
+Sign-in options.
+
+**The trade being made:** auto-login means whoever switches the PC on is inside
+the system. For a single-owner pharmacy on one machine behind a locked door
+that is usually right, but it is the owner's decision to take knowingly, not a
+default to slip past them.
+
+**Also seen in the same Run key:** OneDrive and Microsoft Edge auto-launch.
+Both compete for RAM on an 8 GB machine already capped to 3 GB for WSL2.
+Removing them is free headroom.
