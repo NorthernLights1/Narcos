@@ -13,6 +13,20 @@ param(
 )
 $ErrorActionPreference = "Stop"
 
+# R100: powershell.exe -File exits 0 even when the script threw, so Task
+# Scheduler reported LastTaskResult=0 for runs that produced no backup at all.
+# A scheduled job whose only signal is a success code that always says success
+# is worse than no job. Fail loudly, in the exit code and on disk.
+$LogFile = Join-Path $PSScriptRoot "backup.log"
+function Write-BackupLog([string]$Line) {
+    Write-Host $Line
+    try { Add-Content -Path $LogFile -Value $Line } catch { }
+}
+trap {
+    Write-BackupLog ("BACKUP FAILED {0} - {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm"), $_.Exception.Message)
+    exit 1
+}
+
 # R99: this ran from whatever directory Task Scheduler happened to give it, and
 # read .env relatively. A task whose "Start in" is unset or wrong therefore
 # failed every day, and a scheduled job that fails is silent by nature - which
@@ -137,4 +151,5 @@ if ($partial.Count -gt 0) {
     Write-Warning ("{0} incomplete backup folder(s) under $BackupRoot - earlier runs failed. Investigate before trusting the schedule." -f $partial.Count)
 }
 
-Write-Host "Backup written to $target"
+Write-BackupLog ("BACKUP OK {0} - {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm"), $target)
+exit 0

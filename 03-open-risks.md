@@ -878,3 +878,28 @@ from the Docker image store entirely, only `postgres:16` survived. Restore the
 app before enabling the schedule, or every run leaves a partial folder. Use
 `backup-now.ps1` in the meantime, which treats both steps as best effort and
 still produces a verified dump.
+
+### R100 — Task Scheduler reported success for backups that never happened — `FIXED`
+
+Found on the client machine 2026-09-08, minutes after registering the schedule
+that R99 fixed. `Start-ScheduledTask` was followed by `LastTaskResult = 0`, but
+the directory listing in the same command printed nothing: no backup folder had
+been created.
+
+`powershell.exe -File` exits 0 even when the script hit a terminating error, so
+the task's only health signal always said success. A scheduled job whose result
+code cannot express failure is worse than no job at all - it manufactures
+confidence. This is the same shape as R97 and R99: the backup system's failures
+were all silent, and that is why a month went missing.
+
+**Fixed:** `docker-backup.ps1` installs a `trap` that writes the failure to
+`ops\backup.log` and exits 1, and logs `BACKUP OK` with the folder on success.
+Task Scheduler now sees a real result code, and there is a dated line on disk
+either way.
+
+**Verified by execution** against a healthy database with a broken app
+container, which is the client's current state: exit code 1, and
+`BACKUP FAILED 2026-09-08 07:59 - Media archive failed.` in the log. Before the
+fix the same run reported 0. The success path is straight-line and not yet run
+end-to-end here for want of a working app image; it is proven the first time
+the script is run by hand on the client after the app is restored.
