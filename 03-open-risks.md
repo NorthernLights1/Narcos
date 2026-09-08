@@ -853,3 +853,28 @@ all four cases are tested, including a valid file being left untouched.
 
 **Not fixed, and cannot be from here:** the underlying cause is the power. This
 is R11's UPS, now purchased. Until it is installed, expect recurrence.
+
+### R99 — The scheduled backup depended on a working directory nobody set — `FIXED`
+
+Found on the client machine 2026-09-08, while setting up the schedule that had
+never existed.
+
+`docker-backup.ps1` read `.\.env` relative to whatever directory Task Scheduler
+happened to hand it. The deployment guide covers this with a "Start in" field,
+which is one unticked box away from a job that fails every day. A scheduled job
+that fails is silent by nature, which is the entire reason this client went a
+month with no backup and nobody noticed.
+
+**Fixed:** the script now finds the deploy directory by walking up from its own
+location until it finds `compose.yml`. Verified by running it from `/` with the
+deploy folder elsewhere: it resolved the correct backup root and dumped
+normally. `backup-now.ps1` and `copy-data-out.ps1` do the same.
+
+**Related operational fact, not a defect:** `docker-backup.ps1` archives media
+and writes an audit row through the **app** container, and by R69's deliberate
+design it throws if either fails. So the scheduled backup cannot succeed while
+the app container is down. On 2026-09-08 the client's app image was missing
+from the Docker image store entirely, only `postgres:16` survived. Restore the
+app before enabling the schedule, or every run leaves a partial folder. Use
+`backup-now.ps1` in the meantime, which treats both steps as best effort and
+still produces a verified dump.

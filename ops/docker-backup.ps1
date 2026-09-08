@@ -13,6 +13,21 @@ param(
 )
 $ErrorActionPreference = "Stop"
 
+# R99: this ran from whatever directory Task Scheduler happened to give it, and
+# read .env relatively. A task whose "Start in" is unset or wrong therefore
+# failed every day, and a scheduled job that fails is silent by nature - which
+# is the whole reason the client went a month with no backup. Locate the deploy
+# directory from the script's own location instead.
+function Find-DeployDir {
+    $d = $PSScriptRoot
+    for ($i = 0; $i -lt 6 -and $d; $i++) {
+        if (Test-Path (Join-Path $d "compose.yml")) { return $d }
+        $d = Split-Path -Parent $d
+    }
+    throw "Could not find compose.yml at or above $PSScriptRoot."
+}
+Set-Location (Find-DeployDir)
+
 # R69: DEPLOYMENT.md puts NARCOS_BACKUP_ROOT in .env, which Compose
 # interpolates but PowerShell never reads - so the first scheduled run threw
 # here before touching the database, and the nightly backup never existed.
