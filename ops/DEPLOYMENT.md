@@ -119,6 +119,21 @@ itself. Print this and tape it to the monitor.
 > including any error box, and send the photo. Do not click any button that
 > says **Reset** or **Factory defaults**.
 
+> **Shutting down at the end of the day**
+>
+> Just shut Windows down normally. Do **not** run `docker compose down` or
+> `docker compose stop` first.
+>
+> Both of those defeat the automatic restart. `down` deletes the containers, and
+> `restart: unless-stopped` cannot bring back something that no longer exists;
+> `stop` marks them as deliberately stopped, which is exactly the case that
+> policy refuses to restart. Either one means the next morning starts with
+> somebody typing a command.
+>
+> Leaving them running is also the safe option. Docker stops the containers as
+> part of its own shutdown, and Postgres receives SIGINT, which is a fast
+> shutdown: it rolls back what is in flight, checkpoints and exits cleanly.
+
 Nothing is lost during a power cut. Anything saved before the lights went out
 is already written down permanently. Only a form left half-typed is gone.
 
