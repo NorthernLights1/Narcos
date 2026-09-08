@@ -102,6 +102,28 @@ back up on its own after a reboot or power blip:
 
 ---
 
+## 2b. After a power cut - the card for the machine
+
+Auto-login is deliberately **off** (D131), so the system does not restart
+itself. Print this and tape it to the monitor.
+
+> **When the power comes back**
+>
+> 1. Switch the PC on.
+> 2. Sign in as usual.
+> 3. **Wait five minutes.** The whale icon near the clock stops moving when it
+>    is ready. This is normal, not a fault.
+> 4. Open the system as you always do.
+>
+> If it still will not open after ten minutes, photograph the whole screen,
+> including any error box, and send the photo. Do not click any button that
+> says **Reset** or **Factory defaults**.
+
+Nothing is lost during a power cut. Anything saved before the lights went out
+is already written down permanently. Only a form left half-typed is gone.
+
+---
+
 ## 3. Nightly backups
 
 Backups are **not** configured in the app — they run from the host on a

@@ -904,7 +904,7 @@ fix the same run reported 0. The success path is straight-line and not yet run
 end-to-end here for want of a working app image; it is proven the first time
 the script is run by hand on the client after the app is restored.
 
-### R101 — The unattended-recovery chain was never completed at install — `OPEN` (high)
+### R101 — The unattended-recovery chain was never completed at install — `DECIDED` (→ D131)
 
 Checked on the client machine 2026-09-08:
 `AutoAdminLogon = 0`, `DefaultUserName = hp`.
@@ -935,3 +935,10 @@ default to slip past them.
 **Also seen in the same Run key:** OneDrive and Microsoft Edge auto-launch.
 Both compete for RAM on an 8 GB machine already capped to 3 GB for WSL2.
 Removing them is free headroom.
+
+**Resolved 2026-09-08 by D131, not by configuration.** The owner keeps
+auto-login off deliberately: the security cost is permanent, and someone is on
+site during the hours the power actually cuts. Links two and three stay in
+place, so once a person signs in the stack returns on its own. The obligation
+that replaces link one is the recovery card at the machine - a manual step that
+nobody has been taught is not a decision, it is an outage waiting to happen.

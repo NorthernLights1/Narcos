@@ -2060,3 +2060,34 @@ wait for a copy of the client's database (see R95).*
   button already used it well; the ordinary one was a plain form. This was
   wiring, not machinery — and base units are exactly where a mistyped
   quantity and a silently-applied pack factor both become visible.
+
+### D131 — No auto-login; the system waits for a person
+
+**Date:** 2026-09-08. Supersedes the auto-login step in
+[DEPLOYMENT.md section 2](ops/DEPLOYMENT.md) for this client.
+
+**What:** Windows auto sign-in stays **off**. The PC boots to the lock screen
+and nothing starts until the owner signs in. The other two links of the boot
+chain stay as designed: Docker Desktop launches on sign-in, and the containers
+return by themselves through `restart: unless-stopped`.
+
+**Why:** auto-login means anyone who switches the machine on is inside the
+system, with no password between them and the customer ledger. The owner is on
+site through the working day, so the power cuts that matter happen while
+somebody is there to sign in. The security cost is permanent; the convenience
+it buys is a few minutes, a few times a day, with a person already present.
+
+**What this costs, accepted knowingly:**
+
+- After every power cut the system is down until someone signs in and waits a
+  few minutes for Docker. It does not heal itself.
+- The 16:00 backup runs as the signed-in user, so a day nobody signs in is a
+  day with no backup. The catch-up setting fires at the next sign-in, not at
+  the next boot.
+- An overnight or weekend restart leaves the machine at the lock screen until
+  the shop opens.
+
+**What this obliges us to do instead:** the recovery routine stops being
+automatic and becomes something the owner must know. It is written down at the
+machine, not left in a document nobody at the site has read. See the recovery
+card in DEPLOYMENT.md.
