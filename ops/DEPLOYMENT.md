@@ -96,9 +96,18 @@ back up on its own after a reboot or power blip:
   `%UserProfile%\.wslconfig`:
   ```ini
   [wsl2]
-  memory=4GB
+  memory=3GB
+  processors=2
+  swap=1GB
   ```
   Then `wsl --shutdown` and restart Docker Desktop.
+
+  **This file said `memory=4GB` until 2026-09-08, which did nothing.** WSL2
+  already defaults to about half the machine's RAM, so on an 8 GB box 4 GB was
+  the default restated, not a cap. The client's PC became unusable whenever
+  Docker ran and the owner had taken to killing it. Set it below the default,
+  and cap `processors` too - that is what keeps the desktop responsive. Save it
+  as plain ASCII: WSL ignores the file if it carries a byte-order mark.
 
 ---
 
@@ -150,7 +159,10 @@ schedule. See the design in [RUNBOOK.md](RUNBOOK.md#nightly-backup).
   with **Start in** = `C:\narcos`.
 - **Settings**: tick **"Run task as soon as possible after a scheduled start is
   missed"** — so a day the PC was off at 16:00 still gets backed up at next boot.
-- **General**: "Run whether user is logged on or not."
+- **General**: run it as the signed-in user, **not** "whether user is logged
+  on or not". `docker compose` reaches the engine through Docker Desktop, which
+  only exists inside a signed-in session, so a task running in session 0 has
+  nothing to talk to.
 
 **What each run produces** in `C:\narcos\backups\<timestamp>\`:
 `narcos.dump` (verified), `media.tar.gz`, and a copy of `.env`.
@@ -236,6 +248,9 @@ make sure the owner understands this.
 | `pull` fails | Not logged in to GHCR, or no internet — use the USB `docker load` path. |
 | Docker Desktop hangs on "starting", app won't open | Almost always an unclean shutdown (power cut). Quit Docker Desktop from the tray; if it won't quit, end `Docker Desktop.exe` and `com.docker.backend.exe` in Task Manager. Then `wsl --shutdown` in an **admin** PowerShell, wait 10 s, relaunch Docker Desktop. Confirmed working on the client machine, 2026-09-07. |
 | Docker Desktop: "unexpected error", naming a `.json` and `invalid character '\x00'` | A power cut zero-filled that config file (NTFS commits the size before the contents). Click **Quit**, then `powershell -ExecutionPolicy Bypass -File ops\fix-docker-config.ps1`, then start Docker Desktop. It is a settings file, not your data (R98). |
+| `docker` reports the pipe cannot be found, though Docker Desktop is running | Wrong context. `docker context ls`, then `docker context use desktop-linux`. The `default` context points at `docker_engine`, which Docker Desktop does not serve. |
+| Nothing starts after sign-in | Task Manager, Startup apps: Docker Desktop must say **Enabled**. Windows keeps an on/off switch that silently overrides the Run key entry. |
+| `docker compose ps` empty after a restart | `docker ps -a` and `docker volume ls`. `ps` hides stopped containers. If the containers are gone but the volumes are there, someone ran `compose down`; `docker compose up -d` rebuilds them in seconds and the data is untouched. |
 | Backups stopped appearing | Get the data off first: `ops\copy-data-out.ps1 -To E:\narcos-rescue`. Then check the task in Task Scheduler: its **Last Run Result** is what diagnoses it, and confirm its action path points at where `ops\` really is. A task pointing at `C:\narcos\ops\docker-backup.ps1` when the folder sits elsewhere fails every day, silently (R97). |
 
 > **Never click "Clean / Purge data" or "Reset to factory defaults"** in Docker

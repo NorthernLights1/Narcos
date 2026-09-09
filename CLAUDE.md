@@ -31,7 +31,10 @@ Precedence: **`02-decisions.md` wins over `04-build-spec.md`.** If they conflict
 say so rather than picking one. Decisions are appended, never rewritten; when one
 changes, the old entry is marked superseded and a dated new entry is added.
 
-`ops/` holds the deployment runbook, manual-testing log, and release checklist.
+`ops/` holds the deployment runbook, manual-testing log, release checklist, and
+`INCIDENT-2026-09-08.md` - the post-mortem of the day the client's machine went
+down after a month with no backup. Read its troubleshooting table before
+diagnosing anything on that PC.
 
 ## Repo map
 

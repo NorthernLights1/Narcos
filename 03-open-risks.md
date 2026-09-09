@@ -818,7 +818,14 @@ a `BACKUP` audit event.
 alone. Incomplete folders are kept for seven days as evidence that runs are
 failing, then pruned, and their count is warned about on every run.
 
-**Still open around it:** why the schedule stopped is not settled. The task may
+**Answered 2026-09-08:** the schedule never existed. `Get-ScheduledTask` on
+the client machine matched only five built-in Windows tasks; no Narcos task had
+ever been registered. The 8 August backup was taken by `deploy.ps1` during the
+v1.1.0 update, which is why it carries that date. Nothing was ever running, so
+the retention trap described above never actually fired - it was a loaded gun,
+not a fired one. See `ops/INCIDENT-2026-09-08.md`.
+
+**Originally recorded as still open:** why the schedule stopped is not settled. The task may
 never have fired at all — R69 records that these scripts had never been
 executed on a Windows host, and the last backup is dated the same day v1.1.0
 was tagged, which is what `deploy.ps1` takes on its own. Answer it from the task's
