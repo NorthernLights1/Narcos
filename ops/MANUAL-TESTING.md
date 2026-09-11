@@ -6,6 +6,37 @@ to do and **what you must see** — if you see something else, that's a bug.
 
 Written for a dev machine (Linux, `.venv`, PostgreSQL on localhost).
 
+> **2026-09-11 round 23 — D135 to D139:** **hard-refresh** (`?v=20260911a`)
+> before checking these; the CSS and JS both changed.
+>
+> - **Who owes us / who we have not paid (D135).** Reports → the two new
+>   drill-downs. Open a party row: the transactions behind the balance appear,
+>   each linking to its document, with original, settled and open. The party
+>   total must equal what the statement page closes at for the same date. Four
+>   businesses should be listed at the top as on both sides but unpairable —
+>   Bethel w/s, Girmay Wholesale, Abel w/s, Afewerki Araya. Put a matching tax
+>   number on both records of one of them and it must move into the table and
+>   net.
+> - **Sales log (D138).** Reports → Sales log, owner only. Switch *Group by*
+>   between brand-and-strength and generic: **the revenue, cost and profit
+>   totals must not change.** Open a group and check a line links to its
+>   document. `zitromax` should show a negative gross profit — that is real.
+> - **New item inline on receiving (D139).** Start a **Receiving**. The page
+>   must look exactly as before, with a *New item* card at the bottom and
+>   nothing open. Tick **Detailed** and the full item form appears. Choose a
+>   *Same as* item: generic, form, unit, pack and category fill in; **brand and
+>   strength stay empty**. Create it, and the new item must appear in the line
+>   picker without losing the draft. Reload the page and confirm the form does
+>   **not** flash open before collapsing.
+> - **Filters stay put (D137).** Filter Transactions by type, go to Dashboard,
+>   come back — the filter is still applied. Log out, log back in: still
+>   applied. Clear it and it stays cleared. Log in as a different user and they
+>   must see their own, not yours.
+> - **A drug needs its strength (D136).** Master → Items, open a drug with an
+>   empty strength, change nothing, press Save: it must refuse and say so. Fill
+>   the strength and it saves. A **Medical supply** with no strength must save
+>   untouched.
+
 > **2026-09-11 round 23 — D133/D134:** no CSS or JS changed, so no hard
 > refresh is needed for these two.
 >

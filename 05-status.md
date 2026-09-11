@@ -9,6 +9,69 @@ of 2026-09-08.
 
 ## The headline
 
+**Round 23 is built: seven features, 589 tests green, 15 commits on `build`.**
+Nothing is on the client's machine. They are still running v1.1.0 from
+8 August, and the backlog past that tag is now **25 commits**. The deployment
+script still prints "Update complete" after `compose up -d` and verifies
+nothing. That, not the feature work, is what stands between this and the
+client.
+
+**The push to `origin` is blocked** and needs you: `git push -u origin build`.
+
+## Round 23 — the seven requests of 2026-09-10, and two you added
+
+| # | What was asked | Answer | State |
+|---|---|---|---|
+| 1 | Expiry month + year only | **Cancelled by you**, after Astra showed a month-only input makes 75 batches on the shelf impossible to re-receive | dropped |
+| 2 | Sales log: brand, customer, price, date, batch cost, gross profit | Built as **D138**, owner-only, with charges and discounts on their own rows so it ties to the invoice | done |
+| 3 | The same, grouped per generic | A grouping switch on the same report. Money only at generic level (D132) | done |
+| 4 | Who owes / who we owe, drilling to transactions | Built as **D135**. Level one is the ledger balance, with a reconciling row so the two levels cannot disagree silently | done |
+| 5 | Faster new-brand entry inside receiving | Built as **D139**: the full item form inline behind a *detailed* tick, replacing the dialog, prefilled from a sibling | done |
+| 6 | Confirm batch search + expiry autofill | **Confirmed built** (D128). Manual-testing entry added | done |
+| 7 | Confirm sale hides empty and expired batches | **Was half built.** Empty yes, expired no. Fixed as **D133** | done |
+| + | Filter persistence per user | Built as **D137**, on the user row rather than the session, because nobody logs in automatically | done |
+| + | Strength mandatory for drugs | Built as **D136**, on create **and** on edit, as you confirmed | done |
+
+## Three things worth your attention
+
+**Strength already printed, and still does.** The client believed it did not.
+Rendering the real views against their restored database shows `SI-000003`
+printing as `ITM-0003 — Suxamethiom (Suxathon), 100/2ml, injection, ampoule, of
+1`, and the commit that did it is inside the deployed tag. The belief was true
+before round 4 and outlived the fix, because **strength appeared on no screen
+at all** — so filling the field looked pointless and the size went into the
+name instead. D134 fixes the screens. Tell the client this: filling the field
+is what takes the size out of the name.
+
+**D136 will obstruct before it helps.** 45 of their 162 drug items have no
+strength, and the rule applies on edit, so the next person to touch one of
+those records must supply a strength before saving. That is the cleanup
+arriving through the front door, and you chose it knowingly.
+
+**Two open risks are still untouched and both have money attached.** R102:
+withholding is switched off for the one tax that applies to them, and staff
+ticked the box three times in their first three days with nothing recorded —
+4,625.88 Birr of certificates. R106: voided sales leave 544 units counted as
+sellable, two items entirely phantom. Neither is in round 23 and neither needs
+new code. R106 needs a stock count; R102 needs a settings change and a
+conversation.
+
+## Recommended next steps
+
+1. **Push.** `git push -u origin build`.
+2. **Harden `ops/deploy.ps1`** so an update verifies itself and shows one
+   photographable result. It is required before D132 regardless, so doing it
+   now makes this release the rehearsal.
+3. **Release the 25-commit backlog** through that hardened path, rehearsed
+   against a restored copy first.
+4. **Put R102 and R106 to the client** — ask whether Shalom and Alula paid 100%
+   or 97%, and count ITM-0096 and ITM-0046 before trusting any stock figure.
+5. Then D132's catalogue cleanup, whose readers D134 has now built.
+
+---
+
+## Round 22 headline (superseded, kept for the record)
+
 **Every round-22 feature is written, tested and committed. None of it is on the
 client's machine.** They are running v1.1.0, installed 8 August. There are 14
 commits on `build` past that tag and no release since. The 8 September outage
