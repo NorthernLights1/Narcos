@@ -6,8 +6,8 @@ urlpatterns = [
     path("", views.report_hub, name="report_hub"),
     path("finance/", views.finance, name="finance"),
     path("statement/", views.statement, name="statement"),
-    # D135: must precede the catch-all, or the slug pattern swallows it.
+    # D135/D141: must precede the catch-all, or the slug pattern swallows them.
     path("positions/<slug:side>/", views.party_positions, name="party_positions"),
-    path("sales-log/", views.sales_log, name="sales_log"),
+    path("sales/", views.sales_report, name="sales_report"),
     path("<slug:slug>/", views.report_detail, name="report_detail"),
 ]

@@ -119,7 +119,8 @@ def test_employee_sales_report_hides_cost_and_profit(client, owner, employee,
     cash_sale(owner, customer, drug, cash)
 
     client.force_login(employee)
-    response = client.get(reverse("report_detail", args=["sales"]), _range())
+    # D141: the sales report has its own view now.
+    response = client.get(reverse("sales_report"), _range())
     assert response.status_code == 200
     content = response.content.decode()
     assert "30.00" in content
@@ -207,7 +208,7 @@ def test_sales_report_revenue_matches_the_invoice(client, owner, customer,
     discount they did not — so the report and the invoice disagreed by
     exactly `charges − doc_discount`."""
     from docs.models import DocumentCharge
-    from reports.views import _sales_line_rows
+    from reports.views import _sale_line_rows
 
     receive(owner, supplier, drug)
     sale = Document.objects.create(doc_type=DocType.SALE, created_by=owner,
@@ -224,7 +225,8 @@ def test_sales_report_revenue_matches_the_invoice(client, owner, customer,
     sale = post(sale, owner)
 
     today = timezone.localdate()
-    _rows, revenue, _cogs = _sales_line_rows(today, today, True)
+    _rows, totals = _sale_line_rows(today, today)
+    revenue = totals["revenue"]
 
     assert sale.grand_total == D("28.00")        # 30 lines + 3 delivery - 5
     assert revenue == D("28.00")                 # not 30.00

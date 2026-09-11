@@ -30,10 +30,13 @@
         <td><a href="{% url 'statement' %}">{% translate "Open" %}</a></td>
       </tr>
       {% endif %}
-      {% if group.sales_log %}
+      {% if group.sales_lines %}
+      {% comment %}D141: this one leads its group — it is the report the owner
+      opens, and the only one with the document behind each line a click
+      away.{% endcomment %}
       <tr>
-        <td>{% translate "Sales log (who bought what, at what price and what profit)" %}</td>
-        <td><a href="{% url 'sales_log' %}">{% translate "Open" %}</a></td>
+        <td>{% translate "Sales by period/customer/item" %}</td>
+        <td><a href="{% url 'sales_report' %}">{% translate "Open" %}</a></td>
       </tr>
       {% endif %}
       {% for slug, report in group.entries %}

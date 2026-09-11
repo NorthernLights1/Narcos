@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% translate "Sales by period/customer/item" %} - Narcos{% endblock %}
+{% block page_class %}page-wide{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{% translate "Sales by period/customer/item" %}</h1>
+  <div class="actions">
+    <a class="btn" href="?period={{ period }}&start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&doc={{ filters.doc|urlencode }}&generic={{ filters.generic|urlencode }}&brand={{ filters.brand|urlencode }}&format=csv">{% translate "CSV" %}</a>
+  </div>
+</div>
+
+<form method="get" class="card form-grid">
+  <div class="field">
+    <label for="id_period">{% translate "Period" %}</label>
+    <select id="id_period" name="period">
+      <option value="this_fy"{% if period == "this_fy" %} selected{% endif %}>{% translate "This fiscal year" %}</option>
+      <option value="last_fy"{% if period == "last_fy" %} selected{% endif %}>{% translate "Last fiscal year" %}</option>
+      <option value="custom"{% if period == "custom" %} selected{% endif %}>{% translate "Custom" %}</option>
+    </select>
+  </div>
+  <div class="field">
+    <label for="id_start">{% translate "Start" %}</label>
+    <input id="id_start" type="date" name="start" value="{{ start|date:'Y-m-d' }}">
+  </div>
+  <div class="field">
+    <label for="id_end">{% translate "End" %}</label>
+    <input id="id_end" type="date" name="end" value="{{ end|date:'Y-m-d' }}">
+  </div>
+  {% comment %}D141: three fragments, combinable. Case-insensitive and
+  partial, so "amox" finds Amoxil and 000012 finds SI-000012.{% endcomment %}
+  <div class="field">
+    <label for="id_doc">{% translate "Document no." %}</label>
+    <input id="id_doc" type="search" name="doc" value="{{ filters.doc }}"
+           placeholder="{% translate 'e.g. SI-000012' %}">
+  </div>
+  <div class="field">
+    <label for="id_generic">{% translate "Generic" %}</label>
+    <input id="id_generic" type="search" name="generic" value="{{ filters.generic }}"
+           placeholder="{% translate 'e.g. paracetamol' %}">
+  </div>
+  <div class="field">
+    <label for="id_brand">{% translate "Brand" %}</label>
+    <input id="id_brand" type="search" name="brand" value="{{ filters.brand }}"
+           placeholder="{% translate 'e.g. Panadol' %}">
+  </div>
+  <div class="field">
+    <label>&nbsp;</label>
+    <button class="btn btn-primary" type="submit">{% translate "Apply" %}</button>
+  </div>
+</form>
+
+<div class="card">
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          {% for label, key in columns %}<th>{{ label }}</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          {% comment %}D141: ISO dates and no wrapping on the three narrow
+          columns — with eleven columns a spelled-out date takes three lines
+          and the table stops being readable.{% endcomment %}
+          <td class="cell-tight">{{ row.date|date:"Y-m-d" }}</td>
+          <td class="cell-tight"><a href="{% url 'document_detail' row.doc_pk %}">{{ row.doc_no }}</a></td>
+          <td>{{ row.customer }}</td>
+          {% if row.is_extra %}
+          {% comment %}R75: a delivery charge or a document discount belongs to
+          the invoice, not to any one item — so it names itself instead of
+          borrowing an item's row.{% endcomment %}
+          <td colspan="4">{{ row.label }}</td>
+          {% else %}
+          <td class="cell-tight">{{ row.code }}</td>
+          <td>{{ row.generic }}</td>
+          <td>{{ row.brand }}</td>
+          <td>{{ row.strength }}</td>
+          {% endif %}
+          <td>{{ row.qty|default_if_none:"" }}</td>
+          <td>{{ row.revenue }}</td>
+          {% if show_cost %}
+          <td>{{ row.cogs }}</td>
+          <td>{{ row.profit }}</td>
+          {% endif %}
+        </tr>
+        {% empty %}
+        <tr><td colspan="{{ columns|length }}">{% translate "No rows." %}</td></tr>
+        {% endfor %}
+        <tr class="total-row">
+          <th colspan="7">{% translate "Total" %}</th>
+          <th></th>
+          <th>{{ totals.revenue }}</th>
+          {% if show_cost %}
+          <th>{{ totals.cogs }}</th>
+          <th>{{ totals.profit }}</th>
+          {% endif %}
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

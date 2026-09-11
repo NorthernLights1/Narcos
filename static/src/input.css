@@ -68,6 +68,12 @@
   .field-error { @apply text-danger text-xs mt-1; }
   .field-help { @apply text-xs text-slate-400 mt-1; }
   .form-grid { @apply grid gap-x-6 sm:grid-cols-2; }
+
+  /* D142: the copy-from picker — a searchable list and its button on one
+     line, stacking on a narrow screen. */
+  .copy-from { @apply flex flex-wrap items-center gap-2; }
+  .copy-from > select { @apply flex-1 min-w-0; }
+  .copy-from .choices { @apply flex-1 min-w-0 mb-0; }
   .filterbar { @apply grid gap-x-4 items-end sm:grid-cols-4 py-4; }
   .filterbar .field { @apply mb-0; }
   .searchbar { @apply flex gap-2 mb-4 max-w-md; }
@@ -80,6 +86,7 @@
   .inline-field-form { @apply inline-flex items-center gap-1 flex-wrap; }
   .inline-field-form input, .inline-field-form textarea { @apply w-48 py-1 px-2 text-sm; }
   .table-wrap { @apply overflow-x-auto; }
+  .cell-tight { @apply whitespace-nowrap; }
   .table { @apply w-full text-sm; }
   .table th {
     @apply text-left text-xs font-semibold uppercase tracking-wide
@@ -224,9 +231,10 @@
    topbar (z-30). */
 .choices__list--dropdown { z-index: 25; }
 
-/* D139: Alpine is deferred, so anything it hides is briefly visible before it
-   initialises. Without this the receiving page flashes the whole item form open
-   on every load — exactly the clutter the "detailed" tick exists to avoid. */
+/* D139/D142: Alpine is deferred, so anything it hides is briefly visible
+   before it initialises. The panel that needed this is gone — the rule stays
+   because the flash it prevents was found by screenshotting the page, not by
+   any test, and the next x-show would rediscover it the same expensive way. */
 [x-cloak] { display: none !important; }
 
 @media print {

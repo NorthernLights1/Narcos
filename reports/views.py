@@ -191,65 +191,91 @@ def _valuation(_start, _end, _user):
     return columns, rows, [_("Total"), "", "", "", "", _money(total)]
 
 
-def _extra_row(doc, label, amount, show_cost):
-    """A document-level amount shown on its own line, with no quantity."""
-    row = [_day(doc.document_date), doc.doc_no, doc.customer.name, label, "", amount]
-    if show_cost:
-        row.extend([_money(Decimal("0.00")), amount])
-    return row
+SALE_SIDE_TYPES = [DocType.SALE, DocType.CONSIGNMENT_SETTLEMENT,
+                   DocType.CUSTOMER_RETURN]
 
 
-def _sales_line_rows(start, end, show_cost):
+def _extra_row(doc, label, amount):
+    """R75: money on the document that belongs to no item.
+
+    `line_net` carries line discounts only. A delivery charge is money the
+    customer paid and a document discount is money they did not, so a report
+    built from lines alone disagrees with the invoice it came from by exactly
+    `charges − doc_discount`. They cost nothing to make, so they carry no COGS
+    and are all profit or all loss. They belong to no brand and no generic,
+    which is why a brand filter drops them (D141).
+    """
+    return {
+        "date": _day(doc.document_date), "doc_no": doc.doc_no,
+        "doc_pk": doc.pk, "customer": doc.customer.name,
+        "code": "", "generic": "", "brand": "", "strength": "",
+        "label": label, "is_extra": True, "qty": None,
+        "revenue": amount, "cogs": _money(Decimal("0.00")), "profit": amount,
+    }
+
+
+def _matches(row, filters) -> bool:
+    """D141: document number, generic and brand, each a case-insensitive
+    fragment. An extras row has no item, so a question about a brand or a
+    generic cannot include it — keeping it would inflate that brand."""
+    doc = (filters.get("doc") or "").strip().casefold()
+    generic = (filters.get("generic") or "").strip().casefold()
+    brand = (filters.get("brand") or "").strip().casefold()
+    if doc and doc not in row["doc_no"].casefold():
+        return False
+    if (generic or brand) and row["is_extra"]:
+        return False
+    if generic and generic not in row["generic"].casefold():
+        return False
+    if brand and brand not in row["brand"].casefold():
+        return False
+    return True
+
+
+def _sale_line_rows(start, end, filters=None):
+    """Every posted sale-side line as its own row, item named in full.
+
+    The row **is** the line: quantity, revenue and cost are that one item's,
+    never the document's. That was always true; D141 is what makes it legible,
+    because a bare item code left the reader unable to tell.
+
+    Quantity is `qty_base`, except on a settlement where only `qty_sold` was
+    actually sold. A return is the same goods coming back, so it signs
+    negative on every number and nets out of the total.
+    """
     rows = []
-    total_revenue = Decimal("0.00")
-    total_cogs = Decimal("0.00")
-    for doc in _posted_documents(
-        [DocType.SALE, DocType.CONSIGNMENT_SETTLEMENT, DocType.CUSTOMER_RETURN],
-        start, end,
-    ):
-        sign = Decimal("-1.00") if doc.doc_type == DocType.CUSTOMER_RETURN else Decimal("1.00")
+    for doc in _posted_documents(SALE_SIDE_TYPES, start, end):
+        sign = Decimal("-1.00") if doc.doc_type == DocType.CUSTOMER_RETURN \
+            else Decimal("1.00")
         for line in doc.lines.all():
-            if doc.doc_type == DocType.CONSIGNMENT_SETTLEMENT:
-                qty = line.qty_sold
-            else:
-                qty = line.qty_base
+            qty = (line.qty_sold if doc.doc_type == DocType.CONSIGNMENT_SETTLEMENT
+                   else line.qty_base)
             revenue = _money(sign * line.line_net)
             cogs = _money(sign * line.cogs_total)
-            total_revenue += revenue
-            total_cogs += cogs
-            row = [
-                _day(doc.document_date), doc.doc_no, doc.customer.name,
-                line.item.code, int(sign) * qty, revenue,
-            ]
-            if show_cost:
-                row.extend([cogs, _money(revenue - cogs)])
-            rows.append(row)
-        # R75: `line_net` carries line discounts only. A delivery charge is
-        # money the customer paid and a document discount is money they did
-        # not, so a report built from lines alone disagrees with the invoice
-        # it came from by exactly `charges − doc_discount`. They cost nothing
-        # to make, so they carry no COGS and are all profit or all loss.
+            rows.append({
+                "date": _day(doc.document_date), "doc_no": doc.doc_no,
+                "doc_pk": doc.pk, "customer": doc.customer.name,
+                "code": line.item.code, "generic": line.item.generic_name,
+                "brand": line.item.name, "strength": line.item.strength,
+                "label": "", "is_extra": False, "qty": int(sign) * qty,
+                "revenue": revenue, "cogs": cogs,
+                "profit": _money(revenue - cogs),
+            })
         for charge in doc.charges.all():
-            amount = _money(sign * charge.amount)
-            total_revenue += amount
-            rows.append(_extra_row(doc, charge.label, amount, show_cost))
+            rows.append(_extra_row(doc, charge.label, _money(sign * charge.amount)))
         if doc.doc_discount:
-            amount = _money(-sign * doc.doc_discount)
-            total_revenue += amount
-            rows.append(_extra_row(doc, _("Document discount"), amount, show_cost))
-    return rows, total_revenue, total_cogs
+            rows.append(_extra_row(doc, _("Document discount"),
+                                   _money(-sign * doc.doc_discount)))
 
-
-def _sales(start, end, user):
-    columns = [_("Date"), _("Document"), _("Customer"), _("Item"), _("Qty"),
-               _("Revenue")]
-    if user.is_owner:
-        columns.extend([_("COGS"), _("Profit")])
-    rows, revenue, cogs = _sales_line_rows(start, end, user.is_owner)
-    total = [_("Total"), "", "", "", "", _money(revenue)]
-    if user.is_owner:
-        total.extend([_money(cogs), _money(revenue - cogs)])
-    return columns, rows, total
+    kept = [row for row in rows if _matches(row, filters or {})]
+    totals = {"revenue": Decimal("0.00"), "cogs": Decimal("0.00")}
+    for row in kept:
+        totals["revenue"] += row["revenue"]
+        totals["cogs"] += row["cogs"]
+    totals["profit"] = _money(totals["revenue"] - totals["cogs"])
+    totals["revenue"] = _money(totals["revenue"])
+    totals["cogs"] = _money(totals["cogs"])
+    return kept, totals
 
 
 # --- D126: what each product actually sold for ---------------------------
@@ -352,7 +378,8 @@ def _sales_by_generic(start, end, user):
 
 
 def _profit(start, end, _user):
-    _rows, revenue, cogs = _sales_line_rows(start, end, True)
+    _rows, totals = _sale_line_rows(start, end)
+    revenue, cogs = totals["revenue"], totals["cogs"]
     expenses = Decimal("0.00")
     for doc in _posted_documents([DocType.EXPENSE], start, end):
         expenses += doc.grand_total
@@ -683,8 +710,6 @@ REPORTS = {
                   "owner_only": True, "group": GROUP_STOCK},
     "consignment": {"title": _("Consignment outstanding"), "builder": _consignment,
                     "open_items": True, "group": GROUP_STOCK},
-    "sales": {"title": _("Sales by period/customer/item"), "builder": _sales,
-              "group": GROUP_SALES},
     "sales-by-brand": {"title": _("Sales by brand, with achieved price"),
                        "builder": _sales_by_brand, "group": GROUP_SALES},
     "sales-by-generic": {"title": _("Sales by generic, with achieved price"),
@@ -740,9 +765,9 @@ def report_hub(request):
         group = next((g for g in groups if g["label"] == label), None)
         if group is None:
             group = {"label": label, "statement": label == GROUP_PARTIES,
-                     # D138: owner-only, so it is not offered to staff at all
-                     "sales_log": (label == GROUP_SALES
-                                   and request.user.is_owner),
+                     # D141: the sales report has its own view, so it is
+                     # listed here rather than through the slug registry.
+                     "sales_lines": label == GROUP_SALES,
                      "entries": []}
             groups.append(group)
         group["entries"].append((slug, config))
@@ -868,7 +893,8 @@ def finance(request):
     stock_cost = stock_warehouse_cost + stock_consigned_cost
 
     month_start = today.replace(day=1)
-    _rows, revenue, cogs = _sales_line_rows(month_start, today, True)
+    _rows, totals = _sale_line_rows(month_start, today)
+    revenue, cogs = totals["revenue"], totals["cogs"]
     expenses = Decimal("0.00")
     for doc in _posted_documents([DocType.EXPENSE], month_start, today):
         expenses += doc.grand_total
@@ -1229,159 +1255,72 @@ def party_positions(request, side):
     })
 
 
-# --- D138: the sales log, with cost and gross profit -----------------------
+# --- D141: the sales report, item named and document reachable -------------
 
-def _brand_strength_key(item):
-    """D138: the client asked for brand **and strength**, which together are
-    the fully specified product. `_brand_key` (D126) is left exactly as it is —
-    the client asked for the new reports to be kept clear of the old ones."""
-    parts = [part for part in (item.name, item.strength) if part]
-    label = f"{item.code} — " + ", ".join(parts)
-    return label, label
-
-
-SALES_LOG_TYPES = [DocType.SALE, DocType.CONSIGNMENT_SETTLEMENT,
-                   DocType.CUSTOMER_RETURN]
-EXTRAS_LABEL = _("Other charges and discounts")
+SALES_COLUMNS = [
+    (_("Date"), "date"), (_("Document"), "doc_no"), (_("Customer"), "customer"),
+    (_("Item"), "code"), (_("Generic"), "generic"), (_("Brand"), "brand"),
+    (_("Strength"), "strength"), (_("Qty"), "qty"), (_("Revenue"), "revenue"),
+]
+SALES_COST_COLUMNS = [(_("COGS"), "cogs"), (_("Profit"), "profit")]
+SALES_FILTERS = REPORT_FILTERS + ("doc", "generic", "brand")
 
 
-def _line_lot_cost(line, qty_fallback):
-    """What the goods on this line cost, and the unit cost behind it.
-
-    A line can consume more than one cost lot — `SI-000035` in the client's
-    database splits one item across two — so the unit figure is the weighted
-    average, and the lots are named separately so a blended number never reads
-    as a single purchase price.
-
-    **A customer return has no consumptions.** It creates a cost lot rather than
-    drawing on one, so the consumption rows are empty while `cogs_total` is
-    real. Dividing by the line's own quantity is then the honest answer; showing
-    0.00 beside a non-zero cost was not, and the per-unit column is the one the
-    client reads to judge a price. *(Found by gpt-6-astra, 2026-09-11.)*
-    """
-    lots = [(c.lot.batch.batch_no if c.lot.batch_id else "", c.qty, c.unit_cost)
-            for c in line.lot_consumptions.select_related("lot__batch")]
-    qty = sum(qty for _no, qty, _cost in lots) or abs(qty_fallback)
-    unit = _money(abs(line.cogs_total) / qty) if qty else _money(Decimal("0.00"))
-    return unit, lots
-
-
-def _sales_log_rows(start, end, key):
-    """One row per posted sale line, grouped by `key(item)`.
-
-    Charges and document discounts live on the document, not the line (R75), so
-    they are collected into their own group. Without them the log disagrees
-    with the invoice it came from by exactly `charges − doc_discount`.
-    """
-    groups: dict = {}
-    extras: list = []
-    for doc in _posted_documents(SALES_LOG_TYPES, start, end):
-        sign = Decimal("-1.00") if doc.doc_type == DocType.CUSTOMER_RETURN \
-            else Decimal("1.00")
-        for line in doc.lines.select_related("item", "batch"):
-            qty = line.qty_sold if doc.doc_type == DocType.CONSIGNMENT_SETTLEMENT \
-                else line.qty_base
-            if not qty:
-                continue
-            revenue = _money(sign * line.line_net)
-            cost = _money(sign * line.cogs_total)
-            unit_cost, lots = _line_lot_cost(line, qty)
-            group_key, label = key(line.item)
-            group = groups.setdefault(group_key, {
-                "label": label, "lines": [], "qty": 0,
-                "revenue": Decimal("0.00"), "cost": Decimal("0.00"),
-            })
-            group["lines"].append({
-                "date": _day(doc.document_date),
-                "document": doc,
-                "customer": doc.customer.name if doc.customer_id else "",
-                "item": line.item,
-                "batch": (line.batch.batch_no if line.batch_id
-                          else line.batch_no_entered),
-                "qty": int(sign) * qty,
-                "unit_price": _money(abs(line.line_net) / qty),
-                "revenue": revenue,
-                "unit_cost": unit_cost,
-                "lots": lots,
-                "cost": cost,
-                "profit": _money(revenue - cost),
-            })
-            group["qty"] += int(sign) * qty
-            group["revenue"] += revenue
-            group["cost"] += cost
-
-        for charge in doc.charges.all():
-            extras.append({"date": _day(doc.document_date), "document": doc,
-                           "customer": doc.customer.name if doc.customer_id else "",
-                           "label": charge.label,
-                           "revenue": _money(sign * charge.amount),
-                           "cost": _money(Decimal("0.00"))})
-        if doc.doc_discount:
-            extras.append({"date": _day(doc.document_date), "document": doc,
-                           "customer": doc.customer.name if doc.customer_id else "",
-                           "label": _("Document discount"),
-                           "revenue": _money(-sign * doc.doc_discount),
-                           "cost": _money(Decimal("0.00"))})
-    return groups, extras
+def _sales_csv(rows, totals, show_cost):
+    """The same rows the page shows, filters and all. An extras row has no
+    item, so its label goes in the Item column — the place a reader looks to
+    ask what a row is about."""
+    columns = SALES_COLUMNS + (SALES_COST_COLUMNS if show_cost else [])
+    response = HttpResponse(content_type="text/csv")
+    response["Content-Disposition"] = 'attachment; filename="sales.csv"'
+    writer = csv.writer(response)
+    writer.writerow([str(label) for label, _key in columns])
+    for row in rows:
+        line = dict(row)
+        if row["is_extra"]:
+            line["code"] = row["label"]
+        writer.writerow(["" if line[key] is None else line[key]
+                         for _label, key in columns])
+    footer = ["" for _label, _key in columns]
+    footer[0] = str(_("Total"))
+    footer[8] = totals["revenue"]
+    if show_cost:
+        footer[9], footer[10] = totals["cogs"], totals["profit"]
+    writer.writerow(footer)
+    return response
 
 
 @login_required
-def sales_log(request):
-    """D138: what went out, to whom, at what price, and at what cost.
+def sales_report(request):
+    """D141. The client's four asks, in one screen:
 
-    **Owner only.** Every row carries cost and gross profit, which is D33's
-    line. Grouping switches between the item — brand and strength, the fully
-    specified product — and the generic.
+    *Linkable document* — the row carries the document's pk, so the number is
+    an anchor. Reading a report and opening the invoice behind a line was two
+    searches; now it is a click.
 
-    **At generic level the money is reported and the quantity is not (D132).**
-    Folding paracetamol syrup, tablets and IV into one row puts bottles and
-    packs in one denominator, so a quantity there would be arithmetic on
-    nothing. Regrouping never changes a monetary total.
+    *Generic and brand beside the code* — `ITM-0005` named nothing, which is
+    what made the money look like it belonged to the invoice rather than to
+    the line. Strength rides along, because a strength that appears nowhere on
+    screen is the reason it is missing from the catalogue (D134/D136).
+
+    *Per-item money* — already true, unchanged, and now visibly so.
+
+    *Three filters* — document, generic, brand; each a case-insensitive
+    fragment, all three combinable, and the total follows what is on screen.
     """
-    if not request.user.is_owner:
-        raise PermissionDenied
-    restore_filters(request, "sales-log", REPORT_FILTERS + ("group",))
+    restore_filters(request, "sales", SALES_FILTERS)
     period, start, end = _selected_range(request)
-    grouping = request.GET.get("group", "item")
-    if grouping not in ("item", "generic"):
-        grouping = "item"
-    show_quantity = grouping == "item"
-
-    key = _generic_key if grouping == "generic" else _brand_strength_key
-    groups, extras = _sales_log_rows(start, end, key)
-
-    rendered = []
-    total = {"qty": 0, "revenue": Decimal("0.00"), "cost": Decimal("0.00")}
-    for group_key in sorted(groups):
-        group = groups[group_key]
-        total["qty"] += group["qty"]
-        total["revenue"] += group["revenue"]
-        total["cost"] += group["cost"]
-        rendered.append({
-            "label": group["label"],
-            "lines": group["lines"],
-            "qty": group["qty"] if show_quantity else None,
-            "revenue": _money(group["revenue"]),
-            "cost": _money(group["cost"]),
-            "profit": _money(group["revenue"] - group["cost"]),
-        })
-    if extras:
-        extra_revenue = sum((e["revenue"] for e in extras), Decimal("0.00"))
-        total["revenue"] += extra_revenue
-        rendered.append({
-            "label": EXTRAS_LABEL, "lines": extras, "qty": None,
-            "revenue": _money(extra_revenue), "cost": _money(Decimal("0.00")),
-            "profit": _money(extra_revenue), "is_extras": True,
-        })
-
-    return render(request, "reports/sales_log.html", {
-        "groups": rendered,
-        "grouping": grouping,
-        "show_quantity": show_quantity,
-        "total": {"qty": total["qty"] if show_quantity else None,
-                  "revenue": _money(total["revenue"]),
-                  "cost": _money(total["cost"]),
-                  "profit": _money(total["revenue"] - total["cost"])},
+    filters = {key: request.GET.get(key, "") for key in ("doc", "generic", "brand")}
+    rows, totals = _sale_line_rows(start, end, filters)
+    show_cost = request.user.is_owner
+    if request.GET.get("format") == "csv":
+        return _sales_csv(rows, totals, show_cost)
+    return render(request, "reports/sales.html", {
+        "columns": SALES_COLUMNS + (SALES_COST_COLUMNS if show_cost else []),
+        "rows": rows,
+        "totals": totals,
+        "show_cost": show_cost,
+        "filters": filters,
         "period": period,
         "start": start,
         "end": end,
