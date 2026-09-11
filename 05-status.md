@@ -2,77 +2,180 @@
 
 Dear Temesgen,
 
-**Round 22 is built.** Five client comments turned into eight decisions
-(D123–D130), and **not one of them needs a database migration** — this whole
-round deploys as an image swap, with `migrate` running as a no-op. The three
-changes that *would* need schema work are deliberately unbuilt and written up
-as R95, waiting on a copy of the client's database.
+This is the ledger of the client's feature requests: what is built, what is
+not, and why. Evidence for every production number below is in
+[06-client-data.md](06-client-data.md), derived from the restored `narcos.dump`
+of 2026-09-08.
 
-Nothing is committed yet. Say the word.
+## The headline
 
-## What the five requests turned out to be
+**Every round-22 feature is written, tested and committed. None of it is on the
+client's machine.** They are running v1.1.0, installed 8 August. There are 14
+commits on `build` past that tag and no release since. The 8 September outage
+(R97-R101) took the week that would have shipped it.
 
-| They asked for | It became |
-|---|---|
-| A log and totals per brand / per generic | Two reports, with the **price actually achieved** — average, lowest, highest |
-| Who owes who, per customer | One report across all parties, plus five repairs to the tax-number matching |
-| Empty batches off the sale picker | Exactly that, scoped to the two document types that sell from the shelf |
-| A short-cut for repeat receiving | **Refused, and replaced** — see below |
-| Enter the generic once | Deferred to R95; the report already folds case so you can see the cost |
+## Round 22 — the five requests they made on 2026-09-06
 
-## The two things worth your attention
+| # | What they asked for | Answer | State |
+|---|---|---|---|
+| 1 | An empty batch should not be offered on a sale | D124 | Built, unreleased. **156 of 236 batches are empty** — two thirds of the picker was unsellable. Best of the five. |
+| 2 | Items go out at different prices to different customers | D126 — `sales-by-brand`, `sales-by-generic`, with achieved price | Built, unreleased. Premise confirmed: **58 of 70** repeat-sold items had more than one price. |
+| 3 | Who owes who, where a business is both customer and supplier | D127 — `both-faces` report | Built, unreleased, and **inert on their data** (R103). 13 both-faced businesses, **0** match by tax number, 13 match by name. |
+| 4 | Set the generic once instead of per brand; duplicate items | Deferred to R95 pending real data | **Not built.** The data has now answered it — see below. |
+| 5 | A shortcut when receiving the same brand and batch again | D128 — batch-number search, fills expiry too | Built, unreleased. The literal request was already possible; the search is worth more. |
 
-**1. One settings read decides how big the first request was (R96).**
-My first reading of this plan said sale prices cannot be typed, so "different
-prices to different customers" had to mean per-customer price lists. That was
-wrong. **D89's `sale_price_editable` hands pricing back to the counter**, and
-it is **on** in the dev database with discounts off. The posted rows prove it:
-one item sold at 3.00 and at 1000.00, another at 8.00, 0.40 and 8.01.
+Shipped alongside, requested by nobody: D123 (correction copied a receiving
+wrong and moved lot cost with it), D125 (retiring an item did nothing),
+D129 (scroll wheel silently rewrote quantities), D130 (Post now confirms in
+base units).
 
-The flag ships **off** by default. If the client's machine has it off, this
-request becomes R46 instead, which is much larger. **Read the setting before
-estimating anything else.**
+Earlier rounds are all closed and live: R57-R60 (D109-D112), the AR/AP
+as-of-date reports, the settings-aware report audit.
 
-**2. Your objection to the receiving short-cut was right, and better than my
-reasoning for it.** A new delivery rarely repeats the same combination, so a
-prefilled copy saves little — and the capability already existed, with a
-passing test. Your batch-number alternative targets something sharper:
-**a batch number is the one master string here that can never be corrected.**
-Four models point at `Batch` with PROTECT, so a typo is permanent, the stock
-sits under a label nobody searches for, and a recall on that batch misses it.
-Prevention at entry is the only defence there is. It also removes a hard
-posting failure (mismatched expiry) and closes a silent duplicate path
-(`b001` vs `B001`).
+## What is left, and why
 
-## Verified, not assumed
+**1. A release.** Nothing above is in front of the client. This is the largest
+single gap and it is not a technical one.
 
-- **Suite:** 506 tests, up from 479. The jump from 458 is `pytest.ini` finally
-  collecting `stock/tests.py` — 21 tests that had never run. **Count collected
-  tests, don't trust green.**
-- **Red-green checked:** with the fixes reverted, 14 of the new tests fail.
-- **Rendered in the running app:** all four new/changed pages return 200, the
-  batch index reaches the receiving form, and the empty batch `G001` is absent
-  from the sale picker while stocked `B0112` is present.
-- **A guard test caught me.** Two multi-line `{# #}` comments I wrote would
-  have printed to the page. `core/tests/test_template_comments.py` failed the
-  build over it, which is exactly what it is for.
+**2. R103 — make D127 match on name.** Found on 2026-09-09, one day after the
+feature was written. Six tests pass against fixtures with invented tax numbers.
+No migration needed for the interim fix.
 
-## Corrections to things I told you earlier
+**3. R95 — the three schema changes, now decided by the data.**
+Held back deliberately: `docker-entrypoint.sh` runs under `set -e` and migrates
+before handing off, with `restart: unless-stopped`, so a failing migration on
+their box is a silent restart loop, not a defect. The data settled all three:
 
-- I said merging two items was **impossible** because the stock ledger refuses
-  writes. Wrong — `QuerySet.update()` bypasses those guards and moves the rows.
-  The real barriers are correctness (base-unit divergence, batch collision,
-  FIFO order), not mechanism. Recorded in R95.
-- I recommended filtering proformas to in-stock batches. Reversed: a proforma
-  has zero ledger effect, so filtering removes legitimate quoting for goods
-  that have not landed.
+- `catalog.Generic` — **cleanup value is zero.** 201 items, 187 generics,
+  folding case and space merges nothing. Build it for the picker or not at all.
+- `Customer.also_supplier` — **justified, seed from normalised name.** Not tax
+  number, which matches none of the thirteen.
+- `Item.superseded_by` + guarded merge — **earns its place.** Passes the ORS
+  pair, correctly refuses the three Fogatery records.
 
-## Next
+**4. R102 — withholding, and it has money attached.** `withholding_on_sales` is
+FALSE and has never been changed since install. It is the only tax that touches
+this business. Staff ticked the box on three invoices, **4,625.88 went
+unrecorded**, and two of those three are settled in full rather than at 97%.
+Two pieces of work: a settings flip at the client, no release needed, and a code
+fix — the payment side refuses out loud, the sale side stores the tick and
+ignores it, and it is the only switched-off feature still showing a live
+control.
 
-1. **Read `sale_price_editable` on the client's machine** (R96).
-2. Get `narcos.dump` from their nightly backup — the folder also holds `.env`,
-   which must **not** leave that machine.
-3. Then decide R95's three migrations against real data rather than argument.
-4. Still open from before: restore drill on the Windows host, and the two
-   undiagnosed reports (180 → 189, leftover stock). D129 and D130 are the
-   cheapest candidate explanations for the first and are now in.
+**5. One client bug report is blocked on them. The other is now diagnosed.**
+"180 registered as 189" — 189 exists nowhere in the database; SI-000035 carries
+180 and 16 for the same item, totalling **196**. Ask if 196 is the number they
+saw. Still blocked on them.
+
+"More stock left than expected" — **cause found, 2026-09-09, see
+[06-client-data.md](06-client-data.md) §9.** Not an engine fault: balance equals
+ledger to the unit, voids reverse to zero, every factor is 1. Two real causes.
+**Nothing has ever been written off** — zero adjustments, stock counts, zone
+moves or returns exist, so breakage, expiry and shrinkage have no record and the
+system can only read high. And **opening stock is doing the work of receiving** —
+42 documents over six weeks, 36 items holding 15,370 units and **2,909,790 Birr**
+never received against a supplier document. `OP-000042` re-declares 700 units of
+batch `F24800`, three weeks after `GRN-000047` brought in 100 of the same batch.
+The fix needs no new code: `StockCountHandler` already measures the variance and
+auto-posts an owner-only adjustment. The screen has never been used.
+
+**6. R69/R83 — the restore drill on the Windows host has still never run.**
+
+**7. "Items sold at a pack factor above 1" — the premise does not hold.**
+Checked 2026-09-09 against the restored client copy. **Zero** document lines
+carry `factor > 1`: all 647 lines across every type and status have `factor = 1`,
+and `catalog_itemunit` is **empty**, so no alternate unit was ever defined.
+`unit_conversion_enabled` is FALSE and the factor box is hidden by D89. There is
+nothing to correct on this axis and no repair script is warranted.
+
+What does exist is `Item.pack_description`, free text such as "of 100" or
+"dozen". **89 of 201 items** describe a pack holding more than one base unit and
+**75 of them have been sold**, on 161 of 376 posted sale lines. That field is
+descriptive only — no code multiplies by it — so it cannot have inflated stock
+or money. Two follow-up checks found nothing either: no sale line on those items
+sits within 2x of its master price, and quantities that are exact pack multiples
+(11 lines) are ordinary wholesale volumes. **Needs the client's own words before
+any fix is designed.**
+
+**8. "Can we ship every known generic, brand and strength?" — asked
+2026-09-09. Answer: not into `Item`, and not "everything" (R104).** `Item` is a
+trading object with a price, batches and stock, and it is what every counter
+picker searches. Their entire catalogue is 201 items, 162 of them drugs; a
+national list would bury it. There is also no free, complete, machine-readable
+list of what is actually on Ethiopian shelves — their brands are `zitromax`,
+`Gabalin`, `Moxipil`, `Suxathon`, not United States registry entries — and a
+partial list that looks complete is worse than none, because staff stop reading
+the carton. **Strength must never be filled from a shipped table**; this business
+invoices hospitals and `full_description` prints onto the paper.
+
+The real defect is smaller than the question. 201 items produce only **19**
+dosage forms, four of which are junk (`Euipment` twice, `suspenssion`, `.`, one
+blank), and 16 base units with `pcs`/`piece` and `pk`/`pack` synonyms. Closing
+those two lists removes the whole class and needs no drug database. The generic
+names do have real misspellings — `Suxamethiom`, `Doxycyclline`, `Amoxacillin`,
+`Antiheamoroid` — and case folding merges nothing (R95), so a typeahead seeded
+from **their own 187 existing generics** is the only thing that stops the 188th
+spelling of amoxicillin. A vendored generic-names-only reference is a third
+step, if ever.
+
+**9. Two new client reports, 2026-09-09 — one is a real defect, one is not.**
+Full evidence in [06-client-data.md](06-client-data.md) §11.
+
+**"Catheter is not in my database."** He is right, and the reason is which
+screen he typed into. **The Inventory search filters code and name only; it
+never looks at `generic_name`** (`stock/views.py:54`). The Items list does. So
+typing `catheter` returns **3 of 10** catheter items on Inventory and 7 on
+Master — the four `Folly` catheters are invisible on the one screen whose job is
+to say how many he has. This trade reads by generic name and the code says so
+(R48), so this is a straight defect. **One-line fix, no migration.**
+
+Separately, three items spell it **`Cathater`** (ITM-0065/66/67, Fogatery), so
+the correct spelling misses them on *both* screens. That is data, so it ships
+as a management command, not a hand edit. The document line picker is fine — it
+is a searchable select over the generic-first label.
+
+**"Problet injection was sold and the number did not go down."** No engine
+fault: all **376** posted sale lines move stock by exactly `−qty_base`, balance
+equals ledger across all **255** groups, there are **zero** draft sales, and
+`free_qty` is 0 everywhere. **No item is named "Problet"** — the nearest are
+Promulet (ITM-0010, the ampoule) and Plasil injection (ITM-0176), and both close
+to the unit. Both brands exist two or three times in the catalogue, so the
+number he read may belong to a different record than the one sold. **Get the
+item code from him.**
+
+But the hunt found a **third cause of stock reading high, which §9 missed**.
+§9 checked that voided documents' ledger rows net to zero and called that
+correct. It proves the reversal is complete; it says nothing about whether the
+goods came back. Staff void an invoice to fix a price or quantity, then re-issue
+it smaller — or not at all. **Nine lines, 544 units, are still counted as
+sellable after the customer took them.** Worst is **ITM-0096 Epifenac
+(Diclofenac IV)**: opening 1170, a 1170 sale voided, a 700 sale voided, a 780
+sale posted — **its entire remaining balance of 390 is the gap**, and it is an
+injection, which matches his words. **ITM-0046 ETT #6** is the same shape: all
+50 units on hand come from a voided sale never re-issued. Two of the nine give
+the reason "returned", which confirms voids are standing in for the
+CUSTOMER_RETURN documents they have never once used.
+
+Correction path is unchanged and needs no code: `StockCountHandler` measures the
+variance and auto-posts an owner-only adjustment. ITM-0096 and ITM-0046 are 440
+of the 544 units — count those two first.
+
+## Recommended next steps
+
+1. **Fix the Inventory generic-name search.** One line, no migration, and it
+   turns a "the item is not in my system" complaint into a non-event. Ship it
+   with R103 in the same release.
+2. Fix R103 by name matching, then cut a release. Together with 1 this is the
+   only outstanding work that turns dead features into working ones with no
+   migration.
+3. **Ask the client three questions before designing anything else:** which item
+   code is "Problet"; what Alula Primary Hospital actually received against
+   SI-000057 (780 billed, 390 still on the books); and whether 196 is the number
+   he saw on the 180/189 report.
+4. Ship the `Cathater` spelling fix as a management command he runs.
+5. Flip `withholding_on_sales` at the client and ask the two hospitals question.
+6. Fix the silent sale-side withholding tick.
+7. Walk him through one stock count on ITM-0096 and ITM-0046. It is the only
+   mechanism that closes the shelf-versus-system gap, and the screen has never
+   been used.
+8. Then the R95 migrations, in one release, with the restore drill done first.
