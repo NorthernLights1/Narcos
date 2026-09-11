@@ -27,6 +27,7 @@ from catalog.models import Account, Customer, Item, Supplier
 from core.models import User
 from docs.models import DocType, Document, DocumentLine
 from docs.posting import post
+from reports.views import _day
 from stock.models import Batch, Zone
 from reports.tests.test_statement import (
     credit_sale,
@@ -249,3 +250,48 @@ def test_the_report_is_reachable_from_the_hub(client, owner):
     content = client.get(reverse("report_hub")).content.decode()
     assert reverse("party_positions", args=["receivable"]) in content
     assert reverse("party_positions", args=["payable"]) in content
+
+
+# --- the as-of date must reach the drill-down too ---------------------------
+#
+# Found by gpt-6-astra, 2026-09-11, and confirmed: the report applies `end` to
+# the party ledger and to the invoice dates, but `open_balance()` takes no
+# cutoff, so it nets off payments made AFTER the day being asked about. Level
+# one then respects the date and level two does not, and the reconciling row
+# quietly absorbs the difference instead of revealing it.
+
+def _backdate(doc, days):
+    from datetime import timedelta
+    Document.objects.filter(pk=doc.pk).update(
+        document_date=doc.document_date - timedelta(days=days))
+    doc.refresh_from_db()
+    return doc
+
+
+def test_a_payment_made_after_the_cutoff_does_not_reduce_what_was_open(
+        client, owner, customer, supplier, drug, cash):
+    """As of the day of the sale the customer owed 30.00. A payment made the
+    next day cannot change what they owed yesterday."""
+    receive(owner, supplier, drug, qty=10)
+    sale = credit_sale(owner, customer, drug, qty=2, price="15.00")
+    customer_payment(owner, customer, sale, cash, "10.00")
+    _backdate(sale, 1)
+
+    as_of = _day(sale.document_date).isoformat()
+    row = _row(_get(client, owner, start=as_of, end=as_of), "C001")
+    assert row["balance"] == D("30.00")
+    assert row["documents"][0]["settled"] == D("0.00")
+    assert row["documents"][0]["open"] == D("30.00")
+    assert row["unexplained"] == D("0.00")
+
+
+def test_a_payment_on_or_before_the_cutoff_still_counts(client, owner, customer,
+                                                        supplier, drug, cash):
+    receive(owner, supplier, drug, qty=10)
+    sale = credit_sale(owner, customer, drug, qty=2, price="15.00")
+    customer_payment(owner, customer, sale, cash, "10.00")
+
+    row = _row(_get(client, owner), "C001")
+    assert row["documents"][0]["settled"] == D("10.00")
+    assert row["documents"][0]["open"] == D("20.00")
+    assert row["unexplained"] == D("0.00")

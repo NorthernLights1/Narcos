@@ -2434,3 +2434,47 @@ demonstrated to be the root cause of the data.
 loaded deferred, and no `[x-cloak]` rule existed, so the entire item form
 flashed open on every load of the receiving page before Alpine hid it — exactly
 the clutter the tick exists to prevent. The rule is now in `input.css`.
+
+### D140 — Two defects Astra found in D135 and D138, and how they were found
+
+Round 23's review was run through `codex exec -m gpt-6-astra` at ultra effort.
+All three calls returned **zero bytes on stdout** because the account hit its
+daily usage cap mid-run. The findings below were recovered from **stderr**,
+where the model's narration is streamed as it works — roughly 550 KB of
+transcript across the three. Both were then reproduced with a failing test
+before being fixed.
+
+**The as-of date did not reach the drill-down (D135).** Astra: *"The report
+applies `end` to the party ledger and invoice dates, but calls `open_balance()`
+without a cutoff."* Correct. `open_balance()` nets every posted allocation
+whenever it happened, which is right for "is this still open today" and wrong
+for "what was owed on the 30th". Level one respected the cutoff and level two
+did not, so asking about July would show an invoice reduced by an August
+payment — and the reconciling row built to expose disagreements would have
+absorbed it silently instead. `_settled_as_of()` now filters allocations and
+unrefunded return credits (R68) by the payment's own date.
+
+**A customer return read as free (D138).** Astra: *"a normal customer return
+creates a new cost lot but no lot-consumption rows, so the log shows its unit
+cost as 0.00. Its total COGS and return sign are correct."* Also correct. A
+return creates a lot rather than drawing on one, so there are no consumption
+rows to divide by. No total was ever wrong, but the per-unit column is the one
+the client reads to judge a price, and 0.00 beside a real cost is a lie.
+`_line_lot_cost()` now falls back to the line's own quantity.
+
+**Neither was reachable on the client's current data,** which is exactly why a
+reviewer that reads code earns its place: they have posted zero customer
+returns, and the as-of bug needs someone to ask about a past date. All 376
+posted sale lines check clean, and both reports still tie out exactly against
+the old ones — 4,817,556.00 against `sales`, 2,072,840.00 against
+`ar-balances`.
+
+**Recorded because the method matters more than the two fixes.** A zero-byte
+Codex run is not an empty run. The transcript holds what it reached, and this
+time that was two real defects in code written the same day.
+
+**Still unanswered:** the third review died while checking whether the filter
+memory (D137) leaks between request paths and whether the inline panel (D139)
+preserves an unsaved receiving draft. It had already dismissed the blocked
+price edit as intentional under D136. That question goes first when the cap
+resets.

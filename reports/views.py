@@ -10,7 +10,7 @@ from django.shortcuts import render
 from django.utils import timezone
 from django.utils.translation import gettext as _
 
-from django.db.models import OuterRef, Subquery
+from django.db.models import Count, OuterRef, Subquery
 
 from catalog.models import Account, Customer, Item, Supplier
 from core.ethiopian_calendar import fiscal_year_bounds
@@ -25,7 +25,13 @@ from docs.handlers_payments import (
     withholding_balance,
 )
 from docs.models import DocType, Document, DocumentLine
-from money.models import MoneyLedger, PartyLedger, WithholdingLedger, account_balance
+from money.models import (
+    MoneyLedger,
+    PartyLedger,
+    PaymentAllocation,
+    WithholdingLedger,
+    account_balance,
+)
 from stock.models import CostLot, StockBalance, StockLedger, Zone
 
 
@@ -1048,10 +1054,43 @@ PARTY_SIDES = {
 }
 
 
+def _settled_as_of(doc, end):
+    """What had actually been paid off this document **by `end`**.
+
+    `open_balance()` (docs/handlers_payments.py) takes no cutoff — it nets every
+    posted allocation and every unrefunded return, whenever they happened. That
+    is right for "is this still open today" and wrong for "what was owed on the
+    30th": a payment made in August would reduce what the report says was owed
+    in July, while the party ledger above it correctly would not. The two levels
+    then disagree and the reconciling row absorbs the difference instead of
+    revealing it. *(Found by gpt-6-astra, 2026-09-11.)*
+    """
+    settled = Decimal("0.00")
+    allocations = (PaymentAllocation.objects
+                   .filter(target=doc, payment__status=Document.Status.POSTED)
+                   .select_related("payment"))
+    for allocation in allocations:
+        day = _day(allocation.payment.document_date)
+        if day is not None and day <= end:
+            settled += allocation.amount
+    if doc.doc_type in AR_TARGET_TYPES:
+        # R68: a return with no cash refund credits the invoice it came from.
+        credits = (Document.objects
+                   .filter(related_document=doc, doc_type=DocType.CUSTOMER_RETURN,
+                           status=Document.Status.POSTED)
+                   .annotate(refund_lines=Count("payment_lines"))
+                   .filter(refund_lines=0))
+        for credit in credits:
+            day = _day(credit.document_date)
+            if day is not None and day <= end:
+                settled += credit.grand_total
+    return min(settled, doc.grand_total)
+
+
 def _open_documents(doc_types, party_field, end):
-    """Posted documents of these types that still owe something, grouped by
-    party id. A cash sale never creates debt, so it is excluded the same way
-    aging excludes it (D73)."""
+    """Posted documents of these types that still owe something **as of `end`**,
+    grouped by party id. A cash sale never creates debt, so it is excluded the
+    same way aging excludes it (D73)."""
     by_party: dict[int, list] = {}
     docs = (
         Document.objects.filter(doc_type__in=doc_types,
@@ -1066,7 +1105,8 @@ def _open_documents(doc_types, party_field, end):
         day = _day(doc.document_date)
         if day is None or day > end:
             continue
-        balance = open_balance(doc)
+        settled = _settled_as_of(doc, end)
+        balance = doc.grand_total - settled
         if balance <= 0:
             continue
         party_id = getattr(doc, f"{party_field}_id")
@@ -1077,7 +1117,7 @@ def _open_documents(doc_types, party_field, end):
             "date": day,
             "due": doc.due_date,
             "original": _money(doc.grand_total),
-            "settled": _money(doc.grand_total - balance),
+            "settled": _money(settled),
             "open": _money(balance),
         })
     return by_party
@@ -1205,18 +1245,24 @@ SALES_LOG_TYPES = [DocType.SALE, DocType.CONSIGNMENT_SETTLEMENT,
 EXTRAS_LABEL = _("Other charges and discounts")
 
 
-def _line_lot_cost(line):
+def _line_lot_cost(line, qty_fallback):
     """What the goods on this line cost, and the unit cost behind it.
 
     A line can consume more than one cost lot — `SI-000035` in the client's
     database splits one item across two — so the unit figure is the weighted
     average, and the lots are named separately so a blended number never reads
     as a single purchase price.
+
+    **A customer return has no consumptions.** It creates a cost lot rather than
+    drawing on one, so the consumption rows are empty while `cogs_total` is
+    real. Dividing by the line's own quantity is then the honest answer; showing
+    0.00 beside a non-zero cost was not, and the per-unit column is the one the
+    client reads to judge a price. *(Found by gpt-6-astra, 2026-09-11.)*
     """
     lots = [(c.lot.batch.batch_no if c.lot.batch_id else "", c.qty, c.unit_cost)
             for c in line.lot_consumptions.select_related("lot__batch")]
-    qty = sum(qty for _no, qty, _cost in lots)
-    unit = _money(line.cogs_total / qty) if qty else _money(Decimal("0.00"))
+    qty = sum(qty for _no, qty, _cost in lots) or abs(qty_fallback)
+    unit = _money(abs(line.cogs_total) / qty) if qty else _money(Decimal("0.00"))
     return unit, lots
 
 
@@ -1239,7 +1285,7 @@ def _sales_log_rows(start, end, key):
                 continue
             revenue = _money(sign * line.line_net)
             cost = _money(sign * line.cogs_total)
-            unit_cost, lots = _line_lot_cost(line)
+            unit_cost, lots = _line_lot_cost(line, qty)
             group_key, label = key(line.item)
             group = groups.setdefault(group_key, {
                 "label": label, "lines": [], "qty": 0,

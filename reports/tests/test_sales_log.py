@@ -262,3 +262,40 @@ def test_it_is_reachable_from_the_hub(client, owner):
     client.force_login(owner)
     content = client.get(reverse("report_hub")).content.decode()
     assert reverse("sales_log") in content
+
+
+# --- a return has a real cost, so it must not read as free -----------------
+#
+# Found by gpt-6-astra, 2026-09-11: "a normal customer return creates a new cost
+# lot but no lot-consumption rows, so the log shows its unit cost as 0.00. Its
+# total COGS and return sign are correct." The totals were never wrong; the
+# per-unit column was, which is the column the client reads to judge a price.
+
+def test_a_customer_return_shows_the_unit_cost_it_actually_carried(
+        client, owner, customer, supplier, amox):
+    import datetime
+
+    from django.utils import timezone
+
+    from docs.models import DocType, Document, DocumentLine
+    from docs.posting import post
+    from stock.models import Batch, Zone
+
+    receive(owner, supplier, amox, qty=10, cost="10.00")
+    sale = credit_sale(owner, customer, amox, qty=4, price="15.00")
+
+    ret = Document.objects.create(doc_type=DocType.CUSTOMER_RETURN,
+                                  created_by=owner, customer=customer,
+                                  related_document=sale)
+    DocumentLine.objects.create(
+        document=ret, item=amox, batch=Batch.objects.get(item=amox),
+        qty_entered=1, unit_price=D("15.00"), unit_cost_entered=D("10.00"),
+        unit_label=amox.base_unit, factor=1, target_zone=Zone.WAREHOUSE,
+    )
+    post(ret, owner)
+
+    lines = _groups(_get(client, owner))["AMOX1 — Amoxil, 500mg"]["lines"]
+    returned = next(l for l in lines if l["qty"] < 0)
+    assert returned["cost"] == D("-10.00")
+    # The bug: this read 0.00 while the cost beside it was real.
+    assert returned["unit_cost"] == D("10.00")
