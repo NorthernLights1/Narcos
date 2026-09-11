@@ -16,8 +16,9 @@ Working branch is `build`. Latest tag is `v1.1.0`.
 
 ## Read this before proposing anything
 
-Design truth lives in five numbered files at the repo root. They are the asset;
-the code is downstream of them.
+Design truth lives in the numbered files at the repo root. They are the asset;
+the code is downstream of them. The first five are design; the sixth is
+evidence about production.
 
 | File | Holds |
 |---|---|
@@ -26,6 +27,7 @@ the code is downstream of them.
 | `03-open-risks.md` | Numbered risks (`R1`…), each marked OPEN, WATCH, or DECIDED. |
 | `04-build-spec.md` | Buildable spec derived from the decisions: schema, posting engine, tax rules, invariant tests. |
 | `05-status.md` | Where the work stands right now. Written to the owner. |
+| `06-client-data.md` | What the client's **real** database actually contains, from a restored backup. Read it before sizing anything — round 22 shipped a feature that passes its tests and is inert in production. |
 
 Precedence: **`02-decisions.md` wins over `04-build-spec.md`.** If they conflict,
 say so rather than picking one. Decisions are appended, never rewritten; when one
@@ -64,7 +66,7 @@ Exclude `.venv/`, `staticfiles/`, `__pycache__/`, and `.agents/` from searches.
 ## Commands
 
 ```bash
-.venv/bin/python -m pytest              # whole suite, 58 test files
+.venv/bin/python -m pytest              # whole suite
 .venv/bin/python -m pytest docs/tests   # one app
 .venv/bin/python manage.py runserver 8000 --noreload
 ./scripts/build_css.sh                  # after editing static/src/input.css
@@ -72,6 +74,22 @@ Exclude `.venv/`, `staticfiles/`, `__pycache__/`, and `.agents/` from searches.
 
 Tests need PostgreSQL; connection comes from `NARCOS_DB_*` environment variables
 and defaults to a local `narcos` database. See `.env.example`.
+
+**The local `narcos` database is a restored copy of the client's real data**
+(snapshot 2026-09-08), because designing against fixtures shipped an inert
+feature — see `06-client-data.md`. Log in locally as `Admin` /
+`narcos-dev-2026`; that password was set on the local copy only. The original
+seven-item fixtures are still available:
+
+```bash
+NARCOS_DB_NAME=narcos_testdata .venv/bin/python manage.py runserver 8000 --noreload
+```
+
+Two things follow. **Never change the `NARCOS_DB_NAME` fallback in
+`narcos/settings.py`** — that file ships in the image, and pointing it at
+anything but `narcos` makes the client's container fail on boot. And the
+default database now holds 70 real businesses with names and balances, so it is
+what appears in every screenshot unless you switch.
 
 After changing `static/css/app.css` or `static/js/app.js`, rebuild the CSS and
 bump the `?v=YYYYMMDD<letter>` stamp on both tags in `templates/base.html`.
