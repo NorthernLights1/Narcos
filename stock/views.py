@@ -14,6 +14,7 @@ from django.utils import timezone
 from catalog.models import Item
 from core.audit import log_event
 from core.models import CompanySettings
+from core.preferences import INVENTORY_FILTERS, restore_filters
 from docs.checks import ExpiryStatus, expiry_status
 from docs.models import DocType, Document
 from stock.forms import BatchExpiryForm
@@ -47,6 +48,9 @@ def _zone_totals_by_item() -> dict[int, dict[str, int]]:
 
 @login_required
 def inventory_list(request):
+    # D137: restored before anything reads the querystring, or the
+    # remembered value arrives too late to be used.
+    restore_filters(request, "inventory", INVENTORY_FILTERS)
     query = request.GET.get("q", "").strip()
     show = request.GET.get("show", "")
     items = Item.objects.filter(is_active=True).order_by("code")

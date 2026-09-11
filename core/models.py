@@ -17,6 +17,11 @@ class User(AbstractUser):
     role = models.CharField(
         max_length=10, choices=Role.choices, default=Role.EMPLOYEE
     )
+    # D137: the filters this person last chose, per screen. Not on the session,
+    # because D131 means they log in fresh every morning and a session memory
+    # would reset daily — which is the complaint. Screen preferences only:
+    # nothing here is audited, and nothing here affects money or stock.
+    filter_state = models.JSONField(default=dict, blank=True)
 
     @property
     def is_owner(self) -> bool:

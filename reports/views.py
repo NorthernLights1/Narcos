@@ -15,6 +15,7 @@ from django.db.models import OuterRef, Subquery
 from catalog.models import Account, Customer, Item, Supplier
 from core.ethiopian_calendar import fiscal_year_bounds
 from core.models import CompanySettings
+from core.preferences import REPORT_FILTERS, restore_filters
 from docs.checks import ExpiryStatus, expiry_status
 from docs.forms import _selling_price
 from docs.handlers_payments import (
@@ -748,6 +749,8 @@ def report_detail(request, slug):
         raise Http404
     if config.get("owner_only") and not request.user.is_owner:
         raise PermissionDenied
+    # D137: the period this person last chose, restored before it is read.
+    restore_filters(request, f"report:{slug}", REPORT_FILTERS)
     period, start, end = _selected_range(request)
     columns, rows, total = config["builder"](start, end, request.user)
     if request.GET.get("format") == "csv":
@@ -1100,6 +1103,7 @@ def party_positions(request, side):
     config = PARTY_SIDES.get(side)
     if config is None:
         raise Http404
+    restore_filters(request, f"positions:{side}", REPORT_FILTERS)
     period, start, end = _selected_range(request)
 
     balances = _party_totals(config["party_type"], end)

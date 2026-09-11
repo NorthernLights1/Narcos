@@ -16,6 +16,7 @@ from catalog.forms import COMMON_UNITS, ItemForm
 from catalog.models import Customer, Supplier
 from core.audit import log_change, snapshot
 from core.models import CompanySettings
+from core.preferences import DOCUMENT_FILTERS, restore_filters
 from docs.handlers_payments import AP_TARGET_TYPES, AR_TARGET_TYPES
 from docs.forms import (
     DOC_CONFIG,
@@ -64,6 +65,8 @@ def _parse_date(value):
 
 @login_required
 def document_list(request):
+    # D137: the filter this person last chose, restored before anything reads it.
+    restore_filters(request, "documents", DOCUMENT_FILTERS)
     rows = annotate_settlement(
         Document.objects.select_related("customer", "supplier")
     ).annotate(
