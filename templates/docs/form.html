@@ -88,43 +88,26 @@
 </form>
 
 {% if quick_add_item %}
-{% comment %}D139: the FULL ItemForm inline, collapsed behind a "detailed"
-tick. Never a simplified parallel form (D108), so D67 auto-codes and D81 price
-rules keep applying. Outside #doc-form because forms cannot nest. app.js
-submits it via fetch and feeds the new item into every picker on the page.
-{% endcomment %}
-{% if item_presets %}{{ item_presets|json_script:"item-presets" }}{% endif %}
-<section class="card" id="item-inline" x-data="{ detailed: false }">
+{% comment %}R49: the FULL ItemForm in a dialog — never a simplified parallel
+form, so D67 auto-codes and D81 price rules keep applying. Outside #doc-form
+because forms cannot nest. app.js submits it via fetch and feeds the new item
+into every picker on the page.{% endcomment %}
+<dialog id="item-modal" class="confirm-dialog" style="width:min(44rem,calc(100vw - 2rem))">
   <div class="card-head">
     <h2>{% translate "New item" %}</h2>
-    <label class="check">
-      <input type="checkbox" x-model="detailed" data-detailed-toggle>
-      {% translate "Detailed — the goods arrived with an item we do not stock yet" %}
-    </label>
+    <span class="hint">{% translate "Saved to Master → Items like any other — your receiving draft stays as it is." %}</span>
   </div>
-  <div x-show="detailed" x-cloak>
-    <p class="hint">{% translate "Saved to Master → Items like any other — your receiving draft stays as it is." %}</p>
-    <form id="item-modal-form" method="post" action="{% url 'item_quick_create' %}">
-      {% csrf_token %}
-      <div class="field">
-        <label for="item-preset-source">{% translate "Same as" %}</label>
-        <select id="item-preset-source" data-item-preset>
-          <option value="">{% translate "Start from blank" %}</option>
-          {% for option in preset_items %}
-          <option value="{{ option.pk }}">{{ option }}</option>
-          {% endfor %}
-        </select>
-        <p class="field-help">{% translate "Copies the generic, form, unit, pack and category from an item you already stock. Type the brand, the strength and the price yourself." %}</p>
-      </div>
-      <div id="item-modal-fields">
-        {% include "catalog/_item_modal_fields.html" with form=item_form %}
-      </div>
-      <div class="confirm-actions">
-        <button type="button" class="btn btn-secondary" @click="detailed = false">{% translate "Cancel" %}</button>
-        <button type="submit" class="btn btn-primary">{% translate "Create item" %}</button>
-      </div>
-    </form>
-  </div>
-</section>
+  <form id="item-modal-form" method="post" action="{% url 'item_quick_create' %}">
+    {% csrf_token %}
+    {% include "catalog/_copy_from.html" %}
+    <div id="item-modal-fields">
+      {% include "catalog/_item_modal_fields.html" with form=item_form %}
+    </div>
+    <div class="confirm-actions">
+      <button type="button" class="btn btn-secondary" data-item-modal-close>{% translate "Cancel" %}</button>
+      <button type="submit" class="btn btn-primary">{% translate "Create item" %}</button>
+    </div>
+  </form>
+</dialog>
 {% endif %}
 {% endblock %}

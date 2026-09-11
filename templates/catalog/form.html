@@ -17,6 +17,8 @@
   <div id="dupe-matches"></div>
   {% endif %}
 
+  {% include "catalog/_copy_from.html" %}
+
   {% if kind in "items customers suppliers" %}
     {% if instance %}
       <p class="field-help">{% translate "Code" %}: <strong>{{ instance.code }}</strong></p>

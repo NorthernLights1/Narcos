@@ -3,6 +3,11 @@
   <div class="card-head">
     <h2>{{ title }}</h2>
     <div class="actions">
+      {% if quick_add_item and formset.prefix == "lines" %}
+      {# R49: opens the item dialog — for goods that arrive before their master data. #}
+      <button type="button" class="btn btn-secondary btn-sm"
+              data-open-item-modal>+ {% translate "New item" %}</button>
+      {% endif %}
       <button type="button" class="btn btn-secondary btn-sm"
               data-add-row="{{ formset.prefix }}">+ {% translate "Add row" %}</button>
     </div>

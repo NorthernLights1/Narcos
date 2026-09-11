@@ -30,6 +30,7 @@ from catalog.models import (
     Item,
     Supplier,
 )
+from catalog.presets import item_copy_context
 from core.audit import log_change, log_event, snapshot
 from core.views import owner_required
 
@@ -98,6 +99,10 @@ def master_form(request, kind, pk=None):
     if cfg.form is ItemForm:
         form_kwargs["is_owner"] = request.user.is_owner
 
+    # D142: only when creating an item — copying into an item that already
+    # exists would overwrite a description someone chose on purpose.
+    copy_context = item_copy_context(cfg.model is Item and instance is None)
+
     units_formset = None
     if request.method == "POST":
         form = cfg.form(request.POST, **form_kwargs)
@@ -110,7 +115,7 @@ def master_form(request, kind, pk=None):
                     return render(request, "catalog/form.html", {
                         "cfg": cfg, "kind": kind, "form": form,
                         "units_formset": units_formset, "instance": instance,
-                        "common_units": COMMON_UNITS,
+                        "common_units": COMMON_UNITS, **copy_context,
                     })
                 units_formset.save()
             after = snapshot(saved, cfg.model.AUDITED_FIELDS)
@@ -132,6 +137,7 @@ def master_form(request, kind, pk=None):
         "cfg": cfg, "kind": kind, "form": form,
         "units_formset": units_formset, "instance": instance,
         "common_units": COMMON_UNITS if cfg.model is Item else None,
+        **copy_context,
     })
 
 

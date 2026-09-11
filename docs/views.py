@@ -13,7 +13,8 @@ from django.utils.translation import gettext as _
 from django.views.decorators.http import require_POST
 
 from catalog.forms import COMMON_UNITS, ItemForm
-from catalog.models import Customer, Item, Supplier
+from catalog.models import Customer, Supplier
+from catalog.presets import item_copy_context
 from core.audit import log_change, snapshot
 from core.models import CompanySettings
 from core.preferences import DOCUMENT_FILTERS, restore_filters
@@ -323,35 +324,6 @@ def _batch_index(doc_type: str) -> dict:
     return index
 
 
-def _item_presets(enabled: bool) -> dict:
-    """D139: what an existing item can validly hand a new sibling.
-
-    D132 settled the shape: defaults come from **a nominated item**, never from
-    brand and strength defaulted independently, because independent defaults can
-    name a combination that does not exist. A real sibling supplies a valid
-    generic, form, unit and pack together.
-
-    `name` and `strength` are deliberately absent — those two are what make it a
-    different product, so copying them would clone the sibling instead of
-    describing the new brand. Retired items are not offered (D125).
-    """
-    if not enabled:
-        return {}
-    presets = {}
-    for item in Item.objects.filter(is_active=True).order_by("code"):
-        presets[str(item.pk)] = {
-            "generic_name": item.generic_name,
-            "dosage_form": item.dosage_form,
-            "pack_description": item.pack_description,
-            "base_unit": item.base_unit,
-            "category": item.category,
-            "vat_exempt": item.vat_exempt,
-            "has_expiry": item.has_expiry,
-            "is_batch_tracked": item.is_batch_tracked,
-        }
-    return presets
-
-
 def _draft_form(request, doc: Document):
     config = _config(doc.doc_type)
     if request.method == "POST":
@@ -382,13 +354,12 @@ def _draft_form(request, doc: Document):
         "common_units": COMMON_UNITS,
         "batch_index": _batch_index(doc.doc_type),
         "quick_add_item": quick_add_item,
-        # R49/D139: the inline panel renders the full ItemForm — D33 still
-        # hides the margin fields from employees.
+        # R49: the dialog renders the full ItemForm — D33 still hides the
+        # margin fields from employees.
         "item_form": (ItemForm(is_owner=request.user.is_owner)
                       if quick_add_item else None),
-        "item_presets": _item_presets(quick_add_item),
-        "preset_items": (Item.objects.filter(is_active=True).order_by("code")
-                         if quick_add_item else []),
+        # D142: and the same copy-from picker the Master item page has.
+        **item_copy_context(quick_add_item),
     })
 
 

@@ -279,13 +279,24 @@
     target.dispatchEvent(new Event("change", { bubbles: true }));
   }
 
-  /* D139: the item form is an inline panel now, revealed by the "detailed"
-   * tick, so there is no dialog to open or close. Choosing a sibling copies
-   * the fields an existing item can validly supply — never brand or strength,
-   * which are what make it a different product (D132). */
+  document.addEventListener("click", function (event) {
+    if (event.target.closest("[data-open-item-modal]")) {
+      var dialog = document.getElementById("item-modal");
+      if (dialog && dialog.showModal) dialog.showModal();
+    }
+    if (event.target.closest("[data-item-modal-close]")) {
+      var openDialog = document.getElementById("item-modal");
+      if (openDialog) openDialog.close();
+    }
+  });
 
-  function itemPresets() {
-    var node = document.getElementById("item-presets");
+  /* D142: "Copy from" fills the whole item form from an item already in the
+   * catalogue — brand and strength included, which D139's picker deliberately
+   * withheld. Clearing one box is easier than remembering which four to fill,
+   * and the boxes left unfilled are how the catalogue lost its generics. */
+
+  function copyFromData() {
+    var node = document.getElementById("item-copy-data");
     try {
       return node ? JSON.parse(node.textContent) : {};
     } catch (e) {
@@ -293,21 +304,59 @@
     }
   }
 
-  function applyPreset(id) {
-    var fields = document.getElementById("item-modal-fields");
-    var preset = itemPresets()[id];
-    if (!fields || !preset) return;
-    Object.keys(preset).forEach(function (key) {
-      var input = fields.querySelector('[name="' + key + '"]');
-      if (!input) return;
-      if (input.type === "checkbox") input.checked = !!preset[key];
-      else input.value = preset[key];
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+  /* R60: the source may be counted in a unit that is not on the common list,
+   * and a select silently keeps its old value when told to take one it has no
+   * option for. "Other" is where such a unit belongs. */
+  function copyBaseUnit(form, value) {
+    var unit = form.querySelector('select[name="base_unit"]');
+    var other = form.querySelector('[name="base_unit_other"]');
+    if (!unit) return;
+    unit.value = value;
+    if (unit.value !== value) {
+      unit.value = "__other__";
+      if (other) other.value = value;
+    } else if (other) {
+      other.value = "";
+    }
+    if (unit._choices) unit._choices.setChoiceByValue(unit.value);
+    unit.dispatchEvent(new Event("change", { bubbles: true }));
   }
 
-  document.addEventListener("change", function (event) {
-    if (event.target.matches("[data-item-preset]")) applyPreset(event.target.value);
+  function applyCopyFrom(button) {
+    var form = button.closest("form");
+    var source = form && form.querySelector("[data-copy-source]");
+    var warning = form && form.querySelector("[data-copy-error]");
+    if (!form || !source) return;
+    var values = copyFromData()[source.value];
+    if (warning) warning.hidden = !!values;
+    if (!values) return;
+    Object.keys(values).forEach(function (key) {
+      if (key === "base_unit") return;
+      var input = form.querySelector('[name="' + key + '"]');
+      /* Margin boxes are absent for employees (D33) — skip, never invent. */
+      if (!input) return;
+      if (input.type === "checkbox") input.checked = !!values[key];
+      else input.value = values[key];
+    });
+    /* R59 follows the category until someone touches the box. Copying IS
+     * touching it, or the copied exemption would be undone on the next
+     * category change. */
+    var vat = form.querySelector('input[name="vat_exempt"]');
+    if (vat) vat.dataset.touched = "1";
+    copyBaseUnit(form, values.base_unit);
+    var mode = form.querySelector('select[name="pricing_mode"]');
+    if (mode) mode.dispatchEvent(new Event("change", { bubbles: true }));
+    /* Land on the brand with it selected: the first thing to change. */
+    var name = form.querySelector('[name="name"]');
+    if (name) {
+      name.focus();
+      if (name.select) name.select();
+    }
+  }
+
+  document.addEventListener("click", function (event) {
+    var button = event.target.closest("[data-copy-from]");
+    if (button) applyCopyFrom(button);
   });
 
   document.addEventListener("submit", function (event) {
@@ -319,8 +368,7 @@
       .then(function (response) {
         if (response.ok) {
           return response.json().then(function (data) {
-            var panel = document.getElementById("item-inline");
-            if (panel && panel._x_dataStack) panel._x_dataStack[0].detailed = false;
+            document.getElementById("item-modal").close();
             adoptNewItem(data);
             /* Blank form for the next item; rebind the pricing toggle. */
             return fetch(form.action)
