@@ -746,7 +746,7 @@ while reviewing D121; left unfixed only because it is outside that feature and
 this round was scoped to it. One line each way: return 200, or configure
 `htmx.config.responseHandling`.
 
-### R95 — Three schema changes wait for the client's real data — `OPEN` (medium)
+### R95 — Three schema changes, now decided by the client's real data — `ANSWERED` (was OPEN, medium)
 Round 22 shipped every change that needed no migration. Three deliberately did
 not ship, because each is a judgement call that data settles better than
 argument, and a failing migration on the client's box is an **outage**, not a
@@ -770,12 +770,48 @@ FIFO order and auto-margin pricing changing after the merge, and tracking or
 tax flags disagreeing. Plus the architectural objection, which is separate and
 weaker: the guards exist to say posted history is not rewritten.
 
+**Answered 2026-09-09 against the real database.** Full evidence in
+[06-client-data.md](06-client-data.md). Summary of what the data decided:
+
+| Deferred change | Verdict |
+|---|---|
+| `catalog.Generic` + `Item.generic` | **Cleanup value near zero.** 201 items, 187 distinct generics, and lowercase+trim folds them to **187** — it merges nothing. Only 9 generics carry more than one brand. Build it for the picker, or not at all; the merge tool is the whole feature. |
+
+**Corrected 2026-09-10 — the `Generic` verdict above is wrong, and it is the
+row that deferred this work.** The case-folding measurement was accurate and
+measured the wrong property. These names do not duplicate by capitalisation;
+they duplicate by having the **size or dosage form typed into the generic**.
+Stripping a trailing size/form token collapses 187 to 154 — **52 of the 187
+strings are restatements of 19 real generics** (ng tube in five sizes,
+endothracheal tube in four, paracetamol in four, catheter in five,
+metronidazole in three, syringe in three, and thirteen more). About 28% of the
+generic list is duplicated.
+
+The same size is additionally being written into three different fields
+depending on the operator: the generic name, the brand field (the four Vicryl
+records, "Syringe 20cc"), the `strength` field (Fogatery 3FH/4FH/5FH), and
+sometimes two at once — "endothracheal tube #3" also has `strength = "#3"`.
+
+**Consequence:** "build it for the picker or not at all" no longer holds. The
+cleanup is the stronger of the two arguments, and the `Generic` row is the only
+place where a rename or a merge is safe, because a generic owns no stock, no
+batches, no cost lots and no document lines. Superseded by **D132**, which
+also records that the 19 groups need human review — 154 is a count of
+candidates, not of correct generics.
+
+Full evidence and the group list are in [06-client-data.md](06-client-data.md)
+§3.
+| `Customer.also_supplier` FK | **Justified, and seeding must use the name.** 13 businesses have both faces; **0** match by tax number and all 13 match by name. Only 3 of 70 customers have a tax number at all. 8 pairs carry live balances, the largest 411,480 owed one way against 182,050 the other. |
+| `Item.superseded_by` + guarded merge | **Both earn their place.** Duplicates are real but rare (~5 records in 201). The guard passes on the ORS pair (all flags match, no batch collision) and correctly refuses the three Fogatery records, which disagree on VAT exemption and category. |
+
+The original next step, kept for the method:
+
 **Next step:** a copy of `narcos.dump` from the client's nightly backup,
 restored into a throwaway `postgres:16` container. Send **only** that file —
 `.env` sits beside it in the same folder and holds the database password and
 the secret key.
 
-### R96 — `sale_price_editable` may not be what we think on the client's box — `OPEN` (high)
+### R96 — `sale_price_editable` on the client's box — `ANSWERED` (was OPEN, high) — verified against the real database
 D126's whole sizing rests on this flag being **on**. It is on in dev, and its
 default is **off**. If the client's machine has it off, every sale price comes
 from the item master, the price spread the new reports exist to show cannot
@@ -786,6 +822,15 @@ D80. One settings read answers it. **Read it before estimating anything else.**
 R46's own text is now stale either way: it justifies deferral by citing "D23
 (maintained price, editable per sale)", and D80 removed that editability before
 D89 handed it back behind this switch.
+
+**Answered 2026-09-09 from `narcos.dump` (2026-09-08): the flag is ON.** Staff
+type prices; `discounts_enabled` is off, so typed prices are the *only* source
+of variation. 58 of the 70 items sold more than once went out at more than one
+price, tracking the buyer. **D126 is a report and R46 is not needed to answer
+the client's question.** One caveat for reading those reports: the audit log
+shows the flag was turned on **2026-08-08**, so sales before that date carry
+item-master prices and a spread straddling that date has two causes. Full
+evidence in [06-client-data.md](06-client-data.md) §1 and §6.
 
 ### R97 — Retention counted crashed runs as backups and deleted the real ones — `FIXED` (was critical) — verified by execution
 
@@ -949,3 +994,226 @@ site during the hours the power actually cuts. Links two and three stay in
 place, so once a person signs in the stack returns on its own. The obligation
 that replaces link one is the recovery card at the machine - a manual step that
 nobody has been taught is not a decision, it is an outage waiting to happen.
+
+### R102 — Withholding is switched off for the one tax that applies, and the sale-side box is inert — `OPEN` (high)
+Two problems, one configuration and one code, found together on 2026-09-09 in
+the client's real database ([06-client-data.md](06-client-data.md) §7).
+
+**Configuration.** The client is a **sole proprietorship**. They never withhold
+when purchasing, so `withholding_on_purchases = FALSE` is correct. Their
+customers — hospitals and PLCs — withhold 3% when paying them, so
+`withholding_on_sales` must be **on**. It is **off**, and the audit log shows
+it has never been changed from its install default. This is the only tax that
+touches the business, and nothing is being recorded.
+
+**Money already affected.** Staff ticked the withholding checkbox on three
+credit sales in their first three days:
+
+| Invoice | Customer | Total | 3% never recorded | Settled |
+|---|---|---|---|---|
+| SI-000001 | Shalom primary hospital | 44,200.00 | 1,326.00 | fully open |
+| SI-000002 | Shalom primary hospital | 49,446.00 | 1,483.38 | **in full** |
+| SI-000003 | Alula Primary Hospital | 60,550.00 | 1,816.50 | **in full** |
+
+4,625.88 in withholding credit, no certificates, and zero rows in
+`money_withholdingledger`.
+
+**Code defect.** The two halves of the feature disagree. The payment side
+refuses out loud — `_PaymentBase.validate()` raises `PostingError`
+("Withholding is disabled in settings (D51/D52)."). The sale side is silent:
+`if settings.withholding_on_sales and doc.customer_will_withhold:` stores the
+tick and ignores it. `fields_hidden_by_settings()` hides boxes for the fiscal
+machine, discounts and pack conversion but **not** withholding, so this is the
+only switched-off feature still showing a live control — an inert control,
+which is exactly what D89's other three flags avoid.
+
+**The failure mode that matters.** Ticking is silent at sale time; the refusal
+arrives later at payment time. The invoice then will not balance and the
+tempting move is to record a **full** payment to close it. SI-000002 and
+SI-000003 being settled in full is consistent with that. If those hospitals did
+withhold, cash is overstated by ~3,300 and the certificates are gone.
+
+**Order of work:**
+1. **Turn `withholding_on_sales` on** at the client. Settings change, not a release.
+2. **Ask whether Shalom and Alula paid 100% or 97%.** Cannot be answered from data.
+3. Hide `customer_will_withhold` when the feature is off — one line in
+   `fields_hidden_by_settings()`, no migration. Third, because it is a
+   consistency repair, not the thing protecting the money.
+
+Also: only 1 of 70 customers carries `is_withholding_agent`, yet staff ticked
+the box for a customer that is not flagged. The customer master is not being
+maintained for this.
+
+### R103 — D127's both-faces report is inert on the client's real data — `OPEN` (high)
+D127 pairs a customer with their supplier record by normalised tax number, and
+so does D79's statement counterpart. On the client's database that finds
+**nothing**:
+
+| Measure | Value |
+|---|---|
+| Customers | 70 (only **3** have a tax number) |
+| Suppliers | 50 (only 7 have a tax number) |
+| Businesses appearing as both | **13** |
+| Matching by tax number | **0** |
+| Matching by name | **13** |
+
+Eight of the thirteen carry live balances, the largest being 411,480 owed one
+way against 182,050 the other. The client's question — "who owes who" — is
+about real money and the report shows an empty table.
+
+**This is also the clearest evidence for why round 22's tests were not enough.**
+Six tests pass against seven toy items with tax numbers invented to make the
+matching work. The feature was correct against its fixtures and useless against
+production.
+
+**Fix:** match on normalised name as well as tax number, and prefer an explicit
+`Customer.also_supplier` link seeded from name (R95). Name matching alone is
+riskier in general — two unrelated businesses can share a name — so the
+explicit link, human-confirmed, is the durable answer and the report is the
+interim.
+
+### R104 — Shipping a drug reference catalogue inside the application — `OPEN` (medium)
+Asked 2026-09-09: "since this is a pharmaceutical program can we enter
+everything — all generics and brands and strength known — into the db as part of
+the application."
+
+**It must not go into `catalog.Item`.** `Item` is a trading object: it carries a
+code, a price, a pricing mode, batches, cost lots and stock, and it is the row
+every picker on every sale and receiving screen searches. The client's whole
+catalogue is **201 items**, of which **162 are drugs**. Loading even a modest
+national list would put thousands of priceless, stockless, batchless rows in
+front of a counter clerk who is looking for one of 201. Reorder reports,
+zero-stock listings and the item picker all degrade the day it lands. This is
+the round-22 failure mode (R103) inverted: not an inert feature, but a feature
+that harms the screens that currently work.
+
+**"Everything known" is not obtainable for this market.** RxNorm and the FDA NDC
+directory are United States registries; the brands on this client's shelves are
+Indian, Chinese, Gulf and Ethiopian — `zitromax`, `Gabalin`, `Moxipil`,
+`Suxathon`. DrugBank is licence-restricted for commercial redistribution. EFDA
+publishes registered-product lists, but as periodic documents rather than a
+maintained machine-readable feed — **this needs verifying before anything is
+scoped on it.** A partial list that presents itself as complete is worse than no
+list, because staff will trust it and stop reading the carton.
+
+**Strength and dosage form must keep coming off the physical carton.** This
+business invoices hospitals. If a shipped reference says 200mg, the carton says
+250mg, and `Item.full_description` prints our value onto the invoice, the system
+has manufactured a wrong medicines document. Any reference may propose a generic
+*name*; it may not fill strength.
+
+**What the data says is actually wrong, and it is smaller than the question.**
+
+| Field | Filled | Raw distinct | After lowercase + trim |
+|---|---|---|---|
+| `generic_name` | 201 / 201 | 187 | 187 |
+| `dosage_form` | 200 / 201 | **19** | 18 |
+| `strength` | 143 / 201 | — | — |
+| `base_unit` | 201 / 201 | **16** | 16 |
+
+Two hundred and one items produce only **19** dosage forms, and four of them are
+junk: `Euipment` (×2), `suspenssion`, `.`, and one empty. `reagent` and
+`reagents` are the same thing. `base_unit` has the same shape: `pcs`/`piece`,
+`pk`/`pack`, `Bag`/`bag`. **A closed list of about twenty dosage forms removes
+that entire class of defect and needs no drug database at all.**
+
+The generic names are where a reference would help, and the errors are
+misspellings rather than case: `Suxamethiom`, `Doxycyclline`, `Amoxacillin`,
+`Antiheamoroid`, `Embolectomy Cathater`. Case folding merges nothing (R95), so
+a typeahead is the only mechanism that prevents the 188th spelling of
+amoxicillin. **The client's own 187 generics are already the best available
+seed for that typeahead** — no new data, no licence, no staleness.
+
+**Proposed order of work, smallest first:**
+
+1. Close `dosage_form` to a choice list with an "other" escape, and fold the
+   `base_unit` synonyms. Kills the four junk values and prevents recurrence.
+2. Typeahead on `generic_name` seeded from existing `Item.generic_name` values.
+   This is the picker half of R95, which the data already said was the only half
+   worth building.
+3. **Only after 1 and 2 are live**, consider vendoring a generic-names-only
+   reference (WHO EML plus the Ethiopian NEML, on the order of several hundred
+   rows) into a separate read-only table feeding the same typeahead. Never in
+   `Item`, never auto-filling strength, and marked as a suggestion.
+
+Correcting the existing misspelled generics is a data fix and therefore a
+management command the owner runs, not a hand edit.
+
+### R105 — The Inventory search ignores `generic_name`, so brand-named items look absent — `OPEN` (high)
+Reported by the client on 2026-09-09 as "catheter is not in my database even
+though I added it before". He is right about what he saw.
+
+`stock/views.py:54` filters `code` and `name` only. `catalog.views.MASTER["items"]`
+filters `code`, `name` **and** `generic_name`. Typing `catheter`:
+
+| Screen | Finds |
+|---|---|
+| Inventory (`/inventory/`) | **3 of 10** |
+| Master → Items (`/master/items/`) | 7 of 10 |
+
+The four `Folly` catheters (ITM-0052/53/54/55) exist, appear in Master, appear
+in the sale picker, and are invisible on the one screen that answers "how many
+have I got". This trade reads by generic name — `Item.__str__` leads with it and
+says so in a comment (R48) — so a stock screen that cannot search it is a
+defect, not a preference. The gap hits every brand-named item: Fogatery, ETT,
+NG tube, BOSO, Folly.
+
+**Fix:** add `generic_name__icontains` to the filter. One line, no migration.
+The document line picker is not affected — it is a Choices.js searchable select
+(`docs/forms.py:330`) over the generic-first label.
+
+**Related data defect, separate fix.** ITM-0065/66/67 spell the generic
+`Embolectomy Cathater`, and ITM-0052's name is `Folly cathater`, so the correct
+spelling misses them on **both** screens. Ships as a management command the
+owner runs, never a hand edit. Correcting the spelling does **not** merge the
+three Fogatery rows — they remain the case §4 of
+[06-client-data.md](06-client-data.md) uses as the merge a guard must refuse.
+
+### R106 — A voided sale is not an undone sale, and 544 units are counted as sellable because of it — `OPEN` (high)
+Found 2026-09-09 while chasing the client's "we sold it and the number did not
+go down" report. §9 of [06-client-data.md](06-client-data.md) checked that
+voided documents' ledger rows net to exactly zero and treated that as proof of
+correctness. **It proves the reversal is complete. It says nothing about whether
+the goods came back.**
+
+Staff void an invoice to correct a price or a quantity and re-issue it. When the
+re-issue is smaller than the void — or never happens — the difference stays on
+the books as sellable stock while the customer already has it. Nine voided sale
+lines across the snapshot leave **544 units** in that state:
+
+| Code | Item | Voided | Re-issued | Gap | On hand | Reason given |
+|---|---|---|---|---|---|---|
+| ITM-0096 | Epifenac (Diclofenac IV) | 1170 | 780 | **390** | **390** | ERROR |
+| ITM-0046 | ETT #6 | 50 | 0 | **50** | **50** | ERROR |
+| ITM-0001 | fluco-ssp | 40 | 0 | 40 | 0 | ERROR |
+| ITM-0094 | Pethidine | 100 | 70 | 30 | 950 | ERROR |
+| ITM-0002 | Gabalin | 20 | 0 | 20 | 50 | returned |
+| ITM-0086 | Actirapid (insulin) | 10 | 0 | 10 | 150 | selling price adj |
+| ITM-0169 | Omni | 2 | 0 | 2 | 0 | returned |
+| ITM-0088 | URS-2MAC | 1 | 0 | 1 | 15 | ERROR |
+| ITM-0010 | Promulet | 13 | 12 | 1 | 1026 | qty error |
+
+Re-issue matched as same item, same customer, posted within 14 days.
+
+For **ITM-0096 and ITM-0046 the phantom is the entire remaining balance** — the
+screen's number is composed of nothing else. Epifenac is an injection, which
+matches the client's words, and is the first thing to put to him: opening 1170,
+a 1170 sale to Alula Primary Hospital voided, a 700 sale voided, a 780 sale
+posted. Ask what that hospital actually received.
+
+**Two of the nine give the reason "returned".** There are zero CUSTOMER_RETURN
+documents in the database, so a return is being recorded by voiding the original
+sale. That is numerically right for a full return, silently wrong for a partial
+one, and either way it erases the fact that a sale happened. This and §9's
+write-off gap are the same wound.
+
+**Not an engine fault.** All 376 posted sale lines move stock by exactly
+`−qty_base`; balance equals ledger across all 255 groups; zero draft sales;
+`free_qty` is 0 on every posted line.
+
+**Fix:** no new code. `StockCountHandler` already freezes a snapshot, measures
+the variance and auto-posts an owner-only ADJUSTMENT, respecting append-only.
+The screen has never been used. Count ITM-0096 and ITM-0046 first — 440 of the
+544 units. Whether voiding should also warn that stock is being returned to the
+shelf is a **separate design question** and needs the client's own account of
+how he uses void before anything is built.
