@@ -51,7 +51,13 @@ def inventory_list(request):
     show = request.GET.get("show", "")
     items = Item.objects.filter(is_active=True).order_by("code")
     if query:
-        items = items.filter(Q(code__icontains=query) | Q(name__icontains=query))
+        # R105: the generic is how this trade names a thing — `Item.__str__`
+        # leads with it (R48) and Master already searches it. Leaving it out
+        # here made every brand-named item ("Folly" for a catheter) look absent
+        # on the one screen that answers "how many have I got".
+        items = items.filter(Q(code__icontains=query)
+                             | Q(name__icontains=query)
+                             | Q(generic_name__icontains=query))
     totals = _zone_totals_by_item()
     rows = []
     for item in items:

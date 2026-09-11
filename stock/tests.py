@@ -37,8 +37,9 @@ def supplier(db):
     return Supplier.objects.create(code="S001", name="Addis Pharma")
 
 
-def make_item(code, name, reorder_level=None):
-    return Item.objects.create(code=code, name=name, base_unit="pack",
+def make_item(code, name, reorder_level=None, generic_name=""):
+    return Item.objects.create(code=code, name=name, generic_name=generic_name,
+                               base_unit="pack",
                                is_batch_tracked=True, has_expiry=True,
                                vat_exempt=True, reorder_level=reorder_level)
 
@@ -116,6 +117,29 @@ def test_inventory_low_and_out_filters(client, owner, supplier, customer):
 
     rows = client.get(reverse("inventory_list"), {"q": "advil"}).context["rows"]
     assert {row["item"].code for row in rows} == {"LOW"}
+
+
+def test_inventory_search_finds_an_item_by_its_generic_name(client, owner,
+                                                            supplier):
+    """R105: the client reported "catheter is not in my database". It was.
+
+    This trade reads by generic name — `Item.__str__` leads with it (R48) — and
+    the brand on the box says `Folly`. Searching the one screen that answers
+    "how many have I got" looked only at code and name, so four real catheters
+    were invisible there while Master → Items found them.
+    """
+    folly = make_item("ITM-0053", "Folly", generic_name="Catheter 3 way 18Fr")
+    other = make_item("ITM-0080", "Ibuprofen", generic_name="Ibuprofen")
+    receive(owner, supplier, folly, qty=30)
+    receive(owner, supplier, other, qty=30)
+    client.force_login(owner)
+
+    rows = client.get(reverse("inventory_list"), {"q": "catheter"}).context["rows"]
+    assert {row["item"].code for row in rows} == {"ITM-0053"}
+
+    # the brand still works, and the search stays narrow
+    rows = client.get(reverse("inventory_list"), {"q": "folly"}).context["rows"]
+    assert {row["item"].code for row in rows} == {"ITM-0053"}
 
 
 def test_inventory_item_page_shows_batches_and_movements(client, owner,
