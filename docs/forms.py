@@ -1,13 +1,17 @@
 """Document forms for the implemented posting handlers."""
 
+from functools import partial
+
 from django import forms
 from django.db.models import F, OuterRef, Q, Subquery, Sum
 from django.db.models.functions import Coalesce
 from django.forms import inlineformset_factory
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from catalog.models import Item
 from core.models import CompanySettings
+from docs.checks import add_months
 from docs.handlers_sales import issue_line_value
 from docs.models import DocType, Document, DocumentCharge, DocumentLine
 from docs.tax import round2
@@ -62,10 +66,16 @@ class BatchSelect(forms.Select):
         return option
 
 
-def _batch_label(batch: Batch) -> str:
+def _batch_label(batch: Batch, near_before=None) -> str:
+    """D59: near-expiry stock is still sellable and posting does not refuse it,
+    so this label is the only place the operator can be warned. Without it the
+    oldest stock goes out by accident instead of on purpose."""
     expiry = batch.expiry_date.isoformat() if batch.expiry_date else _("no expiry")
     on_hand = batch.warehouse_qty or 0
-    return f"{batch.item.code} · {batch.batch_no} · {expiry} · {on_hand}"
+    label = f"{batch.item.code} · {batch.batch_no} · {expiry} · {on_hand}"
+    if near_before and batch.expiry_date and batch.expiry_date <= near_before:
+        label = f"{label} · {_('near expiry')}"
+    return label
 
 
 def fields_hidden_by_settings() -> set[str]:
@@ -450,16 +460,29 @@ class DocumentLineForm(forms.ModelForm):
                 # posting refused it anyway (D4), after the whole line was typed.
                 # The annotation is NULL, not 0, for a batch with no balance
                 # rows at all, and `> 0` excludes both.
-                keep = Q(warehouse_qty__gt=0)
+                #
+                # D133: the same argument on the expiry axis. Posting blocks an
+                # expired batch outright (D46, no override) — again only once
+                # the whole line has been typed. D46 is explicit that expired
+                # means *past* its date, so `__gte` keeps the expiry day itself
+                # sellable; and a null expiry (D22: the item has none) must
+                # never read as expired or those items become unsellable.
+                sellable = (Q(expiry_date__gte=timezone.localdate())
+                            | Q(expiry_date__isnull=True))
+                keep = Q(warehouse_qty__gt=0) & sellable
                 if self.instance.batch_id:
-                    # A draft saved before the batch ran dry must still save.
+                    # A draft saved before the batch ran dry — or before it
+                    # expired — must still save.
                     # Without this the whole document fails validation, and
                     # re-opening it submits blank — silently clearing the batch,
                     # which only surfaces at posting as "pick a batch (D29)".
                     keep |= Q(pk=self.instance.batch_id)
                 batches = batches.filter(keep)
             self.fields["batch"].queryset = batches
-            self.fields["batch"].label_from_instance = _batch_label
+            near_before = add_months(timezone.localdate(),
+                                     CompanySettings.load().near_expiry_months)
+            self.fields["batch"].label_from_instance = partial(
+                _batch_label, near_before=near_before)
         for name in ("item", "batch", "lot"):
             if name in self.fields:
                 self.fields[name].widget.attrs["data-search"] = "1"
