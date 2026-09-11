@@ -2091,3 +2091,155 @@ it buys is a few minutes, a few times a day, with a person already present.
 automatic and becomes something the owner must know. It is written down at the
 machine, not left in a document nobody at the site has read. See the recovery
 card in DEPLOYMENT.md.
+
+---
+
+## Round 23 (2026-09-10) — the catalogue gets a generic, and the order of work changes
+
+*Trigger: the client clarified the "one generic, many brands" request — on
+receiving they want to search brand and strength, with a default, and to add a
+new brand or strength without the full item form. Measuring that against the
+restored production database overturned R95's verdict. The design below was put
+to Codex (gpt-6-astra, ultra) over three adversarial rounds; it corrected four
+things and we converged. Nothing here is built.*
+
+### D132 — A generic is a record; a brand is not
+
+**What:** `catalog.Generic` becomes a real row — a display name plus a
+normalised unique key, and optional presets used when creating an item under
+it. `Item` gains a **nullable** FK to it. `Item.name` (brand) and
+`Item.strength` stay free text on the item, with type-ahead suggestions scoped
+to the chosen generic and brand, reusing the D128 batch-number mechanism.
+`Item.generic_name` is retained.
+
+**Why a generic is worth a row.** Not for deduplication as R95 measured it —
+that measurement was wrong and is corrected there and in
+[06-client-data.md](06-client-data.md) §3. The real numbers: **52 of 187
+generic strings are restatements of 19 generics**, because the size is being
+typed into the name. And a `Generic` row is the only place in this schema where
+a **rename or a merge is safe**, because a generic owns no stock, no batches,
+no cost lots and no document lines. Merging two generics re-points items.
+Nothing posted moves. That is the whole argument, and it is what the free-text
+field can never offer.
+
+**Why a brand is not worth a row.** Strength is not a child of brand. The
+clinical standards (dm+d, RxNorm) put strength *with* the generic and hang the
+brand off that: ingredient → ingredient at a strength in a form → branded
+version → pack. Fogatery 3FH/4FH/5FH is not one brand with three strengths; it
+is three products sharing a name. The **item already is** the fully-specified
+product — brand, strength, form, pack — and it is what holds stock, price,
+batches and history. A `Brand` row would own none of those. Every general ERP
+checked (SAP materials, Dynamics variants, NetSuite matrix items, Odoo
+templates) keeps the stocked, priced thing at the fully-specified variant and
+differs only in how it *groups* them for searching. Promoting brand to a row
+later, on top of the generic layer, is a smaller job than building both now;
+the reverse is not.
+
+**Odoo-style template-and-variants was considered and rejected for now.** It
+would serve the client's mental picture best, but it presumes structured
+attributes — strength as a number with a unit. 58 of 201 items have no strength
+and the populated ones include `3FH`, `2/0 round`, `.` and `-`. Structure
+follows cleanup, not the other way round.
+
+**Defaults default an existing item, never brand and strength independently.**
+Independent defaults can name a combination that does not exist. A preferred
+item supplies a valid brand + strength + form + unit together; validate it
+belongs to the selected generic and is active, with the D125 rescue for a draft
+that already names a retired one. *(Codex's correction, and better than what was
+proposed.)*
+
+**Generic presets are creation-time only.** Never inherited dynamically, never
+applied when linking an existing item, never decided by majority vote across
+disagreeing siblings, and "unset" is distinct from `False`. The three Fogatery
+records disagree on category and `vat_exempt`; that disagreement is carried
+forward as a review item, not resolved by a script. "Otherwise the backfill
+fails" is **not** a valid reason to choose presets over constraints — the
+domain decides the relationship, and dirty data becomes review work.
+
+**Size has exactly one home: `Item.strength`**, relabelled *Strength / size /
+specification*. A generic name never carries a number. Dosage form and pack
+description stay separate. Compound device specifications ("2 way", "3 way")
+are preserved verbatim for human review, never normalised by script, and `16G`
+is never silently rewritten to `16Fr`.
+
+**The backfill is a reviewed management command, not a `RunPython`.**
+`docker-entrypoint.sh` migrates under `set -e` before handing off. A raise is an
+outage. A guarded `RunPython` does not fix this: raising restarts the loop,
+skipping marks the migration applied so the work is never retried, and creating
+187 exact-name rows completes the population while leaving the semantics
+undone. So: the command proposes the groupings, a human accepts or rejects each,
+and only the approved plan applies. The plan is keyed by item code and refuses
+to apply if the catalogue changed after it was drawn. This also follows the
+standing rule that data fixes ship as commands the owner runs.
+
+**Two deployment stages, not six releases.** Stage 1 installs the code and the
+schema with the grouped features **off** and ordinary trading unaffected.
+Stage 2 applies and activates the reviewed catalogue change. Development phases
+are a different axis and are not deployment events.
+
+**This amends D126.** The generic report reads `item.generic_name` directly
+(`_generic_key`, reports/views.py), which is the field the cleanup rewrites — so
+the report's grouping changes whether or not we intend it, and leaving it on the
+old grouping was never an available option. Consolidating paracetamol syrup,
+tablets and IV puts bottles and packs in one quantity denominator. Therefore:
+the **generic** report carries revenue and owner-only COGS/profit; **quantity,
+average achieved price, lowest and highest move to the item-level report**,
+which already exists and is keyed on code + name. Historical periods read the
+current catalogue grouping, and regrouping must leave monetary grand totals
+unchanged.
+
+**D108 stands.** The receiving dialog keeps the full `ItemForm` and gains
+prefilled values from the sibling item, which is not a simplified parallel form.
+A genuinely collapsed dialog would need an explicit amendment to D108 and is not
+decided here.
+
+**Four things this review corrected, recorded because they were stated wrongly
+first:**
+- A failed migration is **not** unrecoverable. `NARCOS_AUTO_MIGRATE=0` exists
+  (docker-entrypoint.sh:37, compose.yml:43). It is a prolonged, manually
+  recoverable outage with an untested recovery procedure — not a dead machine,
+  and not an hour either.
+- "An additive migration cannot fail" is too strong. `ALTER TABLE` takes locks
+  and can fail operationally.
+- **`generic_name` is a compatibility mirror, not a rollback path.** Once
+  synchronised to canonical names the original text is gone. Original
+  before-values must live in the audited cleanup record, and the sequence
+  upgrade → cleanup → downgrade → edit → upgrade must be tested. Note two
+  writers besides the form: `catalog/importers.py` (CSV) and
+  `fix_item_spellings.py`.
+- **Fix readers before moving text.** `Item.__str__` omits strength and
+  `MASTER["items"].search_fields` is `["code","name","generic_name"]`, so
+  extracting `#3` from an ETT generic name makes it unfindable until the label
+  and the search cover strength.
+
+**Order of work, agreed:**
+1. The `ItemForm` label and placeholder fix **alone**, cut from the deployed
+   baseline, not from `build`. The brand placeholder currently reads
+   *"e.g. Paracetamol 500mg tablets"* (catalog/forms.py:53) — it instructs the
+   operator to type generic + strength + form into the brand box. It is a proven
+   bad instruction and a plausible contributor; it is **not** demonstrated to be
+   the root cause of most of the smearing, and must not be described as a fix
+   for the data.
+2. Harden `ops/deploy.ps1` — it prints "Update complete" after `compose up -d`
+   and verifies nothing. It must verify application health, show a
+   one-photograph result, keep that status across restarts, and reach the same
+   checks on the offline `docker load` path. Plus the restore drill on the
+   client's own hardware: database **and media** into isolated targets, and a
+   **separate** rehearsal of falling back to the retained image against the
+   schema the update left. A restore drill does not prove image rollback.
+3. Release the 14-commit backlog and the R103 name fix through the hardened
+   path, rehearsed against a restored copy first. "Let it run" means observed:
+   receiving, sales, printing, attachments, restart recovery, and one scheduled
+   backup that actually ran.
+4. Then D132, in its two stages.
+
+**Why this order:** step 2 is required by step 4 regardless, so doing it first
+makes the backlog release the rehearsal for the risky one — on real hardware,
+with rollback demonstrated — before anything touches the catalogue. It keeps
+deployment uncertainty, accumulated application changes and semantic data
+cleanup out of the same support incident.
+
+**Still open:** whether "catheter" is one generic or several products; where
+"2 way"/"3 way" belongs; the 58 blank strengths (review, never invent); the 14
+DRUG items marked not `vat_exempt`; and R88 — a generic rename rewrites how
+already-printed documents re-render, which bulk canonicalisation makes routine.
