@@ -21,6 +21,8 @@ def owner(client):
 
 ITEM_POST = {
     "name": "Amoxil", "generic_name": "Amoxicillin", "category": "DRUG",
+    # D136: a drug must carry its strength
+    "strength": "500mg",
     "is_batch_tracked": "on", "has_expiry": "on", "base_unit": "pack",
     "maintained_price": "150.00", "pricing_mode": "MANUAL", "is_active": "on",
 }

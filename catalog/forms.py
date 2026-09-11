@@ -93,6 +93,17 @@ class ItemForm(forms.ModelForm):
             else:
                 self.add_error("base_unit_other",
                                _("Type the unit this item is counted in."))
+        # D136: a drug without a strength is not a described drug. The
+        # catalogue's real defect is the size being typed into whichever field
+        # the operator was looking at (06-client-data.md §3), and D134 made
+        # strength visible so filling it is visibly worth doing. Required for
+        # DRUG only — gloves and syringes have no strength, and demanding one
+        # would invite a junk value.
+        if data.get("category") == Item.Category.DRUG \
+                and not (data.get("strength") or "").strip():
+            self.add_error("strength", _(
+                "A drug needs its strength — type it here, e.g. 500 mg or "
+                "100/2ml. Put the size here rather than in the name."))
         if data.get("has_expiry") and not data.get("is_batch_tracked"):
             self.add_error(
                 "has_expiry",
