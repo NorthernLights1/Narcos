@@ -734,6 +734,9 @@ def report_hub(request):
         group = next((g for g in groups if g["label"] == label), None)
         if group is None:
             group = {"label": label, "statement": label == GROUP_PARTIES,
+                     # D138: owner-only, so it is not offered to staff at all
+                     "sales_log": (label == GROUP_SALES
+                                   and request.user.is_owner),
                      "entries": []}
             groups.append(group)
         group["entries"].append((slug, config))
@@ -1180,6 +1183,159 @@ def party_positions(request, side):
         "rows": rows,
         "unpaired": unpaired,
         "total": _money(total),
+        "period": period,
+        "start": start,
+        "end": end,
+    })
+
+
+# --- D138: the sales log, with cost and gross profit -----------------------
+
+def _brand_strength_key(item):
+    """D138: the client asked for brand **and strength**, which together are
+    the fully specified product. `_brand_key` (D126) is left exactly as it is —
+    the client asked for the new reports to be kept clear of the old ones."""
+    parts = [part for part in (item.name, item.strength) if part]
+    label = f"{item.code} — " + ", ".join(parts)
+    return label, label
+
+
+SALES_LOG_TYPES = [DocType.SALE, DocType.CONSIGNMENT_SETTLEMENT,
+                   DocType.CUSTOMER_RETURN]
+EXTRAS_LABEL = _("Other charges and discounts")
+
+
+def _line_lot_cost(line):
+    """What the goods on this line cost, and the unit cost behind it.
+
+    A line can consume more than one cost lot — `SI-000035` in the client's
+    database splits one item across two — so the unit figure is the weighted
+    average, and the lots are named separately so a blended number never reads
+    as a single purchase price.
+    """
+    lots = [(c.lot.batch.batch_no if c.lot.batch_id else "", c.qty, c.unit_cost)
+            for c in line.lot_consumptions.select_related("lot__batch")]
+    qty = sum(qty for _no, qty, _cost in lots)
+    unit = _money(line.cogs_total / qty) if qty else _money(Decimal("0.00"))
+    return unit, lots
+
+
+def _sales_log_rows(start, end, key):
+    """One row per posted sale line, grouped by `key(item)`.
+
+    Charges and document discounts live on the document, not the line (R75), so
+    they are collected into their own group. Without them the log disagrees
+    with the invoice it came from by exactly `charges − doc_discount`.
+    """
+    groups: dict = {}
+    extras: list = []
+    for doc in _posted_documents(SALES_LOG_TYPES, start, end):
+        sign = Decimal("-1.00") if doc.doc_type == DocType.CUSTOMER_RETURN \
+            else Decimal("1.00")
+        for line in doc.lines.select_related("item", "batch"):
+            qty = line.qty_sold if doc.doc_type == DocType.CONSIGNMENT_SETTLEMENT \
+                else line.qty_base
+            if not qty:
+                continue
+            revenue = _money(sign * line.line_net)
+            cost = _money(sign * line.cogs_total)
+            unit_cost, lots = _line_lot_cost(line)
+            group_key, label = key(line.item)
+            group = groups.setdefault(group_key, {
+                "label": label, "lines": [], "qty": 0,
+                "revenue": Decimal("0.00"), "cost": Decimal("0.00"),
+            })
+            group["lines"].append({
+                "date": _day(doc.document_date),
+                "document": doc,
+                "customer": doc.customer.name if doc.customer_id else "",
+                "item": line.item,
+                "batch": (line.batch.batch_no if line.batch_id
+                          else line.batch_no_entered),
+                "qty": int(sign) * qty,
+                "unit_price": _money(abs(line.line_net) / qty),
+                "revenue": revenue,
+                "unit_cost": unit_cost,
+                "lots": lots,
+                "cost": cost,
+                "profit": _money(revenue - cost),
+            })
+            group["qty"] += int(sign) * qty
+            group["revenue"] += revenue
+            group["cost"] += cost
+
+        for charge in doc.charges.all():
+            extras.append({"date": _day(doc.document_date), "document": doc,
+                           "customer": doc.customer.name if doc.customer_id else "",
+                           "label": charge.label,
+                           "revenue": _money(sign * charge.amount),
+                           "cost": _money(Decimal("0.00"))})
+        if doc.doc_discount:
+            extras.append({"date": _day(doc.document_date), "document": doc,
+                           "customer": doc.customer.name if doc.customer_id else "",
+                           "label": _("Document discount"),
+                           "revenue": _money(-sign * doc.doc_discount),
+                           "cost": _money(Decimal("0.00"))})
+    return groups, extras
+
+
+@login_required
+def sales_log(request):
+    """D138: what went out, to whom, at what price, and at what cost.
+
+    **Owner only.** Every row carries cost and gross profit, which is D33's
+    line. Grouping switches between the item — brand and strength, the fully
+    specified product — and the generic.
+
+    **At generic level the money is reported and the quantity is not (D132).**
+    Folding paracetamol syrup, tablets and IV into one row puts bottles and
+    packs in one denominator, so a quantity there would be arithmetic on
+    nothing. Regrouping never changes a monetary total.
+    """
+    if not request.user.is_owner:
+        raise PermissionDenied
+    restore_filters(request, "sales-log", REPORT_FILTERS + ("group",))
+    period, start, end = _selected_range(request)
+    grouping = request.GET.get("group", "item")
+    if grouping not in ("item", "generic"):
+        grouping = "item"
+    show_quantity = grouping == "item"
+
+    key = _generic_key if grouping == "generic" else _brand_strength_key
+    groups, extras = _sales_log_rows(start, end, key)
+
+    rendered = []
+    total = {"qty": 0, "revenue": Decimal("0.00"), "cost": Decimal("0.00")}
+    for group_key in sorted(groups):
+        group = groups[group_key]
+        total["qty"] += group["qty"]
+        total["revenue"] += group["revenue"]
+        total["cost"] += group["cost"]
+        rendered.append({
+            "label": group["label"],
+            "lines": group["lines"],
+            "qty": group["qty"] if show_quantity else None,
+            "revenue": _money(group["revenue"]),
+            "cost": _money(group["cost"]),
+            "profit": _money(group["revenue"] - group["cost"]),
+        })
+    if extras:
+        extra_revenue = sum((e["revenue"] for e in extras), Decimal("0.00"))
+        total["revenue"] += extra_revenue
+        rendered.append({
+            "label": EXTRAS_LABEL, "lines": extras, "qty": None,
+            "revenue": _money(extra_revenue), "cost": _money(Decimal("0.00")),
+            "profit": _money(extra_revenue), "is_extras": True,
+        })
+
+    return render(request, "reports/sales_log.html", {
+        "groups": rendered,
+        "grouping": grouping,
+        "show_quantity": show_quantity,
+        "total": {"qty": total["qty"] if show_quantity else None,
+                  "revenue": _money(total["revenue"]),
+                  "cost": _money(total["cost"]),
+                  "profit": _money(total["revenue"] - total["cost"])},
         "period": period,
         "start": start,
         "end": end,

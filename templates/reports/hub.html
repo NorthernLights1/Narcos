@@ -30,6 +30,12 @@
         <td><a href="{% url 'statement' %}">{% translate "Open" %}</a></td>
       </tr>
       {% endif %}
+      {% if group.sales_log %}
+      <tr>
+        <td>{% translate "Sales log (who bought what, at what price and what profit)" %}</td>
+        <td><a href="{% url 'sales_log' %}">{% translate "Open" %}</a></td>
+      </tr>
+      {% endif %}
       {% for slug, report in group.entries %}
       <tr>
         <td>{{ report.title }}</td>

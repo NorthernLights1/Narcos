@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% translate "Sales log" %} - Narcos{% endblock %}
+{% block content %}
+{% comment %}D138: one row per sale line, grouped by product. Every figure is
+computed server-side; this template only lays them out.{% endcomment %}
+<div class="page-head">
+  <h1>{% translate "Sales log" %}</h1>
+</div>
+
+<form method="get" class="card form-grid">
+  <div class="field">
+    <label for="id_group">{% translate "Group by" %}</label>
+    <select id="id_group" name="group">
+      <option value="item"{% if grouping == "item" %} selected{% endif %}>{% translate "Brand and strength" %}</option>
+      <option value="generic"{% if grouping == "generic" %} selected{% endif %}>{% translate "Generic" %}</option>
+    </select>
+  </div>
+  <div class="field">
+    <label for="id_start">{% translate "Start" %}</label>
+    <input id="id_start" type="date" name="start" value="{{ start|date:'Y-m-d' }}">
+  </div>
+  <div class="field">
+    <label for="id_end">{% translate "End" %}</label>
+    <input id="id_end" type="date" name="end" value="{{ end|date:'Y-m-d' }}">
+    <input type="hidden" name="period" value="custom">
+  </div>
+  <div class="field">
+    <label>&nbsp;</label>
+    <button class="btn btn-primary" type="submit">{% translate "Apply" %}</button>
+  </div>
+</form>
+
+<div class="card">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>{% if grouping == "generic" %}{% translate "Generic" %}{% else %}{% translate "Brand and strength" %}{% endif %}</th>
+        <th class="num">{% translate "Qty" %}</th>
+        <th class="num">{% translate "Revenue" %}</th>
+        <th class="num">{% translate "Cost" %}</th>
+        <th class="num">{% translate "Gross profit" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for group in groups %}
+      <tr>
+        <td>
+          <details>
+            <summary>{{ group.label }}</summary>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>{% translate "Date" %}</th>
+                  <th>{% translate "Document" %}</th>
+                  <th>{% translate "Customer" %}</th>
+                  {% if group.is_extras %}
+                  <th>{% translate "Charge" %}</th>
+                  {% else %}
+                  <th>{% translate "Batch" %}</th>
+                  <th class="num">{% translate "Qty" %}</th>
+                  <th class="num">{% translate "Unit price" %}</th>
+                  {% endif %}
+                  <th class="num">{% translate "Revenue" %}</th>
+                  {% if not group.is_extras %}<th class="num">{% translate "Unit cost" %}</th>{% endif %}
+                  <th class="num">{% translate "Cost" %}</th>
+                  <th class="num">{% translate "Gross profit" %}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for line in group.lines %}
+                <tr>
+                  <td>{{ line.date }}</td>
+                  <td><a href="{% url 'document_detail' line.document.pk %}">{{ line.document.doc_no }}</a></td>
+                  <td>{{ line.customer }}</td>
+                  {% if group.is_extras %}
+                  <td>{{ line.label }}</td>
+                  {% else %}
+                  <td>
+                    {{ line.batch|default:"—" }}
+                    {% if line.lots|length > 1 %}
+                    <span class="muted">{% blocktranslate count counter=line.lots|length %}{{ counter }} lot{% plural %}{{ counter }} lots{% endblocktranslate %}</span>
+                    {% endif %}
+                  </td>
+                  <td class="num">{{ line.qty }}</td>
+                  <td class="num">{{ line.unit_price }}</td>
+                  {% endif %}
+                  <td class="num">{{ line.revenue }}</td>
+                  {% if not group.is_extras %}<td class="num">{{ line.unit_cost }}</td>{% endif %}
+                  <td class="num">{{ line.cost }}</td>
+                  <td class="num">{{ line.profit|default_if_none:"—" }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </details>
+        </td>
+        <td class="num">{{ group.qty|default_if_none:"—" }}</td>
+        <td class="num">{{ group.revenue }}</td>
+        <td class="num">{{ group.cost }}</td>
+        <td class="num">{{ group.profit }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" class="placeholder">{% translate "Nothing sold in this period." %}</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <th>{% translate "Total" %}</th>
+        <th class="num">{{ total.qty|default_if_none:"—" }}</th>
+        <th class="num">{{ total.revenue }}</th>
+        <th class="num">{{ total.cost }}</th>
+        <th class="num">{{ total.profit }}</th>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+
+{% if grouping == "generic" %}
+<p class="hint">
+  {% translate "Grouped by generic, so quantity and unit price are not shown: one generic can cover a syrup and a tablet, and adding bottles to packs would mean nothing. Switch to brand and strength for those." %}
+</p>
+{% endif %}
+{% endblock %}

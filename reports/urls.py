@@ -8,5 +8,6 @@ urlpatterns = [
     path("statement/", views.statement, name="statement"),
     # D135: must precede the catch-all, or the slug pattern swallows it.
     path("positions/<slug:side>/", views.party_positions, name="party_positions"),
+    path("sales-log/", views.sales_log, name="sales_log"),
     path("<slug:slug>/", views.report_detail, name="report_detail"),
 ]
