@@ -9,15 +9,15 @@ of 2026-09-08.
 
 ## The headline
 
-**Round 24 is built: 604 tests green, 24 commits on `build`.** Round 23 shipped
-seven features; you looked at them and withdrew two. What replaced them is
-smaller and better, and the reasoning is in D141 to D143.
+**Round 24 is built: 604 tests green, 22 commits waiting on `build`.** Round 23
+shipped seven features; you looked at them and withdrew two. What replaced them
+is smaller and better, and the reasoning is in D141 to D143.
 
 Nothing is on the client's machine. They are still running v1.1.0 from
-8 August, and the backlog past that tag is now **28 commits**. The deployment
-script still prints "Update complete" after `compose up -d` and verifies
-nothing. That, not the feature work, is what stands between this and the
-client.
+8 August, and the backlog past that tag is now **36 commits**, of which 22 have
+not even reached `origin`. The deployment script still prints "Update complete"
+after `compose up -d` and verifies nothing. That, not the feature work, is what
+stands between this and the client.
 
 **The push to `origin` is blocked** and needs you: `git push -u origin build`.
 
@@ -100,7 +100,7 @@ conversation.
 2. **Harden `ops/deploy.ps1`** so an update verifies itself and shows one
    photographable result. It is required before D132 regardless, so doing it
    now makes this release the rehearsal.
-3. **Release the 25-commit backlog** through that hardened path, rehearsed
+3. **Release the 36-commit backlog** through that hardened path, rehearsed
    against a restored copy first.
 4. **Put R102 and R106 to the client** — ask whether Shalom and Alula paid 100%
    or 97%, and count ITM-0096 and ITM-0046 before trusting any stock figure.
