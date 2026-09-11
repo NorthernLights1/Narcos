@@ -14,6 +14,17 @@
   <table class="table">
     <tbody>
       {% if group.statement %}
+      {% comment %}D135: the two drill-downs lead, because they are the
+      question the owner actually asks — who owes me, and who have I not
+      paid.{% endcomment %}
+      <tr>
+        <td>{% translate "Who owes us money (drill down to the transactions)" %}</td>
+        <td><a href="{% url 'party_positions' 'receivable' %}">{% translate "Open" %}</a></td>
+      </tr>
+      <tr>
+        <td>{% translate "Who we have not paid (drill down to the transactions)" %}</td>
+        <td><a href="{% url 'party_positions' 'payable' %}">{% translate "Open" %}</a></td>
+      </tr>
       <tr>
         <td>{% translate "Statement (customer/supplier reconciliation)" %}</td>
         <td><a href="{% url 'statement' %}">{% translate "Open" %}</a></td>

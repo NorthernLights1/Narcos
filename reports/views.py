@@ -1010,3 +1010,173 @@ def _csv_response(slug, columns, rows, total):
     if total:
         writer.writerow(total)
     return response
+
+
+# --- D135: party positions, drilling down to the transactions --------------
+
+PARTY_SIDES = {
+    "receivable": {
+        "party_type": PartyLedger.PartyType.CUSTOMER,
+        "model": Customer,
+        "other_type": PartyLedger.PartyType.SUPPLIER,
+        "other_model": Supplier,
+        "title": _("Who owes us money"),
+        "party_label": _("Customer"),
+        "other_label": _("We owe them"),
+        "own_label": _("They owe us"),
+        "doc_types": AR_TARGET_TYPES,
+        "other_side": "payable",
+    },
+    "payable": {
+        "party_type": PartyLedger.PartyType.SUPPLIER,
+        "model": Supplier,
+        "other_type": PartyLedger.PartyType.CUSTOMER,
+        "other_model": Customer,
+        "title": _("Who we have not paid"),
+        "party_label": _("Supplier"),
+        "other_label": _("They owe us"),
+        "own_label": _("We owe them"),
+        "doc_types": AP_TARGET_TYPES,
+        "other_side": "receivable",
+    },
+}
+
+
+def _open_documents(doc_types, party_field, end):
+    """Posted documents of these types that still owe something, grouped by
+    party id. A cash sale never creates debt, so it is excluded the same way
+    aging excludes it (D73)."""
+    by_party: dict[int, list] = {}
+    docs = (
+        Document.objects.filter(doc_type__in=doc_types,
+                                status=Document.Status.POSTED)
+        .select_related("customer", "supplier")
+        .order_by("document_date", "pk")
+    )
+    for doc in docs:
+        if doc.doc_type in (DocType.SALE, DocType.CONSIGNMENT_SETTLEMENT) \
+                and doc.sale_kind != Document.SaleKind.CREDIT:
+            continue
+        day = _day(doc.document_date)
+        if day is None or day > end:
+            continue
+        balance = open_balance(doc)
+        if balance <= 0:
+            continue
+        party_id = getattr(doc, f"{party_field}_id")
+        if party_id is None:
+            continue
+        by_party.setdefault(party_id, []).append({
+            "document": doc,
+            "date": day,
+            "due": doc.due_date,
+            "original": _money(doc.grand_total),
+            "settled": _money(doc.grand_total - balance),
+            "open": _money(balance),
+        })
+    return by_party
+
+
+def _by_normalised_name(value: str) -> str:
+    """R103: 13 of the client's businesses are on both sides and **none** of
+    them carry a matching tax number, so a name fold is the only way to notice
+    that a pair exists. It is used to *flag* those for data entry, never to net
+    them — netting stays on the tax number, by the owner's decision."""
+    return " ".join((value or "").split()).casefold()
+
+
+@login_required
+def party_positions(request, side):
+    """D135: one screen that starts at the party, expands to the transactions
+    behind the balance, and links to each document.
+
+    **Level one is the ledger balance, not the sum of the open documents.**
+    They are different numbers: an owner may post a customer return with no
+    sale reference, which credits the party ledger and belongs to no invoice
+    (docs/handlers_sales.py). Summing open documents would quietly disagree
+    with the statement, the Finance page and this party's own aging. The
+    difference is shown on its own row instead.
+    """
+    config = PARTY_SIDES.get(side)
+    if config is None:
+        raise Http404
+    period, start, end = _selected_range(request)
+
+    balances = _party_totals(config["party_type"], end)
+    other_balances = _party_totals(config["other_type"], end)
+    parties = {p.pk: p for p in config["model"].objects.filter(pk__in=balances)}
+    others = {o.pk: o for o in config["other_model"].objects.all()}
+
+    party_field = "customer" if side == "receivable" else "supplier"
+    documents = _open_documents(config["doc_types"], party_field, end)
+
+    # Netting pairs on the tax number only (owner's decision, 2026-09-11).
+    others_by_tin: dict[str, list] = {}
+    others_by_name: dict[str, list] = {}
+    for other in others.values():
+        tin = _normalised_tin(other.tin)
+        if tin:
+            others_by_tin.setdefault(tin, []).append(other)
+        others_by_name.setdefault(_by_normalised_name(other.name), []).append(other)
+
+    rows, unpaired = [], []
+    for pk, balance in balances.items():
+        if balance == 0:
+            continue
+        party = parties[pk]
+        entries = documents.get(pk, [])
+        documents_total = sum((e["open"] for e in entries), Decimal("0.00"))
+
+        counterpart = None
+        tin = _normalised_tin(party.tin)
+        if tin:
+            matches = sorted(others_by_tin.get(tin, []),
+                             key=lambda o: (not o.is_active, o.code))
+            counterpart = matches[0] if matches else None
+
+        counterpart_balance = (other_balances.get(counterpart.pk, Decimal("0.00"))
+                               if counterpart else None)
+        rows.append({
+            "party": party,
+            "balance": _money(balance),
+            "documents": entries,
+            "documents_total": _money(documents_total),
+            # Signed deliberately: negative means the ledger holds movements
+            # the transaction list cannot show, which is information, not noise.
+            "unexplained": _money(balance - documents_total),
+            "counterpart": counterpart,
+            "counterpart_balance": (_money(counterpart_balance)
+                                    if counterpart else None),
+            "net": (_money(balance - counterpart_balance)
+                    if counterpart else None),
+        })
+
+        if counterpart is None:
+            # Same business on both sides, no tax number to prove it. Name it
+            # so an unfinished data-entry job cannot read as "nobody is here".
+            lookalikes = [o for o in others_by_name.get(
+                _by_normalised_name(party.name), [])
+                if other_balances.get(o.pk, Decimal("0.00")) != 0]
+            if lookalikes:
+                unpaired.append({
+                    "name": party.name,
+                    "party": party,
+                    "others": lookalikes,
+                    "own": _money(balance),
+                    "other": _money(sum(
+                        (other_balances.get(o.pk, Decimal("0.00"))
+                         for o in lookalikes), Decimal("0.00"))),
+                })
+
+    rows.sort(key=lambda r: r["balance"], reverse=True)
+    total = sum((r["balance"] for r in rows), Decimal("0.00"))
+    return render(request, "reports/party_positions.html", {
+        "side": side,
+        "config": config,
+        "rows": rows,
+        "unpaired": unpaired,
+        "total": _money(total),
+        "period": period,
+        "start": start,
+        "end": end,
+    })

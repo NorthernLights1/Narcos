@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{{ config.title }} - Narcos{% endblock %}
+{% block content %}
+{% comment %}D135: two levels on one screen. The party row carries the ledger
+balance; opening it shows the transactions behind that balance, each linking to
+its document. `<details>` rather than htmx — the drill-down needs no request,
+and the client's machine is offline.{% endcomment %}
+<div class="page-head">
+  <h1>{{ config.title }}</h1>
+  <div class="actions">
+    <a class="btn" href="{% url 'party_positions' config.other_side %}">{% translate "Other side" %}</a>
+  </div>
+</div>
+
+<form method="get" class="card form-grid">
+  <div class="field">
+    <label for="id_end">{% translate "As of" %}</label>
+    <input id="id_end" type="date" name="end" value="{{ end|date:'Y-m-d' }}">
+    <input type="hidden" name="period" value="custom">
+    <input type="hidden" name="start" value="{{ start|date:'Y-m-d' }}">
+  </div>
+  <div class="field">
+    <label>&nbsp;</label>
+    <button class="btn btn-primary" type="submit">{% translate "Apply" %}</button>
+  </div>
+</form>
+
+{% if unpaired %}
+<div class="card">
+  <p class="msg msg-warn">
+    {% blocktranslate count counter=unpaired|length %}One business appears as both a customer and a supplier but carries no matching tax number, so its two sides are not netted below. Add the tax number to both records to net it.{% plural %}{{ counter }} businesses appear as both a customer and a supplier but carry no matching tax number, so their two sides are not netted below. Add the tax number to both records to net them.{% endblocktranslate %}
+  </p>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>{% translate "Business" %}</th>
+        <th>{{ config.party_label }}</th>
+        <th>{% translate "Other side" %}</th>
+        <th class="num">{{ config.own_label }}</th>
+        <th class="num">{{ config.other_label }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for pair in unpaired %}
+      <tr>
+        <td>{{ pair.name }}</td>
+        <td>{{ pair.party.code }}</td>
+        <td>{% for other in pair.others %}{{ other.code }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+        <td class="num">{{ pair.own }}</td>
+        <td class="num">{{ pair.other }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="card">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>{% translate "Code" %}</th>
+        <th>{{ config.party_label }}</th>
+        <th class="num">{{ config.own_label }}</th>
+        <th class="num">{{ config.other_label }}</th>
+        <th class="num">{% translate "Net" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>{{ row.party.code }}</td>
+        <td>
+          <details>
+            <summary>{{ row.party.name }}</summary>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>{% translate "Date" %}</th>
+                  <th>{% translate "Document" %}</th>
+                  <th>{% translate "Due" %}</th>
+                  <th class="num">{% translate "Original" %}</th>
+                  <th class="num">{% translate "Settled" %}</th>
+                  <th class="num">{% translate "Open" %}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for entry in row.documents %}
+                <tr>
+                  <td>{{ entry.date }}</td>
+                  <td><a href="{% url 'document_detail' entry.document.pk %}">{{ entry.document.doc_no }}</a></td>
+                  <td>{{ entry.due|default:"—" }}</td>
+                  <td class="num">{{ entry.original }}</td>
+                  <td class="num">{{ entry.settled }}</td>
+                  <td class="num">{{ entry.open }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="placeholder">{% translate "No open transactions." %}</td></tr>
+                {% endfor %}
+                {% if row.unexplained %}
+                {% comment %}The balance is the ledger, the list is open
+                documents, and they are not the same sum. Say so rather than
+                disagree.{% endcomment %}
+                <tr>
+                  <td colspan="3">{% translate "Account movements with no open transaction (returns, opening entries, corrections)" %}</td>
+                  <td class="num">—</td>
+                  <td class="num">—</td>
+                  <td class="num">{{ row.unexplained }}</td>
+                </tr>
+                {% endif %}
+                <tr>
+                  <th colspan="5">{% translate "Balance" %}</th>
+                  <th class="num">{{ row.balance }}</th>
+                </tr>
+              </tbody>
+            </table>
+          </details>
+        </td>
+        <td class="num">{{ row.balance }}</td>
+        <td class="num">{% if row.counterpart %}{{ row.counterpart_balance }}{% else %}—{% endif %}</td>
+        <td class="num">{% if row.net is not None %}{{ row.net }}{% else %}—{% endif %}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" class="placeholder">{% translate "Nothing outstanding." %}</td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <th colspan="2">{% translate "Total" %}</th>
+        <th class="num">{{ total }}</th>
+        <th class="num"></th>
+        <th class="num"></th>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+
+<p class="hint">
+  {% translate "The balance is this party's account total. Opening a row lists the transactions still outstanding behind it. Nothing is netted in the books — each side settles with its own payments — so the net column is information only." %}
+</p>
+{% endblock %}
