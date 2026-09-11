@@ -357,16 +357,26 @@ def _brand_key(item):
     return label, label
 
 
-def _generic_key(item):
-    """Fold case and surrounding space, because those are provably the same
+def fold_generic(value: str):
+    """(key, label) for one generic name.
+
+    Fold case and surrounding space, because those are provably the same
     generic. A real misspelling is not — `Paracetamoll` stays its own row, and
     that split is the argument for giving the catalogue a generic of its own.
-    The grand total is unaffected either way; only the split moves."""
-    cleaned = " ".join(item.generic_name.split())
+    The grand total is unaffected either way; only the split moves.
+
+    D144 made this a function of its own so the grouped sales report and
+    `sales-by-generic` cannot drift apart about what one generic is.
+    """
+    cleaned = " ".join((value or "").split())
     if not cleaned:
         unset = _("(no generic set)")
         return unset, unset
     return cleaned.casefold(), cleaned
+
+
+def _generic_key(item):
+    return fold_generic(item.generic_name)
 
 
 def _sales_by_brand(start, end, user):
@@ -508,7 +518,7 @@ def _party_totals(party_type, end) -> dict:
 
 
 def _both_faces(_start, end, _user):
-    """D127: who owes who, for a business that is both a customer and a supplier.
+    """D127: the net position of a business that is both customer and supplier.
 
     The statement page already pairs one party with its other face; this is the
     same question asked across everyone at once, which is what the client
@@ -522,7 +532,7 @@ def _both_faces(_start, end, _user):
     spelled out in the column name.
     """
     columns = [_("Business"), _("Customer"), _("Supplier"),
-               _("They owe us"), _("We owe them"), _("Net (+ = in our favour)")]
+               _("Receivable"), _("Payable"), _("Net (+ = due to us)")]
     receivable = _party_totals(PartyLedger.PartyType.CUSTOMER, end)
     payable = _party_totals(PartyLedger.PartyType.SUPPLIER, end)
     customers = {c.pk: c for c in Customer.objects.all()}
@@ -726,7 +736,7 @@ REPORTS = {
                     "builder": _ar_balances, "group": GROUP_PARTIES},
     "ap-balances": {"title": _("AP balances by supplier (as of the end date)"),
                     "builder": _ap_balances, "group": GROUP_PARTIES},
-    "both-faces": {"title": _("Who owes who (customer and supplier in one)"),
+    "both-faces": {"title": _("Net position by business (customer and supplier in one)"),
                    "builder": _both_faces, "group": GROUP_PARTIES},
     # Tax reports disappear when the configuration makes them permanently
     # empty (owner request: no dead reports) — flip the setting, they return.
@@ -1058,24 +1068,29 @@ PARTY_SIDES = {
         "model": Customer,
         "other_type": PartyLedger.PartyType.SUPPLIER,
         "other_model": Supplier,
-        "title": _("Who owes us money"),
+        # D144: the labels are the plain trade words — receivable and
+        # payable — not "they owe us". The reports are shown to accountants and
+        # to the businesses themselves.
+        "title": _("Receivables by customer"),
         "party_label": _("Customer"),
-        "other_label": _("We owe them"),
-        "own_label": _("They owe us"),
+        "other_label": _("Payable"),
+        "own_label": _("Receivable"),
         "doc_types": AR_TARGET_TYPES,
         "other_side": "payable",
+        "switch_label": _("Show payables"),
     },
     "payable": {
         "party_type": PartyLedger.PartyType.SUPPLIER,
         "model": Supplier,
         "other_type": PartyLedger.PartyType.CUSTOMER,
         "other_model": Customer,
-        "title": _("Who we have not paid"),
+        "title": _("Payables by supplier"),
         "party_label": _("Supplier"),
-        "other_label": _("They owe us"),
-        "own_label": _("We owe them"),
+        "other_label": _("Receivable"),
+        "own_label": _("Payable"),
         "doc_types": AP_TARGET_TYPES,
         "other_side": "receivable",
+        "switch_label": _("Show receivables"),
     },
 }
 
@@ -1263,7 +1278,64 @@ SALES_COLUMNS = [
     (_("Strength"), "strength"), (_("Qty"), "qty"), (_("Revenue"), "revenue"),
 ]
 SALES_COST_COLUMNS = [(_("COGS"), "cogs"), (_("Profit"), "profit")]
-SALES_FILTERS = REPORT_FILTERS + ("doc", "generic", "brand")
+SALES_FILTERS = REPORT_FILTERS + ("doc", "generic", "brand", "group")
+
+EXTRAS_LABEL = _("Other charges and discounts")
+
+
+def _generic_groups(rows):
+    """D144: the same rows, folded one row per generic, lines kept underneath.
+
+    **Money only.** D132 settled that a generic covers several strengths, so
+    revenue and cost add across it and quantity does not — 100 tablets of
+    500 mg plus 100 of 250 mg is not 200 of anything. `qty` is None on a group
+    and the lines inside keep their own.
+
+    R75's charges and discounts belong to no generic, so they form a last
+    group of their own rather than being dropped, which would leave the grouped
+    view disagreeing with the total above it.
+    """
+    buckets: dict = {}
+    extras = {"label": EXTRAS_LABEL, "lines": [], "revenue": Decimal("0.00"),
+              "cogs": Decimal("0.00"), "qty": None, "is_extra": True}
+    for row in rows:
+        if row["is_extra"]:
+            extras["lines"].append(row)
+            extras["revenue"] += row["revenue"]
+            continue
+        key, label = fold_generic(row["generic"])
+        bucket = buckets.setdefault(key, {
+            "lines": [], "revenue": Decimal("0.00"), "cogs": Decimal("0.00"),
+            "names": Counter(), "qty": None, "is_extra": False,
+        })
+        # Commonest exact spelling wins, alphabetical tie-break, exactly as
+        # `_achieved_rows` picks it — so the two reports label a generic the
+        # same way as well as splitting it the same way.
+        bucket["names"][label] += 1
+        bucket["lines"].append(row)
+        bucket["revenue"] += row["revenue"]
+        bucket["cogs"] += row["cogs"]
+
+    groups = []
+    for key in sorted(buckets):
+        bucket = buckets[key]
+        bucket["label"] = sorted(bucket["names"].items(),
+                                 key=lambda kv: (-kv[1], kv[0]))[0][0]
+        del bucket["names"]
+        bucket["revenue"] = _money(bucket["revenue"])
+        bucket["cogs"] = _money(bucket["cogs"])
+        bucket["profit"] = _money(bucket["revenue"] - bucket["cogs"])
+        groups.append(bucket)
+    if extras["lines"]:
+        extras["revenue"] = _money(extras["revenue"])
+        extras["cogs"] = _money(extras["cogs"])
+        extras["profit"] = extras["revenue"]
+        groups.append(extras)
+    return groups
+
+
+GROUP_COLUMNS = [(_("Generic"), "label"), (_("Lines"), "count"),
+                 (_("Revenue"), "revenue")]
 
 
 def _sales_csv(rows, totals, show_cost):
@@ -1271,8 +1343,7 @@ def _sales_csv(rows, totals, show_cost):
     item, so its label goes in the Item column — the place a reader looks to
     ask what a row is about."""
     columns = SALES_COLUMNS + (SALES_COST_COLUMNS if show_cost else [])
-    response = HttpResponse(content_type="text/csv")
-    response["Content-Disposition"] = 'attachment; filename="sales.csv"'
+    response = _csv_start()
     writer = csv.writer(response)
     writer.writerow([str(label) for label, _key in columns])
     for row in rows:
@@ -1287,6 +1358,30 @@ def _sales_csv(rows, totals, show_cost):
     if show_cost:
         footer[9], footer[10] = totals["cogs"], totals["profit"]
     writer.writerow(footer)
+    return response
+
+
+def _groups_csv(groups, totals, show_cost):
+    """D144: grouped on screen, grouped in the file. Quantity is absent by
+    decision (D132), not by omission, so the column is not there to invite the
+    question."""
+    columns = GROUP_COLUMNS + (SALES_COST_COLUMNS if show_cost else [])
+    response = _csv_start()
+    writer = csv.writer(response)
+    writer.writerow([str(label) for label, _key in columns])
+    for group in groups:
+        row = dict(group, count=len(group["lines"]))
+        writer.writerow([row[key] for _label, key in columns])
+    footer = [str(_("Total")), "", totals["revenue"]]
+    if show_cost:
+        footer.extend([totals["cogs"], totals["profit"]])
+    writer.writerow(footer)
+    return response
+
+
+def _csv_start():
+    response = HttpResponse(content_type="text/csv")
+    response["Content-Disposition"] = 'attachment; filename="sales.csv"'
     return response
 
 
@@ -1313,11 +1408,17 @@ def sales_report(request):
     filters = {key: request.GET.get(key, "") for key in ("doc", "generic", "brand")}
     rows, totals = _sale_line_rows(start, end, filters)
     show_cost = request.user.is_owner
+    grouping = "generic" if request.GET.get("group") == "generic" else "lines"
+    groups = _generic_groups(rows) if grouping == "generic" else []
     if request.GET.get("format") == "csv":
-        return _sales_csv(rows, totals, show_cost)
+        return (_groups_csv(groups, totals, show_cost) if grouping == "generic"
+                else _sales_csv(rows, totals, show_cost))
     return render(request, "reports/sales.html", {
         "columns": SALES_COLUMNS + (SALES_COST_COLUMNS if show_cost else []),
+        "group_columns": GROUP_COLUMNS + (SALES_COST_COLUMNS if show_cost else []),
         "rows": rows,
+        "groups": groups,
+        "grouping": grouping,
         "totals": totals,
         "show_cost": show_cost,
         "filters": filters,

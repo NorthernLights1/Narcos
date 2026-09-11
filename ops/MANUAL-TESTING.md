@@ -6,6 +6,24 @@ to do and **what you must see** — if you see something else, that's a bug.
 
 Written for a dev machine (Linux, `.venv`, PostgreSQL on localhost).
 
+> **2026-09-12 round 24 — D144/D145:** **hard-refresh** (`?v=20260912b`) — the
+> CSS changed again.
+>
+> - **Group by generic (D144).** Reports → Sales by period/customer/item. Set
+>   **Group by** to *Generic*: one row per generic, and **the total at the
+>   bottom must not change**. There is **no quantity column** on the group rows
+>   and that is deliberate — one generic covers several strengths, so the units
+>   are not the same thing. Open a row: the lines appear with their own
+>   quantities and their document links. Open a row with several lines and
+>   check the **Profit column does not move**. The group labels must match the
+>   *Sales by generic* report exactly. Apply a brand filter and the grouping
+>   must follow it. The **CSV** must export the groups, not the lines.
+> - **The report wording (D145).** Reports must now read *Receivables by
+>   customer* and *Payables by supplier*, with **Receivable** and **Payable**
+>   as column headings, and the button top-right must say *Show payables* or
+>   *Show receivables*. Finance must read *Receivables (AR)* and *Payables
+>   (AP)*. No number anywhere should differ from before.
+
 > **2026-09-12 round 24 — D141 to D143:** **hard-refresh** (`?v=20260912a`)
 > before checking these; the CSS and JS both changed. Two of round 23's
 > features are withdrawn below — if you still see them, you are on the old

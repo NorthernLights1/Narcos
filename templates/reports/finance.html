@@ -8,7 +8,7 @@
 </div>
 
 <div class="card net-position {% if net_position < 0 %}net-negative{% endif %}">
-  <p class="net-label">{% translate "Net position" %} <span class="hint">({% translate "money + owed to you − you owe" %})</span></p>
+  <p class="net-label">{% translate "Net position" %} <span class="hint">({% translate "cash and bank + receivables − payables" %})</span></p>
   <p class="net-amount">{{ net_position }}</p>
 </div>
 
@@ -35,7 +35,7 @@
   </div>
 
   <div class="card">
-    <h2>{% translate "Owed to you (AR)" %}</h2>
+    <h2>{% translate "Receivables (AR)" %}</h2>
     <p class="finance-big">{{ ar_total }}</p>
     {% if ar_overdue > 0 %}<p class="finance-bad">{% translate "of which overdue" %}: {{ ar_overdue }}</p>{% endif %}
     <ul class="compact-list">
@@ -47,7 +47,7 @@
   </div>
 
   <div class="card">
-    <h2>{% translate "You owe (AP)" %}</h2>
+    <h2>{% translate "Payables (AP)" %}</h2>
     <p class="finance-big">{{ ap_total }}</p>
     {% if ap_overdue > 0 %}<p class="finance-bad">{% translate "of which overdue" %}: {{ ap_overdue }}</p>{% endif %}
     <ul class="compact-list">
@@ -61,7 +61,7 @@
   <div class="card">
     <h2>{% translate "Stock" %}</h2>
     <ul class="compact-list">
-      <li>{% translate "In your warehouse (at cost)" %} <b class="num">{{ stock_warehouse_cost }}</b></li>
+      <li>{% translate "In the warehouse (at cost)" %} <b class="num">{{ stock_warehouse_cost }}</b></li>
       <li>{% translate "At customers on consignment (at cost)" %} <b class="num">{{ stock_consigned_cost }}</b></li>
       <li>{% translate "Total at cost (FIFO)" %} <b class="num">{{ stock_cost }}</b></li>
       <li>{% translate "At selling price" %} <b class="num">{{ stock_price }}</b></li>
@@ -85,8 +85,8 @@
   <div class="card">
     <h2>{% translate "Withholding at filing" %}</h2>
     <ul class="compact-list">
-      <li>{% translate "Certificates you hold (credit)" %} <b class="num">{{ wht_receivable }}</b></li>
-      <li>{% translate "You owe the tax office" %} <b class="num">{{ wht_payable }}</b></li>
+      <li>{% translate "Certificates held (credit)" %} <b class="num">{{ wht_receivable }}</b></li>
+      <li>{% translate "Due to the tax office" %} <b class="num">{{ wht_payable }}</b></li>
     </ul>
     <p><a href="{% url 'report_detail' 'withholding-payable' %}">{% translate "Withholding detail" %} →</a></p>
   </div>

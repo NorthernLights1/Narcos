@@ -87,6 +87,15 @@
   .inline-field-form input, .inline-field-form textarea { @apply w-48 py-1 px-2 text-sm; }
   .table-wrap { @apply overflow-x-auto; }
   .cell-tight { @apply whitespace-nowrap; }
+
+  /* D144: a drill-down table nested inside a cell widens its column and
+     pushes the money columns off the right edge. Fixing the outer layout
+     stops the columns moving when a row is opened, and the nested table
+     scrolls inside its own box. */
+  .table-grouped { table-layout: fixed; width: 100%; }
+  .table-grouped > thead > tr > th:first-child { width: 46%; }
+  .drill-wrap { @apply overflow-x-auto; }
+  .drill-wrap .table { @apply text-xs; }
   .table { @apply w-full text-sm; }
   .table th {
     @apply text-left text-xs font-semibold uppercase tracking-wide

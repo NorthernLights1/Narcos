@@ -15,14 +15,14 @@
     <tbody>
       {% if group.statement %}
       {% comment %}D135: the two drill-downs lead, because they are the
-      question the owner actually asks — who owes me, and who have I not
-      paid.{% endcomment %}
+      question the owner actually asks — what is receivable, and what is
+      payable.{% endcomment %}
       <tr>
-        <td>{% translate "Who owes us money (drill down to the transactions)" %}</td>
+        <td>{% translate "Receivables by customer, with the transactions behind each" %}</td>
         <td><a href="{% url 'party_positions' 'receivable' %}">{% translate "Open" %}</a></td>
       </tr>
       <tr>
-        <td>{% translate "Who we have not paid (drill down to the transactions)" %}</td>
+        <td>{% translate "Payables by supplier, with the transactions behind each" %}</td>
         <td><a href="{% url 'party_positions' 'payable' %}">{% translate "Open" %}</a></td>
       </tr>
       <tr>

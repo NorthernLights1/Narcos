@@ -6,7 +6,7 @@
 <div class="page-head">
   <h1>{% translate "Sales by period/customer/item" %}</h1>
   <div class="actions">
-    <a class="btn" href="?period={{ period }}&start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&doc={{ filters.doc|urlencode }}&generic={{ filters.generic|urlencode }}&brand={{ filters.brand|urlencode }}&format=csv">{% translate "CSV" %}</a>
+    <a class="btn" href="?period={{ period }}&start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&doc={{ filters.doc|urlencode }}&generic={{ filters.generic|urlencode }}&brand={{ filters.brand|urlencode }}&group={{ grouping }}&format=csv">{% translate "CSV" %}</a>
   </div>
 </div>
 
@@ -44,6 +44,15 @@
     <input id="id_brand" type="search" name="brand" value="{{ filters.brand }}"
            placeholder="{% translate 'e.g. Panadol' %}">
   </div>
+  {% comment %}D144: one generic covers several strengths, so grouping adds
+  the money and deliberately not the quantity (D132).{% endcomment %}
+  <div class="field">
+    <label for="id_group">{% translate "Group by" %}</label>
+    <select id="id_group" name="group">
+      <option value="lines"{% if grouping == "lines" %} selected{% endif %}>{% translate "Every line" %}</option>
+      <option value="generic"{% if grouping == "generic" %} selected{% endif %}>{% translate "Generic" %}</option>
+    </select>
+  </div>
   <div class="field">
     <label>&nbsp;</label>
     <button class="btn btn-primary" type="submit">{% translate "Apply" %}</button>
@@ -52,6 +61,82 @@
 
 <div class="card">
   <div class="table-wrap">
+    {% if grouping == "generic" %}
+    <table class="table table-grouped">
+      <thead>
+        <tr>
+          {% for label, key in group_columns %}<th>{{ label }}</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for group in groups %}
+        <tr>
+          <td>
+            <details>
+              <summary>{{ group.label }}</summary>
+              <div class="drill-wrap">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>{% translate "Date" %}</th>
+                    <th>{% translate "Document" %}</th>
+                    <th>{% translate "Customer" %}</th>
+                    <th>{% translate "Item" %}</th>
+                    <th>{% translate "Brand" %}</th>
+                    <th>{% translate "Strength" %}</th>
+                    <th>{% translate "Qty" %}</th>
+                    <th>{% translate "Revenue" %}</th>
+                    {% if show_cost %}<th>{% translate "COGS" %}</th><th>{% translate "Profit" %}</th>{% endif %}
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in group.lines %}
+                  <tr>
+                    <td class="cell-tight">{{ row.date|date:"Y-m-d" }}</td>
+                    <td class="cell-tight"><a href="{% url 'document_detail' row.doc_pk %}">{{ row.doc_no }}</a></td>
+                    <td>{{ row.customer }}</td>
+                    {% if row.is_extra %}
+                    <td colspan="3">{{ row.label }}</td>
+                    {% else %}
+                    <td class="cell-tight">{{ row.code }}</td>
+                    <td>{{ row.brand }}</td>
+                    <td>{{ row.strength }}</td>
+                    {% endif %}
+                    <td>{{ row.qty|default_if_none:"" }}</td>
+                    <td>{{ row.revenue }}</td>
+                    {% if show_cost %}<td>{{ row.cogs }}</td><td>{{ row.profit }}</td>{% endif %}
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+              </div>
+            </details>
+          </td>
+          <td>{{ group.lines|length }}</td>
+          <td>{{ group.revenue }}</td>
+          {% if show_cost %}
+          <td>{{ group.cogs }}</td>
+          <td>{{ group.profit }}</td>
+          {% endif %}
+        </tr>
+        {% empty %}
+        <tr><td colspan="{{ group_columns|length }}">{% translate "No rows." %}</td></tr>
+        {% endfor %}
+        <tr class="total-row">
+          <th colspan="2">{% translate "Total" %}</th>
+          <th>{{ totals.revenue }}</th>
+          {% if show_cost %}
+          <th>{{ totals.cogs }}</th>
+          <th>{{ totals.profit }}</th>
+          {% endif %}
+        </tr>
+      </tbody>
+    </table>
+    {% comment %}D132: quantity is absent on purpose. One generic spans
+    several strengths, and adding their units together would produce a number
+    that counts nothing.{% endcomment %}
+    <p class="hint">{% translate "Quantity is not totalled per generic — one generic covers several strengths, so the units are not the same thing. Open a row for the quantities." %}</p>
+    {% else %}
     <table class="table">
       <thead>
         <tr>
@@ -99,6 +184,7 @@
         </tr>
       </tbody>
     </table>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

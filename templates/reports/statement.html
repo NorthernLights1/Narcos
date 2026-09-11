@@ -60,18 +60,18 @@
   {% if counterpart %}
   <p class="msg msg-info no-print">
     {% if counterpart.party_type == "supplier" %}
-      {% blocktranslate with code=counterpart.party.code balance=counterpart.balance %}Same TIN as supplier {{ code }} — you owe them {{ balance }}.{% endblocktranslate %}
+      {% blocktranslate with code=counterpart.party.code balance=counterpart.balance %}Same TIN as supplier {{ code }} — payable to them {{ balance }}.{% endblocktranslate %}
     {% else %}
-      {% blocktranslate with code=counterpart.party.code balance=counterpart.balance %}Same TIN as customer {{ code }} — they owe you {{ balance }}.{% endblocktranslate %}
+      {% blocktranslate with code=counterpart.party.code balance=counterpart.balance %}Same TIN as customer {{ code }} — receivable from them {{ balance }}.{% endblocktranslate %}
     {% endif %}
-    <a href="?party_type={{ counterpart.party_type }}&party={{ counterpart.party.pk }}&period={{ period }}&start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">{% translate "View their statement" %} →</a>
+    <a href="?party_type={{ counterpart.party_type }}&party={{ counterpart.party.pk }}&period={{ period }}&start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">{% translate "Open their statement" %} →</a>
   </p>
   {% endif %}
   <p class="hint">
     {% if party_type == "customer" %}
-      {% translate "Balance = what this customer owes you. Cash sales settle instantly and never appear here." %}
+      {% translate "Balance = the amount receivable from this customer. Cash sales settle instantly and never appear here." %}
     {% else %}
-      {% translate "Balance = what you owe this supplier." %}
+      {% translate "Balance = the amount payable to this supplier." %}
     {% endif %}
   </p>
   <table class="table">

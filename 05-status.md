@@ -9,7 +9,7 @@ of 2026-09-08.
 
 ## The headline
 
-**Round 24 is built: 604 tests green, 22 commits waiting on `build`.** Round 23
+**Round 24 is built: 618 tests green, 24 commits waiting on `build`.** Round 23
 shipped seven features; you looked at them and withdrew two. What replaced them
 is smaller and better, and the reasoning is in D141 to D143.
 
@@ -29,6 +29,8 @@ stands between this and the client.
 | 2 | Delete the sales log | Gone — view, template, URL, tests and hub entry. D138 withdrawn | done |
 | 3 | Remove the *detailed* tick completely and restore the *New item* button | Built as **D143**. The dialog is exactly as R49 had it | done |
 | 4 | A search box and a **Copy from** button on the add-item page, prefilling everything | Built as **D142**, on the Master item page and in the receiving dialog | done |
+| 5 | Group the sales report per generic | Built as **D144**. 156 generics from 377 lines, labels matching `sales-by-generic` one for one | done |
+| 6 | More professional wording on the reports | Built as **D145**. Receivable and payable throughout; no number changed | done |
 
 **The per-item complaint was about legibility, not arithmetic.** The report was
 already per line and the deployed build does the same — `SI-000005` renders six

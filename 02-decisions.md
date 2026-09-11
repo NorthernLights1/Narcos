@@ -2566,3 +2566,64 @@ on the lines card.
 The `[x-cloak]` rule D139 added stays even though nothing on the page uses Alpine
 now. The flash it prevents was found by screenshotting the page, not by any
 test, and the next `x-show` would rediscover it the same expensive way.
+
+### D144 — The sales report groups per generic, money only
+
+*2026-09-12.*
+
+The owner asked for grouping on the report they already read rather than as a
+fourth sales report. **Group by** offers *Every line* (unchanged) or *Generic*;
+one row per generic, the lines still underneath in a drill-down, each linking to
+its document.
+
+**Money adds up across a generic and quantity does not.** D132 settled this and
+it is easy to lose: one generic covers several strengths, and 100 tablets of
+500 mg plus 100 of 250 mg is not 200 of anything. The group row carries revenue,
+cost and profit and no quantity column at all — absent by decision, not by
+omission — with a line on the page saying so. The lines inside keep their own
+quantities.
+
+**The two generic reports must split the same way.** D126's folding rule — case
+and surrounding space folded, a real misspelling left as its own row — is now a
+function both call, and both pick the label the same way, commonest exact
+spelling first with an alphabetical tie-break. On the client's data the grouping
+produces **156 generics from 377 lines** and the labels match `sales-by-generic`
+exactly, one for one. Grouped revenue equals ungrouped revenue to the cent.
+
+**Charges and discounts get a group of their own.** R75 money belongs to the
+invoice, not to a generic. Dropping it would leave the grouped view disagreeing
+with its own total, so it sits last under *Other charges and discounts*.
+
+**One layout defect, found by looking.** A drill-down table nested inside a cell
+widens that column and pushed Profit off the right edge the moment a row was
+opened. The grouped table now fixes its column widths and the nested table
+scrolls inside its own box, so opening a row cannot move the money. The same
+shape in D135's drill-down got the same treatment.
+
+### D145 — The reports use the trade words, not "they owe us"
+
+*2026-09-12.*
+
+The owner asked for more professional language on the reports, without going
+overtly technical. These are shown to an accountant and sometimes to the
+business on the other side of the balance, and "Who we have not paid" does not
+survive that reading.
+
+The vocabulary was already half there — the report group is called *Receivables
+& payables* — so the change is to finish it rather than to introduce jargon.
+
+| Was | Now |
+|---|---|
+| Who owes us money | Receivables by customer |
+| Who we have not paid | Payables by supplier |
+| They owe us / We owe them | Receivable / Payable |
+| Who owes who (customer and supplier in one) | Net position by business (customer and supplier in one) |
+| Net (+ = in our favour) | Net (+ = due to us) |
+| Other side | Show payables / Show receivables |
+| money + owed to you − you owe | cash and bank + receivables − payables |
+| Owed to you (AR) / You owe (AP) | Receivables (AR) / Payables (AP) |
+| You owe the tax office | Due to the tax office |
+| Balance = what this customer owes you | Balance = the amount receivable from this customer |
+
+Wording only. No number, column or query changed, and the whole suite passed
+untouched — which is the evidence that nothing but language moved.

@@ -9,7 +9,7 @@ and the client's machine is offline.{% endcomment %}
 <div class="page-head">
   <h1>{{ config.title }}</h1>
   <div class="actions">
-    <a class="btn" href="{% url 'party_positions' config.other_side %}">{% translate "Other side" %}</a>
+    <a class="btn" href="{% url 'party_positions' config.other_side %}">{{ config.switch_label }}</a>
   </div>
 </div>
 
@@ -36,7 +36,7 @@ and the client's machine is offline.{% endcomment %}
       <tr>
         <th>{% translate "Business" %}</th>
         <th>{{ config.party_label }}</th>
-        <th>{% translate "Other side" %}</th>
+        <th>{% translate "Also registered as" %}</th>
         <th class="num">{{ config.own_label }}</th>
         <th class="num">{{ config.other_label }}</th>
       </tr>
@@ -74,6 +74,7 @@ and the client's machine is offline.{% endcomment %}
         <td>
           <details>
             <summary>{{ row.party.name }}</summary>
+            <div class="drill-wrap">
             <table class="table">
               <thead>
                 <tr>
@@ -115,6 +116,7 @@ and the client's machine is offline.{% endcomment %}
                 </tr>
               </tbody>
             </table>
+            </div>
           </details>
         </td>
         <td class="num">{{ row.balance }}</td>
