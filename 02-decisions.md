@@ -2314,3 +2314,61 @@ appears only when there is something to separate.
 printed forms. Three already assert it — `500mg` on the sales attachment, on the
 compact layout and on the picking list — and duplicating them would claim credit
 for coverage that already existed.
+
+### D136 — A drug without a strength is not a described drug
+
+**What:** `ItemForm` refuses to save an item whose category is DRUG with an
+empty strength, on **create and on edit**, and in the receiving quick-add
+dialog, because that dialog runs the same full form (D108). Other categories
+are exempt.
+
+**Why:** the catalogue's real defect is the size being typed into whichever
+field the operator happened to be looking at — §3 of
+[06-client-data.md](06-client-data.md). D134 made strength visible so that
+filling it is visibly worth doing; this makes it required where it always
+applies.
+
+**Why edits too, confirmed by the owner 2026-09-11.** 45 of the client's 162
+drug items are blank today. A rule that applied only to new items would leave
+those 45 permanently blank and the cleanup would never happen. Applying it on
+edit means the next time anyone touches one of those records — to change a
+price, say — the strength gets filled in. That is deliberate friction with a
+purpose, and the owner chose it knowing the cost.
+
+**Why not every category.** Gloves, syringes and reagents have no strength, and
+13 non-drug items are blank. Demanding one would invite a junk value, which is
+worse than a blank.
+
+**The message names the fix,** because support happens over a phone photo of
+the screen: it says to type the strength and to put the size there rather than
+in the name.
+
+### D137 — A filter the user set stays set
+
+**What:** the filters on the documents list, the inventory list and every
+report are remembered per user and restored on the next visit. Stored in
+`User.filter_state`, a JSON field keyed by screen.
+
+**Why not the session.** D131 settled that nobody is logged in automatically,
+so staff sign in every morning on a machine that was switched off overnight. A
+session-backed memory would reset daily — which is precisely the complaint.
+
+**Two rules that matter more than the happy path:**
+- **An explicit filter always wins.** Otherwise the screen argues with the
+  person using it.
+- **Clearing a filter sticks.** The filter form submits its boxes even when
+  empty, so `?type=` is a deliberate "show me everything". Presence of the key
+  decides, never truthiness — a memory that overruled a cleared filter would be
+  unusable.
+
+**Scoped per screen,** or filtering documents would silently re-filter
+inventory. Reports are scoped per report slug.
+
+**It rewrites `request.GET` once at the top of the view.** Every filtered view
+already reads its parameters from there, in a dozen places between them.
+Replacing the mapping once leaves that code correct and unchanged; threading a
+second mapping through would touch every read and invite one to be missed.
+These are read-only list views.
+
+**Nothing here is audited and nothing affects money or stock.** It is a screen
+preference, deliberately kept out of `AUDITED_FIELDS`.
