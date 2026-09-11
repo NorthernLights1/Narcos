@@ -37,9 +37,9 @@ def supplier(db):
     return Supplier.objects.create(code="S001", name="Addis Pharma")
 
 
-def make_item(code, name, reorder_level=None, generic_name=""):
+def make_item(code, name, reorder_level=None, generic_name="", strength=""):
     return Item.objects.create(code=code, name=name, generic_name=generic_name,
-                               base_unit="pack",
+                               strength=strength, base_unit="pack",
                                is_batch_tracked=True, has_expiry=True,
                                vat_exempt=True, reorder_level=reorder_level)
 
@@ -522,3 +522,19 @@ def test_a_review_from_yesterday_is_not_accepted_today(client, owner, supplier):
     assert response.status_code == 200
     assert batch.expiry_date == FAR_EXPIRY
     assert not AuditLog.objects.filter(action="BATCH_EXPIRY_UPDATE").exists()
+
+
+def test_inventory_search_finds_an_item_by_its_strength(client, owner, supplier):
+    """D134: strength printed on every document and appeared on no screen, so
+    two items differing only by strength could not be told apart or searched
+    for. Inventory is the screen that answers "how many have I got"."""
+    strong = make_item("ITM-0201", "Amoxil", generic_name="Amoxicillin",
+                       strength="500mg")
+    weak = make_item("ITM-0202", "Amoxil", generic_name="Amoxicillin",
+                     strength="250mg")
+    receive(owner, supplier, strong, qty=30)
+    receive(owner, supplier, weak, qty=30)
+    client.force_login(owner)
+
+    rows = client.get(reverse("inventory_list"), {"q": "250mg"}).context["rows"]
+    assert {row["item"].code for row in rows} == {"ITM-0202"}

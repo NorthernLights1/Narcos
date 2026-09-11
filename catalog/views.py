@@ -45,9 +45,13 @@ class MasterConfig:
 
 MASTER: dict[str, MasterConfig] = {
     "items": MasterConfig(Item, ItemForm, gettext_lazy("Items"),
-                          ["code", "name", "generic_name", "category", "base_unit",
-                           "maintained_price", "is_active"],
-                          ["code", "name", "generic_name"]),
+                          # D134: strength is shown and searched here. It was on
+                          # every printed document and on no screen, so the only
+                          # way to tell two strengths apart was to type the size
+                          # into the name.
+                          ["code", "name", "generic_name", "strength", "category",
+                           "base_unit", "maintained_price", "is_active"],
+                          ["code", "name", "generic_name", "strength"]),
     "customers": MasterConfig(Customer, CustomerForm, gettext_lazy("Customers"),
                               ["code", "name", "phone", "is_withholding_agent", "is_active"],
                               ["code", "name", "tin"]),

@@ -55,9 +55,13 @@ def inventory_list(request):
         # leads with it (R48) and Master already searches it. Leaving it out
         # here made every brand-named item ("Folly" for a catheter) look absent
         # on the one screen that answers "how many have I got".
+        # D134: strength joins them. It was printed on every document and shown
+        # on no screen, so two items differing only by strength could not be
+        # told apart here at all.
         items = items.filter(Q(code__icontains=query)
                              | Q(name__icontains=query)
-                             | Q(generic_name__icontains=query))
+                             | Q(generic_name__icontains=query)
+                             | Q(strength__icontains=query))
     totals = _zone_totals_by_item()
     rows = []
     for item in items:
