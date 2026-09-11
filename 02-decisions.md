@@ -2243,3 +2243,74 @@ cleanup out of the same support incident.
 "2 way"/"3 way" belongs; the 58 blank strengths (review, never invent); the 14
 DRUG items marked not `vat_exempt`; and R88 — a generic rename rewrites how
 already-printed documents re-render, which bulk canonicalisation makes routine.
+
+### D133 — An expired batch is not offered where stock is sold from the shelf
+
+**What:** the sale and consignment-issue batch pickers exclude a batch whose
+expiry has passed, alongside D124's exclusion of empty ones. The picker label
+also marks near-expiry batches, reading `near_expiry_months` rather than
+assuming six.
+
+**Why:** exactly D124's argument on the other axis. Posting already refuses an
+expired batch — D46, a block with no override,
+[docs/handlers_sales.py:127](docs/handlers_sales.py) — but only once the whole
+line has been typed. The operator types a complete line and is told to start
+again.
+
+**Why now rather than later:** it is live. §5 and §9 of
+[06-client-data.md](06-client-data.md) show item ITM-0109 batch `B-03225`,
+expired 2026-08-08, holding **50 units in the WAREHOUSE zone** on the client's
+machine, offered on every sale. The client listed this as request 7 believing it
+was already built; it was half built.
+
+**Three boundaries the tests pin, because each is a way to get this wrong:**
+- **The expiry day itself is still sellable.** D46 says expired means *past* its
+  date, so the comparison is `>=`. Off by one here silently destroys a day of
+  shelf life on every batch in the catalogue.
+- **A null expiry is not an expired one.** `expiry_date` is null for an item
+  with no expiry (D22); reading null as expired would make those unsellable.
+- **Disposal still needs the picker.** Adjustments, stock counts, customer
+  returns and proformas must still reach expired stock — writing it off is how
+  it leaves the building. Filtering those would trap it permanently, which
+  matters because §9 found that nothing has ever been written off.
+
+**The D124 draft rescue extends to the expiry axis.** A draft that already names
+a batch which has since expired must still validate, or the whole document stops
+saving and re-opening it submits blank. The rescue stays scoped to that one
+line.
+
+**The posting refusal is untouched.** The picker is convenience; the handler is
+the guard.
+
+### D134 — Strength was printed everywhere and shown nowhere
+
+**What:** strength joins `Item.__str__`, the Master item list and its search
+fields, and the Inventory search. **No print template changes.**
+
+**Why, and the diagnosis is the point.** The client reported that strength does
+not print and that staff leave the field empty and type the size into the name
+so that it will. Rendering the real views against the restored database
+disproves the first half: `full_description` puts strength on the compact
+invoice, the cash sales attachment and the picking list, and `SI-000003` renders
+as `ITM-0003 — Suxamethiom (Suxathon), 100/2ml, injection, ampoule, of 1`.
+`git tag --contains 940b280` returns **v1.1.0**, the deployed tag, so this has
+been true on the client's own machine since round 4.
+
+**The belief is nonetheless honest, and self-reinforcing.** Before 940b280 a
+filled strength genuinely did not reach the paper. The habit outlived the fix
+because nothing on screen ever confirmed it: fill `strength` and it appears in
+no picker, on no document line, in no search — so it looks inert, and the size
+goes into the name, where it shows up everywhere including the printout.
+
+**So this fixes readers, not writers.** D132 already required exactly this, as
+*"fix readers before moving text"*, as a precondition of the catalogue cleanup.
+This request is that item arriving from the field, and it is what makes filling
+the field visibly worth doing.
+
+**Blank strength changes nothing.** 58 of 201 items have none, so the separator
+appears only when there is something to separate.
+
+**What was deliberately not done:** no test was added for strength on the
+printed forms. Three already assert it — `500mg` on the sales attachment, on the
+compact layout and on the picking list — and duplicating them would claim credit
+for coverage that already existed.

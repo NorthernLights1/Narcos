@@ -6,6 +6,30 @@ to do and **what you must see** — if you see something else, that's a bug.
 
 Written for a dev machine (Linux, `.venv`, PostgreSQL on localhost).
 
+> **2026-09-11 round 23 — D133/D134:** no CSS or JS changed, so no hard
+> refresh is needed for these two.
+>
+> - **Expired batches are gone from the sale picker (D133).** Start a **Sale**,
+>   pick item `ITM-0109`, and open the batch list: batch `B-03225` expired
+>   2026-08-08 and must **not** be offered, even though it holds 50 units. Now
+>   open an **Adjustment**, a **Stock count**, a **Customer return** and a
+>   **Proforma** for the same item — it must still be there in all four, because
+>   writing it off is how it leaves the building. Then take a draft sale that
+>   names a batch and let that batch expire: the draft must still save and still
+>   show its batch.
+> - **Near-expiry batches say so (D133).** In the same picker, a batch expiring
+>   inside the near-expiry window carries `· near expiry` at the end of its
+>   label. Change **Near-expiry months** in Settings and the set of marked
+>   batches must change with it.
+> - **Strength is on screen at last (D134).** Open any item picker: the label
+>   now reads `code — generic (brand), strength`. Type a strength such as
+>   `500mg` into **Inventory** search and into **Master → Items** search — both
+>   must find it. Master → Items shows a **Strength** column. An item with no
+>   strength must read exactly as before, with no trailing comma.
+> - **Printing is unchanged and must stay that way (D134).** Print any posted
+>   invoice: the line still reads `code — generic (brand), strength, form, unit,
+>   pack`. Nothing about the paper changed in this round.
+
 > **2026-09-06 round 22 — five client requests (D123–D130):** **hard-refresh**
 > (`?v=20260906a`), then check each of these.
 >
