@@ -224,6 +224,11 @@
    topbar (z-30). */
 .choices__list--dropdown { z-index: 25; }
 
+/* D139: Alpine is deferred, so anything it hides is briefly visible before it
+   initialises. Without this the receiving page flashes the whole item form open
+   on every load — exactly the clutter the "detailed" tick exists to avoid. */
+[x-cloak] { display: none !important; }
+
 @media print {
   .topbar, .sidebar, .no-print, .actions, .messages, .filterbar {
     display: none !important;

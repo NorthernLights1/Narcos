@@ -279,15 +279,35 @@
     target.dispatchEvent(new Event("change", { bubbles: true }));
   }
 
-  document.addEventListener("click", function (event) {
-    if (event.target.closest("[data-open-item-modal]")) {
-      var dialog = document.getElementById("item-modal");
-      if (dialog && dialog.showModal) dialog.showModal();
+  /* D139: the item form is an inline panel now, revealed by the "detailed"
+   * tick, so there is no dialog to open or close. Choosing a sibling copies
+   * the fields an existing item can validly supply — never brand or strength,
+   * which are what make it a different product (D132). */
+
+  function itemPresets() {
+    var node = document.getElementById("item-presets");
+    try {
+      return node ? JSON.parse(node.textContent) : {};
+    } catch (e) {
+      return {};
     }
-    if (event.target.closest("[data-item-modal-close]")) {
-      var openDialog = document.getElementById("item-modal");
-      if (openDialog) openDialog.close();
-    }
+  }
+
+  function applyPreset(id) {
+    var fields = document.getElementById("item-modal-fields");
+    var preset = itemPresets()[id];
+    if (!fields || !preset) return;
+    Object.keys(preset).forEach(function (key) {
+      var input = fields.querySelector('[name="' + key + '"]');
+      if (!input) return;
+      if (input.type === "checkbox") input.checked = !!preset[key];
+      else input.value = preset[key];
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  }
+
+  document.addEventListener("change", function (event) {
+    if (event.target.matches("[data-item-preset]")) applyPreset(event.target.value);
   });
 
   document.addEventListener("submit", function (event) {
@@ -299,7 +319,8 @@
       .then(function (response) {
         if (response.ok) {
           return response.json().then(function (data) {
-            document.getElementById("item-modal").close();
+            var panel = document.getElementById("item-inline");
+            if (panel && panel._x_dataStack) panel._x_dataStack[0].detailed = false;
             adoptNewItem(data);
             /* Blank form for the next item; rebind the pricing toggle. */
             return fetch(form.action)

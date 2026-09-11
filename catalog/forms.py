@@ -51,7 +51,7 @@ class ItemForm(forms.ModelForm):
         ]
         widgets = {
             "name": forms.TextInput(attrs={
-                "placeholder": _("e.g. Paracetamol 500mg tablets"),
+                "placeholder": _("Brand only, e.g. Panadol"),
             }),
             "generic_name": forms.TextInput(attrs={"placeholder": _("e.g. paracetamol")}),
             "dosage_form": forms.TextInput(attrs={"placeholder": _("e.g. tablet, syrup, injection")}),
