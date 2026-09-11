@@ -2372,3 +2372,65 @@ These are read-only list views.
 
 **Nothing here is audited and nothing affects money or stock.** It is a screen
 preference, deliberately kept out of `AUDITED_FIELDS`.
+
+### D138 — The sales log: what went out, to whom, at what price, at what cost
+
+**What:** one row per posted sale line — date, document, customer, brand,
+strength, batch, quantity, achieved unit price, revenue, unit cost, cost and
+gross profit — grouped with subtotals and a grand total, switchable between
+brand-and-strength and generic. **Owner only** (D33).
+
+**Three rules, each of them a way to get money reporting wrong:**
+- **Charges and document discounts get their own group (R75).** `line_net`
+  carries line discounts only, so a log built from lines alone disagrees with
+  the invoice it came from by exactly `charges − doc_discount`.
+- **Lot cost is the weighted average for the line,** with the lot count shown
+  when a line consumed more than one. A blended figure must never read as a
+  single purchase price. One line in the client's data does exactly this.
+- **At generic level the money is reported and the quantity is not (D132).**
+  Folding a syrup and a tablet into one row puts bottles and packs in one
+  denominator. Regrouping never changes a monetary total, and a test pins that.
+
+**A separate grouping key.** `_brand_key` (D126) is untouched: the client asked
+for the new reports to be kept clear of the old ones, so D138 has its own.
+
+**Verified on the restored client database, not fixtures:** 167 product groups,
+156 generic groups, revenue 4,817,556.00 and gross profit 786,559.00 identical
+under both groupings. It also immediately shows `zitromax` going out at a gross
+loss of 500.00 — the first thing this report was built to catch.
+
+### D139 — One screen for receiving and for the item that arrived with it
+
+**What:** the full `ItemForm` moves out of R49's dialog and onto the receiving
+page, collapsed behind a **detailed** tick. A *Same as* picker copies from a
+nominated existing item.
+
+**Why the tick.** The owner's objection to an inline form was that it would look
+cluttered. The tick is the answer: nothing shows until it is asked for, so the
+page is unchanged for the ordinary case of receiving stock we already list.
+
+**It replaces the dialog rather than joining it.** Two entry surfaces for one
+form is the real risk, and one unified interface is what was asked for.
+
+**Defaults come from a nominated item, never from brand and strength defaulted
+independently (D132).** Independent defaults can name a combination that does
+not exist. The preset therefore carries generic, dosage form, pack, base unit,
+category and the two flags — and deliberately **not** `name` or `strength`,
+because those two are what make it a different product; copying them would clone
+the sibling instead of describing the new brand. Retired items are not offered
+(D125).
+
+**Still the full form (D108).** Not a simplified parallel form, so D67
+auto-codes and D81 price rules keep applying, and D136 means a drug created here
+needs its strength like any other.
+
+**The placeholder that taught the smearing is gone.** The brand box read
+*"e.g. Paracetamol 500mg tablets"*, instructing the operator to type generic,
+strength and form into the brand field. It now reads *"Brand only, e.g.
+Panadol"*. As D132 records, this is a proven bad instruction and is **not**
+demonstrated to be the root cause of the data.
+
+**One defect found by looking at the page rather than by testing it.** Alpine is
+loaded deferred, and no `[x-cloak]` rule existed, so the entire item form
+flashed open on every load of the receiving page before Alpine hid it — exactly
+the clutter the tick exists to prevent. The rule is now in `input.css`.
