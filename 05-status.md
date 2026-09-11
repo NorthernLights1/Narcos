@@ -9,24 +9,62 @@ of 2026-09-08.
 
 ## The headline
 
-**Round 23 is built: seven features, 589 tests green, 15 commits on `build`.**
+**Round 24 is built: 604 tests green, 24 commits on `build`.** Round 23 shipped
+seven features; you looked at them and withdrew two. What replaced them is
+smaller and better, and the reasoning is in D141 to D143.
+
 Nothing is on the client's machine. They are still running v1.1.0 from
-8 August, and the backlog past that tag is now **25 commits**. The deployment
+8 August, and the backlog past that tag is now **28 commits**. The deployment
 script still prints "Update complete" after `compose up -d` and verifies
 nothing. That, not the feature work, is what stands between this and the
 client.
 
 **The push to `origin` is blocked** and needs you: `git push -u origin build`.
 
+## Round 24 — the four things you asked for on 2026-09-11
+
+| # | What you asked | Answer | State |
+|---|---|---|---|
+| 1 | Keep the sales report, add a linkable document number, generic and brand, per-item money, and three filters | Built as **D141**. Strength added alongside generic and brand, for D134's reason | done |
+| 2 | Delete the sales log | Gone — view, template, URL, tests and hub entry. D138 withdrawn | done |
+| 3 | Remove the *detailed* tick completely and restore the *New item* button | Built as **D143**. The dialog is exactly as R49 had it | done |
+| 4 | A search box and a **Copy from** button on the add-item page, prefilling everything | Built as **D142**, on the Master item page and in the receiving dialog | done |
+
+**The per-item complaint was about legibility, not arithmetic.** The report was
+already per line and the deployed build does the same — `SI-000005` renders six
+rows that sum to its grand total, and that function is byte-identical at
+`v1.1.0`. What it did not do was say *which item* a row was: the column held
+`ITM-0005` and nothing else. Naming the item is the fix, and no number moved.
+Verified again after the change: 377 rows, 4,818,156.00 revenue, exactly
+matching the untouched profit report.
+
+**You reversed the brand/strength design mid-build, and you were right.** The
+first shape was two buttons on every receiving line, *New brand* and *New
+strength*, cloning the selected item server-side. It needed new line fields, a
+deferred create inside the save transaction and a duplicate guard across rows.
+One picker on the form the operator is already looking at does the same job with
+none of that. Nothing of the abandoned shape was committed.
+
+**Two traps in the copy that only a real browser would have caught.** Three of
+the client's base units — *Bag*, *pcs*, *pk* — are not on the dropdown, and a
+`<select>` told to take a value it has no option for silently keeps the old one,
+so those would have copied as *unit*. They now go to **Other** with the text
+beside them. And R59's rule sets VAT-exempt from the category until someone
+touches the box, which would have undone a copied exemption on the next category
+change. Both were verified by driving the button in headless Chrome against the
+restored database, not by a test.
+
 ## Round 23 — the seven requests of 2026-09-10, and two you added
+
+*Rows 2 and 5 were withdrawn by you on 2026-09-11 — see round 24 above.*
 
 | # | What was asked | Answer | State |
 |---|---|---|---|
 | 1 | Expiry month + year only | **Cancelled by you**, after Astra showed a month-only input makes 75 batches on the shelf impossible to re-receive | dropped |
-| 2 | Sales log: brand, customer, price, date, batch cost, gross profit | Built as **D138**, owner-only, with charges and discounts on their own rows so it ties to the invoice | done |
-| 3 | The same, grouped per generic | A grouping switch on the same report. Money only at generic level (D132) | done |
+| 2 | Sales log: brand, customer, price, date, batch cost, gross profit | Built as **D138** — **withdrawn** in round 24. The same questions are answered by the upgraded sales report | removed |
+| 3 | The same, grouped per generic | Went with the sales log. `sales-by-generic` (D126) still answers it | removed |
 | 4 | Who owes / who we owe, drilling to transactions | Built as **D135**. Level one is the ledger balance, with a reconciling row so the two levels cannot disagree silently | done |
-| 5 | Faster new-brand entry inside receiving | Built as **D139**: the full item form inline behind a *detailed* tick, replacing the dialog, prefilled from a sibling | done |
+| 5 | Faster new-brand entry inside receiving | Built as **D139**, then **replaced** by D142's copy-from picker and D143's restored dialog | replaced |
 | 6 | Confirm batch search + expiry autofill | **Confirmed built** (D128). Manual-testing entry added | done |
 | 7 | Confirm sale hides empty and expired batches | **Was half built.** Empty yes, expired no. Fixed as **D133** | done |
 | + | Filter persistence per user | Built as **D137**, on the user row rather than the session, because nobody logs in automatically | done |

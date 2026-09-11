@@ -6,6 +6,40 @@ to do and **what you must see** — if you see something else, that's a bug.
 
 Written for a dev machine (Linux, `.venv`, PostgreSQL on localhost).
 
+> **2026-09-12 round 24 — D141 to D143:** **hard-refresh** (`?v=20260912a`)
+> before checking these; the CSS and JS both changed. Two of round 23's
+> features are withdrawn below — if you still see them, you are on the old
+> build.
+>
+> - **Sales by period/customer/item (D141).** Reports → the first row of
+>   *Sales & profit*. Every row must name the **generic, the brand and the
+>   strength** beside the code, and the **document number must be a link** that
+>   opens the invoice. Open `SI-000005`: its six rows are six items, and their
+>   revenues add up to the invoice total — the numbers were always per line,
+>   what changed is that you can now see which line. Type `sodium` into
+>   **Generic** and press Apply: only sodium rows remain **and the total at the
+>   bottom drops to match**. Try `SI-000005` in **Document no.** and `normal`
+>   in **Brand**, together and separately. Clear all three and the total must
+>   return to what it was. The **CSV** button must export exactly what is on
+>   screen, filters included.
+> - **The sales log is gone (D141).** Reports must no longer offer *Sales log*,
+>   and `/reports/sales-log/` must return a page-not-found.
+> - **Copy from (D142).** Master → Items → **New**. At the top, search the
+>   picker for an item you already stock and press **Copy from**: every box
+>   below fills, **including the brand and the strength**, and the cursor lands
+>   on the brand with it selected so typing replaces it. Change the strength,
+>   press Save, and you have a sibling. Check the code was assigned fresh and
+>   is not the source's. Then copy from `ITM-0005` (base unit *pcs*, which is
+>   not on the dropdown): the unit must switch to **Other** with `pcs` typed
+>   beside it, not silently fall back to *unit*. Copy from a **Medical supply**
+>   and the VAT-exempt box must stay unticked.
+> - **The same picker on receiving (D142/D143).** Start a **Receiving**. The
+>   **+ New item** button is back beside *Add row*, and there is **no Detailed
+>   tick anywhere**. Press it: the dialog opens with the copy-from picker at
+>   the top. Copy, edit the brand, create — the new item appears in the line
+>   picker and your draft is untouched.
+> - **A sale must offer neither** (R49): no *New item* button, no copy picker.
+
 > **2026-09-11 round 23 — D135 to D139:** **hard-refresh** (`?v=20260911a`)
 > before checking these; the CSS and JS both changed.
 >

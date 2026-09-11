@@ -2478,3 +2478,91 @@ memory (D137) leaks between request paths and whether the inline panel (D139)
 preserves an unsaved receiving draft. It had already dismissed the blocked
 price edit as intentional under D136. That question goes first when the cap
 resets.
+
+### D141 — One sales report, with the item named and the invoice a click away
+
+*2026-09-12. Supersedes D138, which is withdrawn.*
+
+The owner's verdict on round 23: keep **Sales by period/customer/item**, delete
+the sales log built beside it. Two reports answering nearly the same question is
+one report too many, and the log was the newer and less familiar of the pair.
+
+**Four asks, and one of them was already true.** The owner asked that quantity,
+COGS, revenue and profit be "for a single item in the received document not for
+the entire document". They already were, and the deployed build does the same:
+`SI-000005` renders six rows whose revenues sum to its grand total, and
+`git show v1.1.0:reports/views.py` is byte-identical in that function. What the
+report did not do was **say which item a row was** — the Item column held
+`ITM-0005` and nothing else, so the money read as if it belonged to the invoice.
+The complaint was about legibility and was reported as arithmetic. Naming the
+item is the fix; no number changed.
+
+**Generic, brand and strength now sit beside the code.** Strength is not on the
+owner's list and is added anyway, for the reason D134 gives: it prints on every
+document, appeared on no screen, and the gap is what drives the size into the
+item name.
+
+**The document number is a link.** Reading a line and opening the invoice behind
+it was two searches.
+
+**Three filters — document, generic, brand.** Each a case-insensitive fragment,
+all three combinable, and the total follows what is on screen rather than the
+unfiltered period. A delivery charge or a document discount (R75) belongs to no
+item, so a question about a brand or a generic excludes it; a question about a
+document keeps it.
+
+**It leaves the slug registry and gets its own view.** A report with filters and
+a link per row cannot go through the generic `detail.html` without teaching every
+other report about links. `reports/sales.html` and `sales_report` join
+`statement`, `party_positions` and `finance`, which were separated for the same
+reason. The URL stays `/reports/sales/`.
+
+### D142 — Copy from an item you already stock, and edit what differs
+
+*2026-09-12. Supersedes the "same as" picker in D139.*
+
+D139 put a preset picker on the receiving page that copied generic, form, pack,
+unit and category from a nominated item, and **deliberately withheld name and
+strength** on the argument that copying them clones the sibling rather than
+describing a new product. The owner's answer: prefill everything, because
+clearing one box is easier than remembering which four to fill. Overruled, and
+the reasoning is sound — the catalogue's defect is boxes left *empty*
+(06-client-data.md §3), and a form that arrives blank in four places is what
+produces them.
+
+**The shape is a search box and a Copy from button**, at the top of the item
+form. It appears on the Master item page and in the receiving dialog, since both
+render the same `ItemForm`, and **only when creating**: copying into an item that
+already exists would overwrite a description someone chose on purpose.
+
+**Everything the form shows is copied except the code**, which D67 assigns at
+save like a document number, and `is_active`, which only active items can supply
+anyway (D125 keeps retired ones out of the picker).
+
+**Two traps the fill has to handle.** A base unit the common list does not carry
+would be silently dropped by a `<select>` that has no option for it, so it goes
+to "Other" with the text beside it (R60). And R59 follows the category to set
+VAT-exempt until someone touches the box — a copy counts as touching it, or the
+copied exemption is undone by the next category change.
+
+**An intermediate design was abandoned before it was built.** Two buttons beside
+each receiving line, *New brand* and *New strength*, revealing a text box each
+and cloning the selected item server-side. The owner reversed it mid-build: one
+picker on the form the operator is already looking at beats two buttons on every
+line of a document. Recorded because the rejected shape was the more complicated
+one — it needed new line fields, a deferred create inside the save transaction,
+and a duplicate guard across rows.
+
+### D143 — The detailed tick is gone; the New item button is back
+
+*2026-09-12. Supersedes D139's panel.*
+
+D139 moved the item form out of R49's dialog and onto the receiving page behind
+a *"Detailed"* tick, and removed the **+ New item** button in the same change.
+The owner asked for the tick removed completely and the button restored. Both
+done: the dialog is exactly as R49 had it, and the button sits beside *Add row*
+on the lines card.
+
+The `[x-cloak]` rule D139 added stays even though nothing on the page uses Alpine
+now. The flash it prevents was found by screenshotting the page, not by any
+test, and the next `x-show` would rediscover it the same expensive way.
