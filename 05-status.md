@@ -62,6 +62,33 @@ Budget a third of what comes back to be wrong or to be deliberate design.
 Section 13 of the brief tells you how to run it and what the known failure
 modes on your machine look like.
 
+## A finance module like Peachtree, and roles for a bigger organisation
+
+You asked on 2026-09-12 what it would take. The answer is written up in
+[plans/finance-module-and-roles.plan.md](plans/finance-module-and-roles.plan.md).
+Nothing was built and no decision was made.
+
+The three findings worth carrying in your head:
+
+- **The hard half already exists.** Receivables, payables, cash and inventory
+  at cost are all live, append-only, and funnel through one choke point
+  (`Effects` in `docs/posting.py:46`). A general ledger attaches there as a
+  *projection* over those subledgers — never as a replacement — with a test
+  that ties each GL control account back to the subledger it mirrors.
+- **Build the books, refuse the filings.** A ledger's correctness is
+  enforceable by tests, so it is fair game. Payroll and Ethiopian income tax
+  are enforceable by statute, so they are not — export to the accountant.
+- **Roles are a 49-site refactor, not a new model.** `is_owner` is checked in
+  34 places in Python and 15 in templates, including inside the posting engine.
+  Use Django's own groups and permissions, keep `is_owner` as a shim, and
+  convert incrementally. Row-level scoping and multi-warehouse are the hidden
+  cost drivers, and no client has asked for either.
+
+It is not next. The client is still on v1.1.0 with a 36-commit backlog, uses
+five of twenty-one document types, and has two users. The trigger for starting
+is a named customer — their accountant asking for something specific, or a
+signed organisation with those four job functions.
+
 ## Round 25 — the two things you asked for on 2026-09-12
 
 | # | What you asked | Answer | State |

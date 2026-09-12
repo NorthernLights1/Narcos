@@ -2674,6 +2674,39 @@ the tick working on those 76 batches, and it costs a migration on a box where a
 failed migration is a silent restart loop rather than an error message. The owner
 chose the cheap shape, and the untick escape is what makes it safe.
 
+### D148 — The month box has to work in a browser with no month picker
+
+*2026-09-12. Corrects D146, found by the owner within the hour.*
+
+D146's tick sets the input to `type="month"`. Chrome and Edge render a month
+picker for that. **Firefox renders nothing at all** — the type is not supported,
+the element silently falls back to a plain text box, and the operator is left
+with a blank box, no calendar and no clue what to type. That is what the owner
+saw.
+
+Confirmed rather than assumed: a detached `<input type="month">` reports
+`type === "month"` in Chrome and `type === "text"` in Firefox 155, which is both
+the proof and the feature test.
+
+**Three changes.**
+
+*The browser is asked, not assumed.* Where the month picker exists it is used,
+unchanged. Where it does not, the box keeps a placeholder showing the shape it
+wants — `2026-09` — with a title spelling it out. The hint lives on the widget so
+it can be translated, not in `app.js`.
+
+*Four month shapes are accepted, not one.* A picker always submits `2026-09`, but
+a text box receives whatever a person types, so `2026/09`, `09/2026`, `9-2026`
+and a single-digit month all resolve. Year-first and month-first are told apart by
+which half has four digits, so none of them is ambiguous.
+
+*The refusal names both shapes it will take* — "Enter a date as 2026-09-15, or a
+month as 2026-09" — instead of Django's bare "Enter a valid date."
+
+**The lesson is the browser matrix, not the feature.** D146 called this out as a
+risk and answered it server-side only, which left the entry surface broken for
+anyone on Firefox. A fallback that is only handled in the parser is not handled.
+
 ### D147 — Backup folders and interval in Settings, carried to the script that backs up
 
 *2026-09-12.*

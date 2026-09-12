@@ -73,10 +73,35 @@ def test_a_full_date_is_left_exactly_as_typed():
     assert ExpiryField().clean("2026-09-15") == datetime.date(2026, 9, 15)
 
 
+def test_a_hand_typed_month_first_shape_works():
+    """D148: Firefox has no month picker, so the box is typed into by hand."""
+    assert ExpiryField().clean("09/2026") == datetime.date(2026, 9, 30)
+
+
+def test_a_hand_typed_year_first_shape_with_a_slash_works():
+    assert ExpiryField().clean("2026/09") == datetime.date(2026, 9, 30)
+
+
+def test_a_single_digit_month_works_either_way_round():
+    assert ExpiryField().clean("2026-9") == datetime.date(2026, 9, 30)
+    assert ExpiryField().clean("9/2026") == datetime.date(2026, 9, 30)
+
+
+def test_the_error_says_both_shapes_it_accepts():
+    from django.core.exceptions import ValidationError
+    with pytest.raises(ValidationError) as caught:
+        ExpiryField().clean("september")
+    message = " ".join(caught.value.messages)
+    assert "2026-09-15" in message
+    assert "2026-09" in message
+
+
 def test_a_month_that_does_not_exist_is_refused():
     from django.core.exceptions import ValidationError
     with pytest.raises(ValidationError):
         ExpiryField().clean("2026-13")
+    with pytest.raises(ValidationError):
+        ExpiryField().clean("13/2026")
 
 
 def test_an_empty_value_stays_empty():

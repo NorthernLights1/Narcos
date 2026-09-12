@@ -28,6 +28,10 @@ Written for a dev machine (Linux, `.venv`, PostgreSQL on localhost).
 
 > **2026-09-12 round 25 — D146:** **hard-refresh** (`?v=20260912c`).
 >
+> - **Month and year only — check it in the browser the client actually uses.**
+>   Chrome and Edge show a month picker. **Firefox has none** and falls back to a
+>   text box: there it must show `2026-09` as a grey hint, and typing `09/2026`
+>   or `2026/09` must be accepted just the same.
 > - **Month and year only.** Start a **Receiving**. Under each expiry box there
 >   is a small **Month and year only** tick, **unticked**. Type a full date, tick
 >   it: the box becomes a month picker holding that month. Untick it: **the day

@@ -46,21 +46,43 @@ class ExpiryField(forms.DateField):
     stays a plain date, and the tick that produces a month is never stored: it
     describes how the value was typed, not what it means. That is what keeps
     every existing batch working exactly as it does today.
+
+    **D148: four month shapes, not one.** Chrome and Edge submit `2026-09` from
+    their month picker. Firefox has no month picker at all — it renders the
+    input as a plain text box — so whatever the operator types by hand has to be
+    understood. Year-first and month-first are told apart by which half has four
+    digits, so none of them is ambiguous.
     """
 
-    MONTH = re.compile(r"^\s*(\d{4})-(\d{1,2})\s*$")
+    YEAR_FIRST = re.compile(r"^(\d{4})[-/.](\d{1,2})$")
+    MONTH_FIRST = re.compile(r"^(\d{1,2})[-/.](\d{4})$")
+
+    default_error_messages = {
+        "invalid": _("Enter a date as 2026-09-15, or a month as 2026-09."),
+    }
 
     def to_python(self, value):
         if isinstance(value, str):
-            match = self.MONTH.match(value)
-            if match:
-                year, month = int(match.group(1)), int(match.group(2))
-                if not 1 <= month <= 12:
-                    raise ValidationError(self.error_messages["invalid"],
-                                          code="invalid")
-                value = "%04d-%02d-%02d" % (
-                    year, month, calendar.monthrange(year, month)[1])
+            text = value.strip()
+            month = self._as_month(text)
+            if month is not None:
+                value = month
         return super().to_python(value)
+
+    def _as_month(self, text: str):
+        """`2026-09` → `2026-09-30`, or None if this is not a month at all."""
+        match = self.YEAR_FIRST.match(text)
+        if match:
+            year, month = int(match.group(1)), int(match.group(2))
+        else:
+            match = self.MONTH_FIRST.match(text)
+            if not match:
+                return None
+            month, year = int(match.group(1)), int(match.group(2))
+        if not 1 <= month <= 12:
+            raise ValidationError(self.error_messages["invalid"], code="invalid")
+        return "%04d-%02d-%02d" % (year, month,
+                                   calendar.monthrange(year, month)[1])
 
 
 class ItemSelect(forms.Select):
@@ -378,7 +400,14 @@ class DocumentLineForm(forms.ModelForm):
     # picker in the browser, and this is what accepts what comes back.
     expiry_entered = ExpiryField(
         required=False, label=_("Expiry"),
-        widget=forms.DateInput(attrs={"type": "date"}),
+        widget=forms.DateInput(attrs={
+            "type": "date",
+            # D148: the hint the browser shows when it has no month picker of
+            # its own. Here rather than in app.js so it can be translated.
+            "data-month-hint": _("2026-09"),
+            "data-month-title": _(
+                "Month and year only — type it as 2026-09. 09/2026 also works."),
+        }),
     )
     source_zone = forms.ChoiceField(
         choices=[

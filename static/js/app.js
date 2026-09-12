@@ -400,20 +400,48 @@
     return new Date(year, month, 0).getDate();
   }
 
+  /* D148: Chrome and Edge have a month picker; Firefox has none and silently
+   * renders the input as a plain text box, which is a blank box with no hint
+   * and no calendar. Detect it and say what to type, rather than leaving the
+   * operator to guess a format. */
+  var monthInputSupported = null;
+
+  function supportsMonthInput() {
+    if (monthInputSupported === null) {
+      var probe = document.createElement("input");
+      probe.setAttribute("type", "month");
+      monthInputSupported = probe.type === "month";
+    }
+    return monthInputSupported;
+  }
+
   function toMonthPicker(input) {
     var value = input.value;
-    input.type = "month";
     if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
       /* Remember the day, so a mis-tick can be undone without losing it. */
       input.dataset.fullDate = value;
-      input.value = value.slice(0, 7);
+      value = value.slice(0, 7);
     }
+    input.type = "month";
+    if (!supportsMonthInput()) {
+      input.dataset.plainMonth = "1";
+      input.placeholder = input.dataset.monthHint || "2026-09";
+      input.setAttribute("inputmode", "numeric");
+      input.title = input.dataset.monthTitle || "";
+    }
+    input.value = value;
   }
 
   function toDayPicker(input) {
     var value = input.value;
     var remembered = input.dataset.fullDate || "";
     input.type = "date";
+    if (input.dataset.plainMonth) {
+      input.placeholder = "";
+      input.removeAttribute("inputmode");
+      input.removeAttribute("title");
+      delete input.dataset.plainMonth;
+    }
     if (!/^\d{4}-\d{2}$/.test(value)) return;
     if (remembered.slice(0, 7) === value) {
       input.value = remembered;
