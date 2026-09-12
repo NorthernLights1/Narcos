@@ -17,8 +17,8 @@ Working branch is `build`. Latest tag is `v1.1.0`.
 ## Read this before proposing anything
 
 Design truth lives in the numbered files at the repo root. They are the asset;
-the code is downstream of them. The first five are design; the sixth is
-evidence about production.
+the code is downstream of them. The first five are design, the sixth is evidence
+about production, and the seventh is the handoff from the last session.
 
 | File | Holds |
 |---|---|
@@ -28,6 +28,7 @@ evidence about production.
 | `04-build-spec.md` | Buildable spec derived from the decisions: schema, posting engine, tax rules, invariant tests. |
 | `05-status.md` | Where the work stands right now. Written to the owner. |
 | `06-client-data.md` | What the client's **real** database actually contains, from a restored backup. Read it before sizing anything — round 22 shipped a feature that passes its tests and is inert in production. |
+| `07-session-handoff.md` | The newest session written down: what changed, what is open, what the owner still has to decide. Replaced each round, not appended. |
 
 Precedence: **`02-decisions.md` wins over `04-build-spec.md`.** If they conflict,
 say so rather than picking one. Decisions are appended, never rewritten; when one

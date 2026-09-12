@@ -89,6 +89,31 @@ five of twenty-one document types, and has two users. The trigger for starting
 is a named customer — their accountant asking for something specific, or a
 signed organisation with those four job functions.
 
+You then asked what the terminology means. Every term — ledger, double entry,
+trial balance, control account, maker-checker and the rest — is explained
+against real documents from the client's database in
+[plans/finance-glossary.md](plans/finance-glossary.md).
+
+**Writing that glossary turned up a real finding you should act on.** The CBE
+bank account currently reads **negative 1,324,437.00 Birr**:
+
+```
+BOA      +53,440.00
+CBE   -1,324,437.00
+```
+
+A bank account cannot hold minus 1.3 million. The arithmetic is not wrong — the
+list is incomplete. Per [06-client-data.md](06-client-data.md) §2 the client has
+posted 42 `OPENING_STOCK` documents and **zero `OPENING_CASH` documents**, so
+CBE's ledger holds every payment out since 22 July and none of the money that
+was in the account before that date. The same is presumably true of BOA.
+
+Consequences: the Finance page's net position (D79) is understated by whatever
+was really in those two accounts on 22 July, and any cash figure the owner
+reads off the system is meaningless until opening cash is entered. Ask him for
+the two bank balances as at 22 July 2026 and post two `OPENING_CASH` documents.
+This is independent of the finance-module question and much more urgent.
+
 ## Round 25 — the two things you asked for on 2026-09-12
 
 | # | What you asked | Answer | State |
