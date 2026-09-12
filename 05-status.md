@@ -9,7 +9,7 @@ of 2026-09-08.
 
 ## The headline
 
-**Round 25 is built: 662 tests green, 26 commits waiting on `build`.**
+**Round 25 is built: 666 tests green, 28 commits waiting on `build`.**
 Round 24 closed six requests (D141-D145). Round 25 closed two more: month-only
 expiry (D146) and backup settings (D147). One piece of D147 is not verified —
 see below.
@@ -115,6 +115,23 @@ by careful reading. **There is no PowerShell on this machine to run them.**
 `ops/MANUAL-TESTING.md` has a six-step check to run at the client's PC, including
 pulling the USB stick out mid-schedule. Do not treat the backup change as proven
 until that is done.
+
+**The month box was broken in Firefox and you caught it in an hour (D148).**
+Chrome and Edge have a month picker; Firefox has none, so the input fell back to
+a blank text box with no hint. It now detects the browser, shows `2026-09` as a
+hint where there is no picker, and accepts `09/2026` and `2026/09` as well. D146
+had flagged the browser risk and answered it only in the parser, which is not
+answering it.
+
+**You asked where *Books closed through* came from, and you are right that you
+never asked for it.** It is D119, shipped 7 August in the round that fixed the
+twelve findings of the joint audit. It answers R71 — voiding a June sale in
+August makes it vanish out of June, so a June report already printed stops
+matching. It is not decoration: `docs/posting.py` refuses to void or correct a
+document dated on or before that date. It is empty by default and does nothing
+until you set one. Say the word and I will take it off the settings page; my
+advice is to leave it empty rather than remove it, because the day you close a
+month it is the only thing standing between a filed report and a silent rewrite.
 
 **The settings page now shows the incident.** Its new card prints the last
 recorded backup, and on the restored database that reads **2026-08-08** — the day
