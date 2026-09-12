@@ -9,7 +9,7 @@ of 2026-09-08.
 
 ## The headline
 
-**Round 25 is built: 666 tests green, 28 commits waiting on `build`.**
+**Round 25 is built: 670 tests green, 31 commits waiting on `build`.**
 Round 24 closed six requests (D141-D145). Round 25 closed two more: month-only
 expiry (D146) and backup settings (D147). One piece of D147 is not verified —
 see below.

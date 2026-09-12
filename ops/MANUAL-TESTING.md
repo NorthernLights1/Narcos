@@ -28,6 +28,14 @@ Written for a dev machine (Linux, `.venv`, PostgreSQL on localhost).
 
 > **2026-09-12 round 25 — D146:** **hard-refresh** (`?v=20260912c`).
 >
+> - **The tick is now ON by default (D149).** Start a **Receiving**: every blank
+>   expiry box is already a month picker. Press **+ Add row** — the new row is
+>   too. Now **pick an existing batch** by its number: the row must **untick
+>   itself** and show that batch's exact stored day, not the month end. Open a
+>   **saved draft** whose expiry is mid-month: that row must be **unticked** with
+>   its day intact.
+> - **Books closed through (D149).** Settings: the box is a date picker now, not
+>   an empty rectangle. Set a date, save, reopen — the date must still be shown.
 > - **Month and year only — check it in the browser the client actually uses.**
 >   Chrome and Edge show a month picker. **Firefox has none** and falls back to a
 >   text box: there it must show `2026-09` as a grey hint, and typing `09/2026`

@@ -5,6 +5,10 @@ that month. Nothing is stored about the tick itself — leave it unticked and th
 line behaves exactly as it always has, which is what keeps every existing batch
 re-receivable.{% endcomment %}
 <label class="check month-only">
-  <input type="checkbox" data-month-only>
+  {% comment %}D149: on by default for an empty box, because that is the
+  ordinary case — new goods, a carton showing 09/2026. A box that already holds
+  a date keeps its exact day and stays unticked, so re-opening a draft can never
+  quietly move a stored expiry to the month end.{% endcomment %}
+  <input type="checkbox" data-month-only{% if not field.value %} checked{% endif %}>
   {% translate "Month and year only" %}
 </label>

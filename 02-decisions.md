@@ -2762,3 +2762,38 @@ loop starts. The mounted folder stays where `.env` says.
 on the script's text, the way `test_p10_ops.py` already does, and by reading. There
 is no PowerShell on this machine to run them. They must be exercised on the
 client's PC before the release, and `ops/MANUAL-TESTING.md` says how.
+
+### D149 — Month-only is the default, and the closed-books date gets a picker
+
+*2026-09-12. Two of the owner's observations, an hour after D148.*
+
+**The tick is on by default.** The ordinary receiving case is new goods and a
+carton showing `09/2026`, so making the operator tick a box every line was the
+wrong way round.
+
+**But only for an empty box.** A row that already holds a date renders unticked
+and keeps its exact day. Without that rule, re-opening a saved draft would show
+`2026-09-15` as `2026-09` and store `2026-09-30` on the next save — silently
+moving a stored expiry by fifteen days, which is precisely the kind of quiet
+wrong number this system exists not to produce.
+
+**And the batch autofill releases the tick.** D128 fills the expiry from the
+batch that was picked, and that is a full date — the one value a month picker
+cannot hold. Setting it on a month input clears the box in Chrome and shows a
+malformed value in Firefox. Re-receiving is exactly the case D146 says must not
+use the tick, so the row now unticks itself before the date lands. Verified in a
+browser: picking batch `73021`, stored `2028-07-23`, leaves the row unticked on a
+day picker holding `2028-07-23`.
+
+**Books closed through had no picker and no hint** — a `DateField` with no widget
+renders as a bare text box, so the owner met an empty rectangle with nothing
+saying what shape a date takes. It is a date input now, which Firefox does
+support (unlike D148's month input), with `format="%Y-%m-%d"` so a stored date
+actually displays instead of rendering blank and reading as lost.
+
+That field is the one the owner did not remember asking for. It is **D119**,
+answering **R71**, shipped 7 August with the joint-audit fixes: voiding a June
+sale in August makes it vanish out of June, so a June report already printed
+stops matching. Enforced in `docs/posting.py`, empty by default, does nothing
+until a date is set. Kept, on the advice that an empty setting costs a row on a
+page and a closed month with no guard costs a filed report.

@@ -6,7 +6,7 @@ This is the newest session written down so the chat can be thrown away. Every
 decision here has a `D##` entry in [02-decisions.md](02-decisions.md) with its
 full reasoning; this file is the map and the list of what is still open.
 
-**Ten commits, 43 files, 666 tests green, 29 commits waiting on `origin`.**
+**Twelve commits, 670 tests green, 31 commits waiting on `origin`.**
 
 ---
 
@@ -28,7 +28,7 @@ full reasoning; this file is the map and the list of what is still open.
 | # | You asked | Built as | Note |
 |---|---|---|---|
 | 1 | Primary and second backup folders, and the interval, in Settings | **D147** | Handed to the Windows script through the folder both containers mount. **Not machine-verified — see §4.** |
-| 2 | A tick that hides the day picker and stores the month end | **D146**, corrected by **D148** | Per line, entry-only, no migration. Broken in Firefox on first ship; fixed. |
+| 2 | A tick that hides the day picker and stores the month end | **D146**, corrected by **D148** and **D149** | Per line, entry-only, no migration. Broken in Firefox on first ship; fixed. On by default since D149. |
 
 ---
 
@@ -48,6 +48,13 @@ strength*, cloning the selected item server-side. It needed new line fields, a
 deferred create inside the save transaction and a duplicate guard across rows.
 One **Copy from** picker on the form the operator is already looking at does the
 same job with none of that. Nothing of the abandoned shape was committed.
+
+**Turning the tick on by default needed two guards, not none.** A saved draft
+holding `2026-09-15` would have redisplayed as `2026-09` and saved back as
+`2026-09-30` — a stored expiry moved fifteen days, silently. And the batch
+autofill writes a full date, which a month picker cannot hold at all. So a box
+that already has a date stays unticked, and picking a batch unticks the row
+before the date lands. Verified in a browser on batch `73021`.
 
 **A fallback handled only in the parser is not handled.** D146 flagged that
 Firefox has no month picker and answered it server-side, then shipped an entry
@@ -83,7 +90,9 @@ to *Other* with the text beside them.
 git push -u origin build
 ```
 
-29 commits are waiting on `origin`; 36 are past the tag the client is running.
+31 commits are waiting on `origin`; 38 are past the tag the client is running.
+**I tried and the permission classifier blocked it**, twice. Run it yourself, or
+add a Bash permission rule.
 
 **2. The backup change is not verified, and you should know exactly which part.**
 The PowerShell in `ops/docker-backup.ps1` — the copies to both folders, the
@@ -120,7 +129,7 @@ empty rather than remove it.
 
 | Question | File |
 |---|---|
-| Why does this code exist? | [02-decisions.md](02-decisions.md), D141–D148 |
+| Why does this code exist? | [02-decisions.md](02-decisions.md), D141–D149 |
 | How do I test it by hand? | [ops/MANUAL-TESTING.md](ops/MANUAL-TESTING.md), the three dated blocks at the top |
 | Where does the work stand? | [05-status.md](05-status.md) |
 | What is in the client's real database? | [06-client-data.md](06-client-data.md) |

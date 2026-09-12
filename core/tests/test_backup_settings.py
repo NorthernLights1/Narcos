@@ -176,6 +176,31 @@ def test_an_employee_cannot_reach_the_settings(client, staff):
     assert client.get(reverse("company_settings")).status_code == 403
 
 
+# --- D149: the closed-books date was a bare text box ---------------------
+
+def test_the_closed_books_date_offers_a_picker_and_a_hint(client, owner,
+                                                          backup_dir):
+    """It rendered as a plain text box: no picker, and nothing saying what a
+    date should look like. Firefox supports a date input, unlike D148's month
+    input, so this one needs no fallback."""
+    client.force_login(owner)
+    content = client.get(reverse("company_settings")).content.decode()
+    assert 'name="books_closed_through"' in content
+    box = content[content.index('name="books_closed_through"') - 200:
+                  content.index('name="books_closed_through"') + 200]
+    assert 'type="date"' in box
+
+
+def test_a_stored_closed_books_date_shows_in_the_box(client, owner, backup_dir):
+    """A date input only displays an ISO value; anything else renders blank and
+    the owner would think the date had been lost."""
+    import datetime
+    _settings(books_closed_through=datetime.date(2026, 8, 31))
+    client.force_login(owner)
+    content = client.get(reverse("company_settings")).content.decode()
+    assert "2026-08-31" in content
+
+
 # --- what the form refuses ------------------------------------------------
 
 def _form(**overrides):

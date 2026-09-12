@@ -153,6 +153,31 @@ def test_the_tick_sits_beside_the_expiry_on_receiving(client, owner):
     assert "Month and year only" in content
 
 
+def test_the_tick_is_on_by_default_for_an_empty_box(client, owner):
+    """D149: the ordinary case is new goods and a carton showing 09/2026."""
+    client.force_login(owner)
+    content = client.get(reverse("document_create",
+                                 args=["RECEIVING"])).content.decode()
+    assert content.count('data-month-only checked') >= 5   # every blank row
+
+
+def test_a_row_that_already_holds_a_date_is_not_ticked(client, owner, supplier,
+                                                       drug):
+    """Re-opening a draft must never quietly move a stored expiry to the month
+    end, so a box with a day in it keeps its day and stays unticked."""
+    doc = Document.objects.create(doc_type=DocType.RECEIVING,
+                                  created_by=owner, supplier=supplier)
+    DocumentLine.objects.create(document=doc, item=drug, qty_entered=10,
+                                unit_cost_entered=10, batch_no_entered="B-1",
+                                expiry_entered=datetime.date(2026, 9, 15),
+                                unit_label="pack", factor=1)
+    client.force_login(owner)
+    content = client.get(reverse("document_edit", args=[doc.pk])).content.decode()
+    assert "2026-09-15" in content
+    # The saved row is unticked; the blank rows after it are still ticked.
+    assert "data-month-only>" in content
+
+
 def test_a_sale_has_no_expiry_box_and_so_no_tick(client, owner):
     client.force_login(owner)
     content = client.get(reverse("document_create",

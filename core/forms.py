@@ -66,6 +66,15 @@ class CompanySettingsForm(forms.ModelForm):
     class Meta:
         model = CompanySettings
         fields = CompanySettings.AUDITED_FIELDS
+        widgets = {
+            # D149: this rendered as a bare text box - no picker, and no hint
+            # about what a date should look like. A date input gives both, and
+            # Firefox supports it (unlike the month input of D148).
+            "books_closed_through": forms.DateInput(
+                attrs={"type": "date", "placeholder": "2026-08-31"},
+                format="%Y-%m-%d",
+            ),
+        }
 
     def grouped(self):
         """Yield (title, [bound fields]). A field nobody listed still appears,

@@ -66,6 +66,7 @@
     while (holder.firstElementChild) body.appendChild(holder.firstElementChild);
     total.value = String(index + 1);
     enhanceSelects(body);
+    applyMonthOnly(body);
     recomputeTotals();
   }
 
@@ -462,6 +463,33 @@
     else toDayPicker(input);
   });
 
+  /* D149: the tick is rendered on for an empty box, but a checked box does not
+   * change the input beside it — that is this. */
+  function applyMonthOnly(root) {
+    (root || document).querySelectorAll("[data-month-only]").forEach(function (toggle) {
+      var input = expiryBox(toggle);
+      if (input && toggle.checked && input.type !== "month"
+          && !input.dataset.plainMonth) {
+        toMonthPicker(input);
+      }
+    });
+  }
+
+  /* D128 fills the expiry from the batch that was picked, and that is a full
+   * date — the exact stored day, which is the one value a month picker cannot
+   * hold. Re-receiving is precisely the case D146 says must not use the tick,
+   * so the row unticks itself rather than losing the day. */
+  function releaseMonthOnly(row) {
+    var toggle = row.querySelector("[data-month-only]");
+    if (!toggle || !toggle.checked) return;
+    var input = expiryBox(toggle);
+    toggle.checked = false;
+    if (input) {
+      delete input.dataset.fullDate;
+      toDayPicker(input);
+    }
+  }
+
   /* ---------- item pick: prefill + batch filtering ---------- */
 
   function rowInput(row, suffix) {
@@ -626,7 +654,10 @@
     var input = rowInput(row, "batch_no_entered");
     if (input) input.value = batch.no;
     var expiry = rowInput(row, "expiry_entered");
-    if (expiry && batch.expiry) expiry.value = batch.expiry;
+    if (expiry && batch.expiry) {
+      releaseMonthOnly(row);
+      expiry.value = batch.expiry;
+    }
     renderBatchSuggestions(row);
   }
 
@@ -997,6 +1028,7 @@
 
   document.addEventListener("DOMContentLoaded", function () {
     enhanceSelects(document);
+    applyMonthOnly(document);
     initItemFormControls();
     document.querySelectorAll("#lines-rows tr").forEach(filterBatches);
     document.querySelectorAll('select[name$="-batch"]').forEach(updateBatchHint);
