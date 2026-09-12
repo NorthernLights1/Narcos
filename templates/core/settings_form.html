@@ -24,4 +24,34 @@
   {% endfor %}
   <button type="submit" class="btn btn-primary">{% translate "Save settings" %}</button>
 </form>
+
+{% comment %}D147: a backup setting you cannot check is how this client went a
+month with no backup. The page shows what the script will read and what the
+last run actually did, so the hand-over is evidence rather than
+assumption.{% endcomment %}
+<div class="card">
+  <div class="card-head">
+    <h2>{% translate "What the backup is using" %}</h2>
+  </div>
+  {% if backup_schedule %}
+  <ul class="compact-list">
+    <li>{% translate "Primary folder" %}
+      <b>{% if backup_schedule.primary_path %}{{ backup_schedule.primary_path }}{% else %}{% translate "the folder the deployment already uses" %}{% endif %}</b></li>
+    <li>{% translate "Second copy" %}
+      <b>{% if backup_schedule.secondary_path %}{{ backup_schedule.secondary_path }}{% else %}{% translate "none" %}{% endif %}</b></li>
+    <li>{% translate "Every" %} <b>{{ backup_schedule.interval_days }}</b> {% translate "day(s)" %}</li>
+    <li>{% translate "Nightly copies kept" %} <b>{{ backup_schedule.keep_count }}</b></li>
+    <li class="hint">{% blocktranslate with at=backup_schedule.written_at by=backup_schedule.written_by %}Handed over {{ at }} by {{ by }}{% endblocktranslate %}</li>
+  </ul>
+  {% else %}
+  <p class="msg msg-warn">
+    {% blocktranslate with path=backup_schedule_path %}The backup has not been handed these settings yet — {{ path }} is not readable from here. Save settings once to write it. Until then the backup keeps using what it used before, which is safe but is not what this page says.{% endblocktranslate %}
+  </p>
+  {% endif %}
+  {% if last_backup %}
+  <p class="hint">{% blocktranslate with at=last_backup.at|date:"Y-m-d H:i" detail=last_backup.after.detail %}Last backup recorded: {{ at }} — {{ detail }}{% endblocktranslate %}</p>
+  {% else %}
+  <p class="msg msg-warn">{% translate "No backup has ever been recorded on this database. If the nightly job is running, it is not reaching this app." %}</p>
+  {% endif %}
+</div>
 {% endblock %}

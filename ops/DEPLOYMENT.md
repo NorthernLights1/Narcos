@@ -150,8 +150,25 @@ is already written down permanently. Only a form left half-typed is gone.
 
 ## 3. Nightly backups
 
-Backups are **not** configured in the app — they run from the host on a
-schedule. See the design in [RUNBOOK.md](RUNBOOK.md#nightly-backup).
+Backups **run from the host on a schedule**, not from the app — the app is in a
+container and cannot see `E:\` or create a scheduled task. See the design in
+[RUNBOOK.md](RUNBOOK.md#nightly-backup).
+
+**D147: four things are now set in the app**, and the script reads them. Settings
+→ Backups holds the primary folder, a second copy folder, the interval in days
+and how many nightly copies to keep. Saving writes them to `schedule.json` in the
+mounted backup folder; the script picks them up on its next run, and the settings
+page shows what it will read and when the last backup actually happened.
+
+Two limits worth knowing before you set them:
+
+- **The interval can only stretch the gap.** The task below fires daily and the
+  script may skip a run, so weekly works. Backing up *more* often than daily
+  needs this task re-registered with a different trigger.
+- **The dump always lands in the mounted folder first** — that is the only path
+  both containers can write — and the configured folders receive verified copies
+  afterwards. So `NARCOS_BACKUP_ROOT` in `.env` still has to be a real folder
+  with room on it, whatever the app is set to.
 
 **Set up the schedule (once):** create a Windows Task Scheduler task:
 - **Trigger**: Daily at **16:00** (staff are still in; the PC is on).
@@ -166,7 +183,10 @@ schedule. See the design in [RUNBOOK.md](RUNBOOK.md#nightly-backup).
 
 **What each run produces** in `C:\narcos\backups\<timestamp>\`:
 `narcos.dump` (verified), `media.tar.gz`, and a copy of `.env`.
-**Retention**: newest 14 nightly + one per month for a year (auto-pruned).
+**Retention**: the newest N nightly (N is *Nightly backups kept*, default 14) plus
+one per month for a year, pruned in every destination. The newest complete backup
+is never pruned, and a folder holding no complete backup is never pruned at all
+(R97).
 
 **Take one right now, outside the schedule:**
 ```powershell

@@ -1,3 +1,5 @@
+import re
+
 from django import forms
 from django.utils.translation import gettext_lazy as _
 
@@ -22,7 +24,44 @@ class CompanySettingsForm(forms.ModelForm):
         (_("Stock"), ["near_expiry_months", "consignment_term_months"]),
         (_("Dates and printing"), ["fiscal_year_start_month", "date_display",
                                    "print_layout"]),
+        (_("Backups"), ["backup_primary_path", "backup_secondary_path",
+                        "backup_interval_days", "backup_keep_count"]),
     ]
+
+    # D147: these are paths on the Windows PC, not in this container, so the
+    # app cannot check that one exists. It can check the one thing that is
+    # wrong on its face — a path with no drive, which the script would resolve
+    # against whatever folder it happens to be in.
+    ABSOLUTE_WINDOWS_PATH = re.compile(r"^(?:[A-Za-z]:[\\/]|\\\\[^\\/]+[\\/])")
+
+    def _clean_path(self, field: str) -> str:
+        value = (self.cleaned_data.get(field) or "").strip()
+        if value and not self.ABSOLUTE_WINDOWS_PATH.match(value):
+            raise forms.ValidationError(_(
+                "Give the full path, starting with a drive letter or a server "
+                "name — for example D:\\NarcosBackups or "
+                "\\\\server\\backups. A short path would be read against "
+                "whichever folder the backup happens to run in."))
+        return value
+
+    def clean_backup_primary_path(self):
+        return self._clean_path("backup_primary_path")
+
+    def clean_backup_secondary_path(self):
+        return self._clean_path("backup_secondary_path")
+
+    def clean(self):
+        data = super().clean()
+        primary = (data.get("backup_primary_path") or "").strip()
+        secondary = (data.get("backup_secondary_path") or "").strip()
+        if primary and secondary and primary.rstrip("\\/").lower() == \
+                secondary.rstrip("\\/").lower():
+            # Two copies in one folder is one copy with extra steps, and the
+            # whole point of the second is a different drive.
+            self.add_error("backup_secondary_path", _(
+                "The second copy must go somewhere else — ideally another "
+                "drive, so one failure cannot take both."))
+        return data
 
     class Meta:
         model = CompanySettings

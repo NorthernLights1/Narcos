@@ -6,6 +6,26 @@ to do and **what you must see** — if you see something else, that's a bug.
 
 Written for a dev machine (Linux, `.venv`, PostgreSQL on localhost).
 
+> **2026-09-12 round 25 — D147 (backup settings):** this one is **tested on the
+> client's PC, not here** — there is no PowerShell on the dev machine, so the
+> script changes are only read and asserted on as text.
+>
+> 1. **Settings → Backups.** Fill in a primary folder on the same drive and a
+>    second copy folder on a USB stick. Save. The card below must immediately
+>    read back what you typed, with your name and the time.
+> 2. **Check the hand-over file exists**: `schedule.json` in the backup folder,
+>    holding those values.
+> 3. **Run the backup by hand** (`ops\docker-backup.ps1`). The finished stamp
+>    folder must appear in **all three** places — the mounted folder, the
+>    primary, and the USB.
+> 4. **Pull the USB out and run it again.** It must finish, warn in
+>    `backup.log`, and still write the other two. A missing second drive must
+>    never cost you the backup.
+> 5. **Run it twice in a row with the interval set to 2.** The second run must
+>    log `BACKUP SKIPPED` and do nothing.
+> 6. **Set the interval back to 1 before you leave.** Every day added is a day
+>    you can lose.
+
 > **2026-09-12 round 25 — D146:** **hard-refresh** (`?v=20260912c`).
 >
 > - **Month and year only.** Start a **Receiving**. Under each expiry box there

@@ -2673,3 +2673,59 @@ granularity at posting, which is what Astra proposed in round 23. It would keep
 the tick working on those 76 batches, and it costs a migration on a box where a
 failed migration is a silent restart loop rather than an error message. The owner
 chose the cheap shape, and the untick escape is what makes it safe.
+
+### D147 — Backup folders and interval in Settings, carried to the script that backs up
+
+*2026-09-12.*
+
+The owner asked to set a primary and a second backup folder and the interval from
+Settings. **The app runs in a container; the backup does not.**
+`ops/docker-backup.ps1` runs on Windows under Task Scheduler and reaches into the
+containers with `docker compose exec`. Django cannot see `E:\`, cannot create a
+scheduled task and cannot restart the stack.
+
+**The road between them already existed.** Both containers mount the host's
+`NARCOS_BACKUP_ROOT` at `/backups`. Saving Settings writes one small
+`schedule.json` there, and the script reads it on its next run. No new mount, no
+new service, nothing over the network.
+
+**Four settings, every one of them read by the script** — a setting no code
+enforces must not ship. Primary folder, second copy folder, interval in days, and
+how many nightly copies to keep.
+
+**The dump still lands in the mounted folder**, because that is the only path both
+containers can write. The configured folders are copies made on the host
+afterwards, each verified file by file by size — a drive that silently truncates
+is the classic way an offsite copy turns out not to exist. **The primary copy is
+fatal if it fails; the second only warns**, because an unplugged USB stick must
+never cost the backup that did work.
+
+**The interval only ever stretches the gap.** Task Scheduler fires the script
+daily and the script can skip a run, so weekly works from the app. Running *more*
+often than daily needs the Windows task re-registered on the PC, which the owner
+chose not to have in this round; the field's minimum is 1 and its help text says
+so. The skip is written to `backup.log`, and it can never skip when there is no
+good backup to fall back on.
+
+**Retention is the dangerous part, so it gained two floors.** R97: a folder is a
+backup only if it holds a non-empty dump *and* the media archive, or a run cut
+short by a power failure fills the keep slots and the next success deletes the
+last good copy. On top of that, the newest complete backup is now explicitly
+unprunable, and a destination holding **no** complete backup is never pruned at
+all. Retention runs per destination.
+
+**The page shows evidence, not intent.** It prints what the script will read,
+when it was handed over and by whom, and the last BACKUP row from the audit log.
+A backup setting you cannot check is how this client went a month with no backup
+(`ops/INCIDENT-2026-09-08.md`). On the restored database the card reads *last
+backup recorded 2026-08-08* — which is the incident, visible on the settings page
+rather than in a post-mortem.
+
+**What the app deliberately cannot do:** write `.env` or restart the stack. That
+is a deployment action, and an app that rewrites its own deployment is how a boot
+loop starts. The mounted folder stays where `.env` says.
+
+**Not machine-verified:** the PowerShell changes are checked by tests that assert
+on the script's text, the way `test_p10_ops.py` already does, and by reading. There
+is no PowerShell on this machine to run them. They must be exercised on the
+client's PC before the release, and `ops/MANUAL-TESTING.md` says how.

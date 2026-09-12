@@ -9,9 +9,10 @@ of 2026-09-08.
 
 ## The headline
 
-**Round 25 is under way: 632 tests green, 25 commits waiting on `build`.**
-Round 24 closed six requests (D141-D145). Round 25 is two more: month-only
-expiry is built (D146), backup settings are next.
+**Round 25 is built: 662 tests green, 26 commits waiting on `build`.**
+Round 24 closed six requests (D141-D145). Round 25 closed two more: month-only
+expiry (D146) and backup settings (D147). One piece of D147 is not verified —
+see below.
 
 Round 23 shipped seven features; you looked at them and withdrew two. What
 replaced them is smaller and better, and the reasoning is in D141 to D143.
@@ -24,11 +25,48 @@ stands between this and the client.
 
 **The push to `origin` is blocked** and needs you: `git push -u origin build`.
 
+## An outside audit, ready for you to run
+
+You asked for an independent review — an outside auditor looking for hidden
+bugs that quietly distort numbers, and for what the security picture would be
+if this were ever put on the public internet. The brief is written and sits in
+[ops/EXTERNAL-AUDIT-BRIEF.md](ops/EXTERNAL-AUDIT-BRIEF.md).
+
+It is a prompt, not a report. I did not run it: you told me not to, and you are
+right that the daily allowance drains faster when I fire it than when you do.
+So the brief is yours to paste into Codex.
+
+What it does differently from a normal code review:
+
+- It **separates today from later**. Findings are tagged for the offline PC the
+  client actually uses, or for the hypothetical hosted future. Otherwise the
+  report fills with "you need HTTPS", which is true and useless while the
+  machine has no internet.
+- It **demands evidence**. Every finding must name a file and line, give the
+  exact sequence that reaches the wrong number, and show the resulting rows.
+  Opinions are explicitly refused.
+- It **lists the 26 risks already known**, so the run is not spent
+  rediscovering R79, R85, R102 and the rest.
+- It **hunts for features that are correct, tested, and inert** — the round 22
+  failure. A report that silently returns nothing is a lie told to the client,
+  and the brief ranks it accordingly.
+- It **prioritises into four levels**, from silent wrong money down to things
+  worth knowing but not stopping for.
+
+The work is split into nine passes so a stalled run does not lose everything.
+If you only want three, run passes 1, 2 and 5 — reversal integrity, money
+arithmetic, and inert features. Those three answer the question you actually
+asked, which is whether the system is lying.
+
+Budget a third of what comes back to be wrong or to be deliberate design.
+Section 13 of the brief tells you how to run it and what the known failure
+modes on your machine look like.
+
 ## Round 25 — the two things you asked for on 2026-09-12
 
 | # | What you asked | Answer | State |
 |---|---|---|---|
-| 1 | Primary and secondary backup paths, and the interval, in Settings | Planned in `plans/client-round-25.plan.md`. The app writes the settings through the mounted backup folder and the Windows script reads them | in progress |
+| 1 | Primary and secondary backup paths, and the interval, in Settings | Built as **D147**. The app hands them to the Windows script through the folder both containers already mount | done, needs testing at the PC |
 | 2 | A tick that hides the day picker and stores the month end | Built as **D146**, per line, entry-only, no migration, existing batches untouched | done |
 
 **You revived a cancelled feature and the new shape holds.** Round 23 dropped
@@ -42,6 +80,18 @@ names the stored date and says to untick.
 task fires daily at 16:00; the script can skip a run, so weekly works from the
 app. Running more often than daily needs the Windows task re-registered at the
 client's PC, which is not in this round.
+
+**One piece of round 25 is not verified and you should know exactly which.** The
+PowerShell changes — the copies to the two folders, the interval skip, and
+per-destination pruning — are covered by tests that read the script as text and
+by careful reading. **There is no PowerShell on this machine to run them.**
+`ops/MANUAL-TESTING.md` has a six-step check to run at the client's PC, including
+pulling the USB stick out mid-schedule. Do not treat the backup change as proven
+until that is done.
+
+**The settings page now shows the incident.** Its new card prints the last
+recorded backup, and on the restored database that reads **2026-08-08** — the day
+before the outage. That fact was previously only in a post-mortem file.
 
 ## Round 24 — the four things you asked for on 2026-09-11
 
@@ -129,6 +179,9 @@ conversation.
 4. **Put R102 and R106 to the client** — ask whether Shalom and Alula paid 100%
    or 97%, and count ITM-0096 and ITM-0046 before trusting any stock figure.
 5. Then D132's catalogue cleanup, whose readers D134 has now built.
+6. **Run the audit** in [ops/EXTERNAL-AUDIT-BRIEF.md](ops/EXTERNAL-AUDIT-BRIEF.md),
+   passes 1, 2 and 5 at minimum. Best done before the backlog ships, so a
+   silent money defect is caught on your machine rather than theirs.
 
 ---
 

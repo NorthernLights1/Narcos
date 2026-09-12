@@ -1,6 +1,7 @@
 """Core models — spec §3.1: users/roles, settings singleton, audit, sequences."""
 
 from django.contrib.auth.models import AbstractUser
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
@@ -163,6 +164,37 @@ class CompanySettings(models.Model):
         ),
     )
 
+    # D147: the backup runs on Windows under Task Scheduler, not in this
+    # container, so these four are carried across in a file the script reads
+    # from the mounted backup folder. Nothing here changes what Compose mounts
+    # — that stays in .env, because an app that rewrites its own deployment is
+    # how a boot loop starts.
+    backup_primary_path = models.CharField(
+        _("Primary backup folder"), max_length=300, blank=True,
+        help_text=_("Where finished backups are kept. Blank = the folder the "
+                    "deployment already uses. Full path, e.g. D:\\NarcosBackups."),
+    )
+    backup_secondary_path = models.CharField(
+        _("Second copy folder"), max_length=300, blank=True,
+        help_text=_("A second copy, on another drive or a USB stick. Blank = "
+                    "none. If the drive is missing the backup still succeeds "
+                    "and the run warns."),
+    )
+    backup_interval_days = models.PositiveSmallIntegerField(
+        _("Back up every (days)"), default=1,
+        validators=[MinValueValidator(1), MaxValueValidator(30)],
+        help_text=_("1 = every day, which is the recommendation. Higher means "
+                    "fewer backups and more work at risk. Backing up more than "
+                    "once a day needs the Windows task changed on the PC."),
+    )
+    backup_keep_count = models.PositiveSmallIntegerField(
+        _("Nightly backups kept"), default=14,
+        validators=[MinValueValidator(7), MaxValueValidator(365)],
+        help_text=_("Older ones are removed, except the newest of each month, "
+                    "which is kept for a year. The newest good backup is never "
+                    "removed."),
+    )
+
     AUDITED_FIELDS = [
         "name", "address", "tin", "phone", "tax_regime", "vat_rate", "tot_rate",
         "prices_tax_exclusive", "withholding_on_sales", "withholding_on_purchases",
@@ -173,6 +205,8 @@ class CompanySettings(models.Model):
         "default_credit_limit", "default_credit_action",
         "fiscal_year_start_month", "date_display", "print_layout",
         "negative_balance_policy", "books_closed_through",
+        "backup_primary_path", "backup_secondary_path",
+        "backup_interval_days", "backup_keep_count",
     ]
 
     class Meta:
