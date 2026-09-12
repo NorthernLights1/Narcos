@@ -1,8 +1,11 @@
 """Document forms for the implemented posting handlers."""
 
+import calendar
+import re
 from functools import partial
 
 from django import forms
+from django.core.exceptions import ValidationError
 from django.db.models import F, OuterRef, Q, Subquery, Sum
 from django.db.models.functions import Coalesce
 from django.forms import inlineformset_factory
@@ -29,6 +32,35 @@ def _selling_price(item: Item):
         if latest_cost:
             return round2(latest_cost * (1 + item.auto_margin_pct / 100))
     return item.maintained_price
+
+
+class ExpiryField(forms.DateField):
+    """D146: a full date, or a month meaning the last day of that month.
+
+    The carton often carries `09/2026` and nothing more, and inventing a day is
+    how a wrong expiry gets typed. A month-only entry resolves to the month end,
+    which is the latest the goods can still be good — the safe direction, since
+    D46 blocks a sale after the date rather than before it.
+
+    **Nothing about storage changes.** The column stays a plain date, the batch
+    stays a plain date, and the tick that produces a month is never stored: it
+    describes how the value was typed, not what it means. That is what keeps
+    every existing batch working exactly as it does today.
+    """
+
+    MONTH = re.compile(r"^\s*(\d{4})-(\d{1,2})\s*$")
+
+    def to_python(self, value):
+        if isinstance(value, str):
+            match = self.MONTH.match(value)
+            if match:
+                year, month = int(match.group(1)), int(match.group(2))
+                if not 1 <= month <= 12:
+                    raise ValidationError(self.error_messages["invalid"],
+                                          code="invalid")
+                value = "%04d-%02d-%02d" % (
+                    year, month, calendar.monthrange(year, month)[1])
+        return super().to_python(value)
 
 
 class ItemSelect(forms.Select):
@@ -341,6 +373,13 @@ class DocumentForm(forms.ModelForm):
 
 
 class DocumentLineForm(forms.ModelForm):
+    # D146: declared rather than generated, so month-only entries parse. The
+    # widget stays a day picker — the tick beside it swaps the input to a month
+    # picker in the browser, and this is what accepts what comes back.
+    expiry_entered = ExpiryField(
+        required=False, label=_("Expiry"),
+        widget=forms.DateInput(attrs={"type": "date"}),
+    )
     source_zone = forms.ChoiceField(
         choices=[
             (Zone.WAREHOUSE, _("Warehouse")),

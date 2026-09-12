@@ -2627,3 +2627,49 @@ The vocabulary was already half there — the report group is called *Receivable
 
 Wording only. No number, column or query changed, and the whole suite passed
 untouched — which is the evidence that nothing but language moved.
+
+### D146 — "Month and year only", per line, entry-only
+
+*2026-09-12. Revives the feature cancelled in round 23, in a shape that survives
+the objection that killed it.*
+
+The carton often carries `09/2026` and nothing more, and inventing a day is how a
+wrong expiry gets typed. A tick beside each expiry box swaps the day picker for a
+month picker on **that line alone**; the server stores the **last day** of that
+month.
+
+**Nothing changes in the database, by the owner's instruction.**
+`expiry_entered` stays a plain date column, `Batch.expiry_date` stays a plain
+date, and the tick itself is never stored — it describes how the value was typed,
+not what it means. No migration, so nothing new can fail on the client's machine
+at boot (R95).
+
+**Month end is the safe direction.** D46 blocks a sale *after* the expiry date, so
+resolving `09/2026` to the 30th is the latest the goods can still be sold, which
+is what the carton actually claims.
+
+**Why the per-line shape survives what the company-wide one did not.** Round 23's
+version removed the day picker everywhere. `Batch.get_or_create()` matches on item
+and batch number only, so an existing batch keeps its stored expiry and
+`docs/handlers.py` refuses a different one — and with no day picker anywhere the
+operator could not express the stored day. Measured again today: 236 batches carry
+an expiry, 226 are not month-end, and **76 of those still hold stock**.
+
+A tick has an escape the setting did not: leave it unticked. And the case that
+would hit the refusal — receiving more of a batch already on the shelf — never
+needs the tick at all, because D128 fills the expiry from the batch that was
+picked, exactly as stored. The tick is for a *new* batch.
+
+**The refusal now says what to do**, not only what is wrong: it names the stored
+expiry and tells the operator to type it, or to untick the box on that line.
+
+**A mis-tick does not cost the typed day.** Ticking remembers the full date;
+unticking restores it if the month is unchanged, and falls back to the month end
+if the operator changed the month while it was ticked. Verified in a browser
+across all three paths, because none of it is reachable from a test.
+
+**Rejected: remembering the tick per line** and comparing expiry at month
+granularity at posting, which is what Astra proposed in round 23. It would keep
+the tick working on those 76 batches, and it costs a migration on a box where a
+failed migration is a silent restart loop rather than an error message. The owner
+chose the cheap shape, and the untick escape is what makes it safe.

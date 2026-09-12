@@ -39,6 +39,7 @@
                       aria-label="{% translate 'Remove this row' %}">✕</button>
             {% else %}
               {{ field }}
+              {% if field.name == "expiry_entered" %}{% include "docs/_month_only.html" %}{% endif %}
               {% if field.errors %}<p class="field-error">{{ field.errors|striptags }}</p>{% endif %}
             {% endif %}
           </td>
@@ -60,6 +61,7 @@
                   aria-label="{% translate 'Remove this row' %}">✕</button>
         {% else %}
           {{ field }}
+          {% if field.name == "expiry_entered" %}{% include "docs/_month_only.html" %}{% endif %}
         {% endif %}
       </td>
       {% endfor %}

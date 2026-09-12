@@ -88,6 +88,11 @@
   .table-wrap { @apply overflow-x-auto; }
   .cell-tight { @apply whitespace-nowrap; }
 
+  /* D146: the tick sits under its expiry box, small enough not to widen the
+     line table. */
+  .month-only { @apply mt-1 flex items-center gap-1 text-xs text-slate-500; }
+  .month-only input { @apply h-3 w-3; }
+
   /* D144: a drill-down table nested inside a cell widens its column and
      pushes the money columns off the right edge. Fixing the outer layout
      stops the columns moving when a row is opened, and the nested table

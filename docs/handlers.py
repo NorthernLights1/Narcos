@@ -110,9 +110,15 @@ class ReceivingHandler(Handler):
                 )
                 if not created and batch.expiry_date != line.expiry_entered:
                     # §7.1: same batch_no with a different expiry is an entry error
+                    # D146: the message has to say what to do, not only what
+                    # is wrong. A month-only entry lands on the month end, so
+                    # an existing batch dated mid-month refuses it — and the
+                    # way out is to untick and type the stored day.
                     raise PostingError(
                         _("Batch %(no)s of %(item)s already exists with expiry "
-                          "%(old)s — you entered %(new)s. Check the entry.")
+                          "%(old)s — you entered %(new)s. Type %(old)s, or "
+                          "untick \u201cMonth and year only\u201d on that line "
+                          "if it is ticked.")
                         % {"no": batch.batch_no, "item": item.code,
                            "old": batch.expiry_date, "new": line.expiry_entered}
                     )

@@ -9,9 +9,12 @@ of 2026-09-08.
 
 ## The headline
 
-**Round 24 is built: 618 tests green, 24 commits waiting on `build`.** Round 23
-shipped seven features; you looked at them and withdrew two. What replaced them
-is smaller and better, and the reasoning is in D141 to D143.
+**Round 25 is under way: 632 tests green, 25 commits waiting on `build`.**
+Round 24 closed six requests (D141-D145). Round 25 is two more: month-only
+expiry is built (D146), backup settings are next.
+
+Round 23 shipped seven features; you looked at them and withdrew two. What
+replaced them is smaller and better, and the reasoning is in D141 to D143.
 
 Nothing is on the client's machine. They are still running v1.1.0 from
 8 August, and the backlog past that tag is now **36 commits**, of which 22 have
@@ -20,6 +23,25 @@ after `compose up -d` and verifies nothing. That, not the feature work, is what
 stands between this and the client.
 
 **The push to `origin` is blocked** and needs you: `git push -u origin build`.
+
+## Round 25 — the two things you asked for on 2026-09-12
+
+| # | What you asked | Answer | State |
+|---|---|---|---|
+| 1 | Primary and secondary backup paths, and the interval, in Settings | Planned in `plans/client-round-25.plan.md`. The app writes the settings through the mounted backup folder and the Windows script reads them | in progress |
+| 2 | A tick that hides the day picker and stores the month end | Built as **D146**, per line, entry-only, no migration, existing batches untouched | done |
+
+**You revived a cancelled feature and the new shape holds.** Round 23 dropped
+month-only because it made 76 batches on the shelf impossible to re-receive. A
+per-line tick has the escape the company-wide setting did not — leave it
+unticked — and the case that would hit the refusal never needs the tick, because
+D128 already fills the expiry from the batch you picked. The refusal message now
+names the stored date and says to untick.
+
+**Backups can be stretched but not shortened, and you chose that.** The Windows
+task fires daily at 16:00; the script can skip a run, so weekly works from the
+app. Running more often than daily needs the Windows task re-registered at the
+client's PC, which is not in this round.
 
 ## Round 24 — the four things you asked for on 2026-09-11
 

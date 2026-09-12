@@ -384,6 +384,56 @@
       });
   });
 
+  /* D146: "Month and year only" swaps the day picker for a month picker on
+   * that line alone. The value is carried across both ways, so ticking and
+   * unticking never silently empties a box the operator already filled. The
+   * server resolves a month to its last day; nothing about the tick is sent or
+   * stored. */
+
+  function expiryBox(toggle) {
+    var cell = toggle.closest("td") || toggle.parentElement;
+    return cell ? cell.querySelector('input[name$="-expiry_entered"]') : null;
+  }
+
+  function lastDayOfMonth(year, month) {
+    /* Day 0 of the next month is the last day of this one. */
+    return new Date(year, month, 0).getDate();
+  }
+
+  function toMonthPicker(input) {
+    var value = input.value;
+    input.type = "month";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      /* Remember the day, so a mis-tick can be undone without losing it. */
+      input.dataset.fullDate = value;
+      input.value = value.slice(0, 7);
+    }
+  }
+
+  function toDayPicker(input) {
+    var value = input.value;
+    var remembered = input.dataset.fullDate || "";
+    input.type = "date";
+    if (!/^\d{4}-\d{2}$/.test(value)) return;
+    if (remembered.slice(0, 7) === value) {
+      input.value = remembered;
+      return;
+    }
+    var year = parseInt(value.slice(0, 4), 10);
+    var month = parseInt(value.slice(5, 7), 10);
+    /* Zero-padded, because a date input rejects 2026-09-3. */
+    input.value = value + "-" + ("0" + lastDayOfMonth(year, month)).slice(-2);
+  }
+
+  document.addEventListener("change", function (event) {
+    var toggle = event.target;
+    if (!toggle.matches || !toggle.matches("[data-month-only]")) return;
+    var input = expiryBox(toggle);
+    if (!input) return;
+    if (toggle.checked) toMonthPicker(input);
+    else toDayPicker(input);
+  });
+
   /* ---------- item pick: prefill + batch filtering ---------- */
 
   function rowInput(row, suffix) {

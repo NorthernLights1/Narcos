@@ -6,6 +6,21 @@ to do and **what you must see** — if you see something else, that's a bug.
 
 Written for a dev machine (Linux, `.venv`, PostgreSQL on localhost).
 
+> **2026-09-12 round 25 — D146:** **hard-refresh** (`?v=20260912c`).
+>
+> - **Month and year only.** Start a **Receiving**. Under each expiry box there
+>   is a small **Month and year only** tick, **unticked**. Type a full date, tick
+>   it: the box becomes a month picker holding that month. Untick it: **the day
+>   you typed comes back**. Tick it again, change the month, untick: now it shows
+>   that month's **last day**. Save a line with the tick on and `09/2026`: the
+>   saved line must read **2026-09-30**. Press **+ Add row** and check the new
+>   row's tick works the same.
+> - **Existing batches must be untouched.** Receive more of a batch already on
+>   the shelf the normal way — pick the batch, let the expiry fill itself, do
+>   **not** tick the box. It must post exactly as it always has. Then try it with
+>   the tick on against a batch whose expiry is mid-month: it must refuse, and the
+>   message must name the stored date and tell you to untick.
+
 > **2026-09-12 round 24 — D144/D145:** **hard-refresh** (`?v=20260912b`) — the
 > CSS changed again.
 >
