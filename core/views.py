@@ -12,6 +12,7 @@ from django.utils.translation import gettext as _
 from catalog.models import Item
 from core.audit import log_change, log_event, snapshot
 from core.ethiopian_calendar import format_ethiopian
+from core.backup_schedule import read_schedule, schedule_path, write_schedule
 from core.forms import CompanySettingsForm, UserForm
 from core.models import AuditLog, CompanySettings, User
 from docs.checks import ExpiryStatus, expiry_status
@@ -172,11 +173,29 @@ def company_settings(request):
                 before=before,
                 after=after,
             )
-            messages.success(request, _("Settings saved."))
+            # D147: the backup runs on Windows, not here, so the settings
+            # have to be handed across. Failing to hand them over must not
+            # also fail the save — say so and keep the settings.
+            path, problem = write_schedule(saved, request.user)
+            if problem:
+                messages.warning(request, _(
+                    "Settings saved, but the backup settings could not be "
+                    "written to %(path)s — the backup will keep using what it "
+                    "used before. %(problem)s"
+                ) % {"path": path, "problem": problem})
+            else:
+                messages.success(request, _("Settings saved."))
             return redirect("company_settings")
     else:
         form = CompanySettingsForm(instance=instance)
-    return render(request, "core/settings_form.html", {"form": form})
+    return render(request, "core/settings_form.html", {
+        "form": form,
+        # Evidence, not assumption: what the script will read, and what the
+        # last run actually did.
+        "backup_schedule": read_schedule(),
+        "backup_schedule_path": schedule_path(),
+        "last_backup": AuditLog.objects.filter(action="BACKUP").first(),
+    })
 
 
 @owner_required

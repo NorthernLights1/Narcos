@@ -1,8 +1,8 @@
-# ops/deploy.ps1 — update the running deployment safely (D83).
+# ops/deploy.ps1 - update the running deployment safely (D83).
 #
 # One command for a version update: take a fresh backup, pull the new image,
 # recreate the app (the entrypoint auto-applies migrations on start). Running
-# updates through this script is what guarantees "backup before migrate" — a
+# updates through this script is what guarantees "backup before migrate" - a
 # bare `docker compose pull; up -d` skips the safety backup.
 #
 # Run from the deploy directory (compose.yml + .env). Requires internet for the

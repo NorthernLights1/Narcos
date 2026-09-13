@@ -29,9 +29,11 @@
   }
   .nav-group {
     @apply px-3 pt-4 pb-1 text-xs font-semibold uppercase tracking-wider
-      text-slate-400 first:pt-0;
+      text-slate-500 first:pt-0;
   }
   .page { @apply flex-1 min-w-0 max-w-6xl px-6 py-6; }
+  /* R57: document entry uses the whole monitor — the 72rem cap wasted it. */
+  .page-wide { @apply max-w-none; }
 
   /* ---- headers, cards, buttons ---- */
   .page-head { @apply flex flex-wrap items-start justify-between gap-3 mb-4; }
@@ -49,22 +51,74 @@
   }
   .btn-quiet { @apply bg-transparent text-slate-300 hover:text-white; }
   .btn-sm { @apply px-2.5 py-1 text-xs; }
-  .hint { @apply text-xs text-slate-400; }
+  .hint { @apply text-xs text-slate-600; }
   .cell-hint { @apply block text-xs text-slate-500 mt-1 whitespace-nowrap; }
+
+  /* D128: batch-number suggestions on the receiving desk. A typo here can
+     never be corrected, so the existing spellings sit right under the box. */
+  .batch-suggest { @apply mt-1 flex flex-col items-start gap-1; }
+  .batch-suggest-warn { @apply text-xs text-amber-700 font-medium; }
+  .batch-chip { @apply cursor-pointer rounded border border-slate-300 bg-white
+                px-2 py-0.5 text-xs text-slate-600 whitespace-nowrap
+                hover:border-accent hover:text-accent; }
 
   /* ---- forms ---- */
   .field { @apply mb-4; }
   .field-wide { @apply sm:col-span-2; }
   .field-error { @apply text-danger text-xs mt-1; }
-  .field-help { @apply text-xs text-slate-400 mt-1; }
+  .field-help { @apply text-xs text-slate-600 mt-1; }
   .form-grid { @apply grid gap-x-6 sm:grid-cols-2; }
+
+  /* D142: the copy-from picker — a searchable list and its button on one
+     line, stacking on a narrow screen. */
+  .copy-from { @apply flex flex-wrap items-center gap-2; }
+  .copy-from > select { @apply flex-1 min-w-0; }
+  .copy-from .choices { @apply flex-1 min-w-0 mb-0; }
   .filterbar { @apply grid gap-x-4 items-end sm:grid-cols-4 py-4; }
   .filterbar .field { @apply mb-0; }
   .searchbar { @apply flex gap-2 mb-4 max-w-md; }
   .searchbar .btn-quiet { @apply text-slate-500 hover:text-ink; }
 
   /* ---- tables ---- */
+  /* R61: a field that may still be corrected, and the pencil that opens it. */
+  .inline-field { @apply inline-flex items-center gap-1 flex-wrap; }
+  .btn-inline-edit { @apply text-slate-500 hover:text-accent px-1 rounded cursor-pointer leading-none; }
+  .inline-field-form { @apply inline-flex items-center gap-1 flex-wrap; }
+  .inline-field-form input, .inline-field-form textarea { @apply w-48 py-1 px-2 text-sm; }
+
+  /* F3: in-flight feedback for the two inline-edit saves and the master-data
+     typeahead. hx-disabled-elt puts `disabled` on the submit button for the
+     duration of the request, so a second click cannot land; hx-indicator puts
+     .htmx-request on the match list while it is being refetched.
+     Opacity only (no layout, no paint), 150ms, strong ease-out. No
+     prefers-reduced-motion block on purpose: an opacity fade is the kind of
+     motion that rule says to keep, not the kind it says to drop. */
+  .inline-field-form button[type="submit"],
+  #dupe-matches {
+    @apply transition-opacity duration-150 ease-[cubic-bezier(0.23,1,0.32,1)];
+  }
+  .inline-field-form button[type="submit"]:disabled { @apply opacity-60 cursor-wait; }
+  #dupe-matches.htmx-request { @apply opacity-50; }
+  /* D150: the version stamp, in the sticky topbar so it is in every photo.
+     slate-400 on ink is 6.4:1 - quiet against the brand, still legible when
+     the screen is photographed under glare. */
+  .version-stamp { @apply text-xs text-slate-400 tracking-wide; }
   .table-wrap { @apply overflow-x-auto; }
+  .cell-tight { @apply whitespace-nowrap; }
+
+  /* D146: the tick sits under its expiry box, small enough not to widen the
+     line table. */
+  .month-only { @apply mt-1 flex items-center gap-1 text-xs text-slate-500; }
+  .month-only input { @apply h-3 w-3; }
+
+  /* D144: a drill-down table nested inside a cell widens its column and
+     pushes the money columns off the right edge. Fixing the outer layout
+     stops the columns moving when a row is opened, and the nested table
+     scrolls inside its own box. */
+  .table-grouped { table-layout: fixed; width: 100%; }
+  .table-grouped > thead > tr > th:first-child { width: 46%; }
+  .drill-wrap { @apply overflow-x-auto; }
+  .drill-wrap .table { @apply text-xs; }
   .table { @apply w-full text-sm; }
   .table th {
     @apply text-left text-xs font-semibold uppercase tracking-wide
@@ -77,7 +131,12 @@
   .table-input td { @apply px-1.5 py-1.5; }
   .table-input input, .table-input select { @apply px-2 py-1.5; }
   .col-del { @apply w-8 text-center; }
-  .col-del input[type="checkbox"] { @apply mt-2.5; }
+  /* D88: rows are removed with this button; the DELETE checkbox behind it
+     stays in the page for Django but is never shown. */
+  .btn-row-del {
+    @apply mt-1 cursor-pointer rounded px-2 py-1 text-sm leading-none
+           text-slate-500 hover:bg-rose-50 hover:text-rose-700;
+  }
   .total-row th { @apply border-t-2 border-slate-300 text-sm normal-case tracking-normal text-ink; }
   .opening-row td { @apply font-semibold text-slate-600; }
   .row-reversal td { @apply text-rose-700; }
@@ -130,11 +189,35 @@
   .menu-panel a { @apply block rounded px-3 py-1.5 text-sm hover:bg-slate-100; }
   .menu-group {
     @apply px-3 pt-3 pb-1 text-xs font-semibold uppercase tracking-wider
-      text-slate-400 first:pt-1;
+      text-slate-500 first:pt-1;
   }
 
   /* ---- misc ---- */
   .messages { @apply mb-4 space-y-2; }
+  /* D93: confirmation dialog — one per page, filled in by app.js */
+  .confirm-dialog {
+    @apply w-[min(30rem,calc(100vw-2rem))] rounded-lg border border-slate-200
+           bg-white p-6 text-ink shadow-lg;
+  }
+  .confirm-dialog::backdrop { @apply bg-slate-900/40; }
+  .confirm-dialog h2 { @apply mb-3 text-base font-semibold; }
+  .confirm-dialog p { @apply mb-2 text-sm leading-relaxed text-slate-700; }
+  .confirm-actions { @apply mt-5 flex justify-end gap-2; }
+
+  /* D98: destructive confirmations look and behave differently from
+     reversible ones — red, itemised, and gated behind typing. */
+  .confirm-danger { @apply border-rose-300 border-t-4 border-t-rose-600; }
+  .confirm-danger h2 { @apply text-rose-800; }
+  .confirm-list { @apply mb-3 list-disc space-y-1 pl-5 text-sm text-slate-700; }
+  .confirm-danger .confirm-list { @apply text-rose-900; }
+  .confirm-final {
+    @apply mb-3 block rounded border border-rose-200 bg-rose-50 px-3 py-2
+           text-sm font-semibold text-rose-900;
+  }
+  .confirm-typegate { @apply mt-4 block text-sm font-medium text-slate-700; }
+  .confirm-typegate input { @apply mt-1; }
+  .confirm-actions .btn[disabled] { @apply cursor-not-allowed opacity-40; }
+
   .msg { @apply rounded px-4 py-2 text-sm; }
   .msg-success { @apply bg-emerald-50 text-emerald-900 border border-emerald-200; }
   .msg-error { @apply bg-red-50 text-red-900 border border-red-200; }
@@ -142,7 +225,7 @@
 
   /* ---- finance overview ---- */
   .net-position { @apply text-center; }
-  .net-label { @apply text-xs uppercase tracking-wide text-slate-400; }
+  .net-label { @apply text-xs uppercase tracking-wide text-slate-600; }
   .net-amount { @apply text-3xl font-bold tabular-nums text-emerald-700; }
   .net-negative .net-amount { @apply text-rose-700; }
   .finance-big { @apply text-2xl font-semibold tabular-nums; }
@@ -150,11 +233,11 @@
   .finance-total { @apply border-t border-slate-200 pt-1 mt-1 text-sm; }
   .compact-list b.num { @apply float-right tabular-nums; }
   .today { @apply text-slate-500; }
-  .placeholder { @apply text-slate-400 text-sm; }
+  .placeholder { @apply text-slate-600 text-sm; }
   .compact-list { @apply space-y-1 text-sm; }
   .compact-list a { @apply text-accent hover:underline; }
   .summary-grid { @apply grid gap-x-8 gap-y-2 sm:grid-cols-2 lg:grid-cols-4; }
-  .summary-grid dt { @apply text-xs uppercase tracking-wide text-slate-400; }
+  .summary-grid dt { @apply text-xs uppercase tracking-wide text-slate-600; }
   .summary-grid dd { @apply text-sm font-medium; }
 
   /* ---- Choices.js integration ---- */
@@ -162,7 +245,11 @@
   .choices__inner {
     @apply rounded border border-slate-300 bg-white px-2 py-1 text-sm min-h-0;
   }
-  .table-input .choices { @apply min-w-[14rem]; }
+  /* R57: long generic-first names need the room the wide page freed. */
+  .table-input .choices { @apply min-w-[22rem]; }
+  /* D113: while a picker is open, the scrollable line table must not clip
+     the list — release the overflow so it overlays the page below. */
+  .table-wrap:has(.choices.is-open) { overflow: visible; }
   .choices__list--dropdown .choices__item { @apply text-sm; }
   .is-focused .choices__inner, .is-open .choices__inner {
     @apply border-accent ring-2 ring-accent/40;
@@ -170,6 +257,18 @@
 }
 
 /* Browser print (statement, reports): chrome off, content full-width */
+/* D113: outside @layer — the class only exists at runtime (Choices.js), so
+   inside a layer Tailwind tree-shakes it. The vendored sheet ships z-index:1,
+   which loses to cards and panels; sit above all of them, below the sticky
+   topbar (z-30). */
+.choices__list--dropdown { z-index: 25; }
+
+/* D139/D142: Alpine is deferred, so anything it hides is briefly visible
+   before it initialises. The panel that needed this is gone — the rule stays
+   because the flash it prevents was found by screenshotting the page, not by
+   any test, and the next x-show would rediscover it the same expensive way. */
+[x-cloak] { display: none !important; }
+
 @media print {
   .topbar, .sidebar, .no-print, .actions, .messages, .filterbar {
     display: none !important;

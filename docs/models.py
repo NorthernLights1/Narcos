@@ -1,6 +1,7 @@
 """Document models — spec §3.4. Documents are the only thing that changes
 ledgers. Posted documents are immutable (D28/I1) except §7.12 reference fields."""
 
+from decimal import Decimal
 from pathlib import Path
 from uuid import uuid4
 
@@ -51,7 +52,15 @@ PREFIXES = {
 }
 
 # §7.12: the only fields editable after posting (reference-only, audited)
-POST_EDITABLE_FIELDS = {"fiscal_receipt_no", "machine_total", "withholding_certificate_no"}
+# D90/R61: the only fields a posted document may still change — none of
+# them touches a ledger. The first three are numbers copied off someone
+# else's paper (§7.12); `notes` is commentary; `due_date` moves what counts
+# as overdue but never what is owed. Every change is audited before/after.
+POST_EDITABLE_ORDER = ("fiscal_receipt_no", "machine_total",
+                       "withholding_certificate_no", "due_date", "notes")
+POST_EDITABLE_FIELDS = set(POST_EDITABLE_ORDER)
+# R61: moving a due date changes the AR/AP overdue picture — owner's call.
+OWNER_ONLY_POST_EDITS = {"due_date"}
 # Fields the void path itself must write (attnames — the diff compares attnames,
 # so the FK must appear here as voided_by_id, not voided_by)
 VOID_FIELDS = {"status", "voided_by_id", "voided_at", "void_reason"}
@@ -78,7 +87,8 @@ class Document(models.Model):
                                  on_delete=models.PROTECT, related_name="documents")
 
     sale_kind = models.CharField(max_length=6, choices=SaleKind.choices, blank=True)
-    due_date = models.DateField(null=True, blank=True)  # D38 exc. 3
+    # R52: doubles as supplier credit terms on receivings (feeds AP overdue)
+    due_date = models.DateField(_("Payment due date"), null=True, blank=True)  # D38 exc. 3
     supplier_invoice_date = models.DateField(null=True, blank=True)  # D38 exc. 2
 
     # Totals ※ (D32) — tax_total is authoritative, never recomputed elsewhere
@@ -115,6 +125,15 @@ class Document(models.Model):
     related_document = models.ForeignKey("self", null=True, blank=True,
                                          on_delete=models.PROTECT,
                                          related_name="related_documents")
+
+    # D92: this draft replaces `corrects`. The original stays live until this
+    # one is posted — posting voids it first, inside the same transaction, so
+    # the books never hold a reversal without its replacement. Abandon the
+    # draft and nothing ever happened.
+    corrects = models.ForeignKey("self", null=True, blank=True,
+                                 on_delete=models.PROTECT,
+                                 related_name="corrections")
+    correction_reason = models.CharField(max_length=300, blank=True)
 
     created_by = models.ForeignKey("core.User", on_delete=models.PROTECT,
                                    related_name="documents_created")
@@ -198,6 +217,25 @@ class DocumentLine(models.Model):
     qty_delta = models.IntegerField(default=0)
     source_zone = models.CharField(max_length=10, blank=True)
     target_zone = models.CharField(max_length=10, blank=True)
+
+    @property
+    def net_preview(self) -> Decimal:
+        """R54: what line_net should freeze to at posting — same formula as
+        the sales handler. Display-only for drafts; tax allocation and D80
+        price re-derivation can still move the posted figure."""
+        from docs.tax import round2
+        gross = Decimal(self.qty_entered or 0) * (self.unit_price or 0)
+        return round2(gross - (self.line_discount or 0))
+
+    @property
+    def base_preview(self) -> int:
+        """D130: how many base units this line will actually move.
+
+        `qty_base` is zero until posting computes it, so a confirmation shown
+        before posting has to derive it the same way the engine does. This is
+        exactly where a mistyped quantity becomes visible — and where a pack
+        factor quietly multiplies one."""
+        return (self.qty_entered or 0) * (self.factor or 1)
 
     def _document_is_locked(self) -> bool:
         return self.document.status != Document.Status.DRAFT

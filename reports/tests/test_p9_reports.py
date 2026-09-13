@@ -119,7 +119,8 @@ def test_employee_sales_report_hides_cost_and_profit(client, owner, employee,
     cash_sale(owner, customer, drug, cash)
 
     client.force_login(employee)
-    response = client.get(reverse("report_detail", args=["sales"]), _range())
+    # D141: the sales report has its own view now.
+    response = client.get(reverse("sales_report"), _range())
     assert response.status_code == 200
     content = response.content.decode()
     assert "30.00" in content
@@ -196,3 +197,36 @@ def test_print_renders_ethiopic_party_names(client, owner, supplier, drug, cash)
     response = client.get(reverse("document_print", args=[sale.pk]))
     assert response.status_code == 200
     assert customer.name in response.content.decode()
+
+
+# --- R75: the report has to agree with the invoice ------------------------
+
+def test_sales_report_revenue_matches_the_invoice(client, owner, customer,
+                                                  supplier, drug, cash):
+    """Revenue used to be the sum of `line_net`, which carries line discounts
+    but neither the delivery charge the customer paid nor the whole-document
+    discount they did not — so the report and the invoice disagreed by
+    exactly `charges − doc_discount`."""
+    from docs.models import DocumentCharge
+    from reports.views import _sale_line_rows
+
+    receive(owner, supplier, drug)
+    sale = Document.objects.create(doc_type=DocType.SALE, created_by=owner,
+                                   customer=customer,
+                                   sale_kind=Document.SaleKind.CASH,
+                                   doc_discount=D("5.00"))
+    DocumentLine.objects.create(
+        document=sale, item=drug, batch=Batch.objects.get(item=drug),
+        qty_entered=2, unit_price=D("15.00"), unit_label=drug.base_unit, factor=1,
+    )
+    DocumentCharge.objects.create(document=sale, label="Delivery",
+                                  amount=D("3.00"), is_taxable=False)
+    PaymentLine.objects.create(document=sale, account=cash, amount=D("28.00"))
+    sale = post(sale, owner)
+
+    today = timezone.localdate()
+    _rows, totals = _sale_line_rows(today, today)
+    revenue = totals["revenue"]
+
+    assert sale.grand_total == D("28.00")        # 30 lines + 3 delivery - 5
+    assert revenue == D("28.00")                 # not 30.00

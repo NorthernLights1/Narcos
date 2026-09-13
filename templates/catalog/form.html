@@ -17,6 +17,8 @@
   <div id="dupe-matches"></div>
   {% endif %}
 
+  {% include "catalog/_copy_from.html" %}
+
   {% if kind in "items customers suppliers" %}
     {% if instance %}
       <p class="field-help">{% translate "Code" %}: <strong>{{ instance.code }}</strong></p>
@@ -34,7 +36,7 @@
                value="{{ field.value|default:'' }}" maxlength="200"
                placeholder="{{ field.field.widget.attrs.placeholder|default:'' }}"
                hx-get="{% url 'master_search' kind %}" hx-trigger="keyup changed delay:400ms"
-               hx-target="#dupe-matches" hx-include="this">
+               hx-target="#dupe-matches" hx-include="this" hx-indicator="#dupe-matches">
       {% else %}
         {{ field }}
       {% endif %}

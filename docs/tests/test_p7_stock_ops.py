@@ -5,7 +5,6 @@ from decimal import Decimal
 import pytest
 from django.urls import reverse
 
-from core.models import AuditLog
 from docs.models import Document, DocType, DocumentLine
 from docs.posting import PostingError, post, void
 from docs.tests.conftest import make_stocked_item
@@ -92,7 +91,31 @@ def test_adjustment_requires_owner(employee):
         post(doc, employee)
 
 
-def test_i16_stock_count_uses_frozen_snapshot_and_warns_on_movement(owner):
+def test_i16_stock_count_uses_frozen_snapshot(owner):
+    item, lot, _balance = make_stocked_item(qty=10, cost="4.00")
+    count = Document.objects.create(doc_type=DocType.STOCK_COUNT, created_by=owner)
+    DocumentLine.objects.create(document=count, item=item, lot=lot,
+                                source_zone=Zone.WAREHOUSE, unit_label=item.base_unit,
+                                factor=1, qty_base=10, qty_entered=7)
+
+    count = post(count, owner)
+
+    adjustment = Document.objects.get(doc_type=DocType.ADJUSTMENT,
+                                      related_document=count)
+    assert adjustment.status == Document.Status.POSTED
+    assert zone_qty(lot, Zone.WAREHOUSE) == 7   # counted 7 - frozen 10 = -3
+    with pytest.raises(PostingError):
+        void(adjustment, owner, "void source instead")
+    void(count, owner, "count error")
+    adjustment.refresh_from_db()
+    assert adjustment.status == Document.Status.VOIDED
+
+
+def test_a_count_is_refused_when_stock_moved_after_the_snapshot(owner):
+    """R74: the variance is `counted − frozen`, applied to whatever is on the
+    shelf now. With 2 moved out after the snapshot, −3 against the remaining 8
+    left 5 — neither the 7 that was counted nor the 8 that was there. It only
+    ever reached the audit log; the owner approved a count already wrong."""
     item, lot, _balance = make_stocked_item(qty=10, cost="4.00")
     count = Document.objects.create(doc_type=DocType.STOCK_COUNT, created_by=owner)
     DocumentLine.objects.create(document=count, item=item, lot=lot,
@@ -102,17 +125,14 @@ def test_i16_stock_count_uses_frozen_snapshot_and_warns_on_movement(owner):
     post(move_doc(owner, item, lot, Zone.WAREHOUSE, Zone.EXPIRED, 2), owner)
     assert zone_qty(lot, Zone.WAREHOUSE) == 8
 
-    count = post(count, owner)
-    adjustment = Document.objects.get(doc_type=DocType.ADJUSTMENT,
-                                      related_document=count)
-    assert adjustment.status == Document.Status.POSTED
-    assert zone_qty(lot, Zone.WAREHOUSE) == 5  # counted 7 - frozen 10 = -3
-    assert AuditLog.objects.filter(action="STOCK_COUNT_MOVEMENT_WARNING").exists()
-    with pytest.raises(PostingError):
-        void(adjustment, owner, "void source instead")
-    void(count, owner, "count error")
-    adjustment.refresh_from_db()
-    assert adjustment.status == Document.Status.VOIDED
+    with pytest.raises(PostingError, match=item.code):
+        post(count, owner)
+
+    count.refresh_from_db()
+    assert count.status == Document.Status.DRAFT
+    assert zone_qty(lot, Zone.WAREHOUSE) == 8   # untouched, ready to recount
+    assert not Document.objects.filter(doc_type=DocType.ADJUSTMENT,
+                                       related_document=count).exists()
     assert zone_qty(lot, Zone.WAREHOUSE) == 8
 
 

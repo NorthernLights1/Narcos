@@ -19,7 +19,7 @@
   <table class="table">
     <thead>
       <tr>
-        {% for col in cfg.columns %}<th>{{ col }}</th>{% endfor %}
+        {% for col in cfg.columns %}<th>{{ cfg.model|field_label:col }}</th>{% endfor %}
         <th></th>
       </tr>
     </thead>

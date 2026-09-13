@@ -4,28 +4,41 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum
 from django.db.models.functions import Coalesce
+from django.forms import modelform_factory
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.translation import gettext as _
 from django.views.decorators.http import require_POST
 
-from catalog.forms import COMMON_UNITS
+from catalog.forms import COMMON_UNITS, ItemForm
 from catalog.models import Customer, Supplier
+from catalog.presets import item_copy_context
 from core.audit import log_change, snapshot
 from core.models import CompanySettings
+from core.preferences import DOCUMENT_FILTERS, restore_filters
 from docs.handlers_payments import AP_TARGET_TYPES, AR_TARGET_TYPES
 from docs.forms import (
     DOC_CONFIG,
     IMPLEMENTED_DOC_TYPES,
     DocumentForm,
-    DocumentReferenceForm,
+    fields_hidden_by_settings,
     formsets_for,
 )
 from docs.handlers_sales import outstanding_by_item_batch
-from docs.models import POST_EDITABLE_FIELDS, DocType, Document, DocumentCharge, DocumentLine
-from docs.posting import PostingError, post, void
+from docs.models import (
+    OWNER_ONLY_POST_EDITS,
+    POST_EDITABLE_FIELDS,
+    POST_EDITABLE_ORDER,
+    DocType,
+    Document,
+    DocumentCharge,
+    DocumentLine,
+)
+from docs.posting import (
+    PostingError, check_correctable, get_handler, post, void,
+)
 from docs.preview import draft_expected_totals
 from docs.settlement import (
     SETTLEMENT_FILTERS,
@@ -34,8 +47,8 @@ from docs.settlement import (
     settlement_context,
     settlement_state,
 )
-from money.models import PaymentAllocation
-from stock.models import StockBalance, Zone
+from money.models import PaymentAllocation, PaymentLine
+from stock.models import Batch, StockBalance, Zone
 
 
 def _config(doc_type: str):
@@ -53,6 +66,8 @@ def _parse_date(value):
 
 @login_required
 def document_list(request):
+    # D137: the filter this person last chose, restored before anything reads it.
+    restore_filters(request, "documents", DOCUMENT_FILTERS)
     rows = annotate_settlement(
         Document.objects.select_related("customer", "supplier")
     ).annotate(
@@ -223,7 +238,9 @@ def _start_stock_count(request):
 def document_edit(request, pk):
     doc = get_object_or_404(Document, pk=pk)
     if doc.status == Document.Status.POSTED:
-        return _reference_form(request, doc)
+        # R61: posted documents are edited field by field, on the detail
+        # page — there is no longer a form that opens all of them at once.
+        return redirect("document_detail", pk=doc.pk)
     if doc.status != Document.Status.DRAFT:
         messages.error(request, _("Voided documents are immutable."))
         return redirect("document_detail", pk=doc.pk)
@@ -272,6 +289,41 @@ def _totals_preview_context(config, doc: Document) -> dict | None:
     }
 
 
+def _batch_index(doc_type: str) -> dict:
+    """D128: existing batches per item, for the receiving desk's batch-number
+    box.
+
+    A batch number is the one master string in this system that can never be
+    corrected. `Batch` is unique on (item, batch_no) and four models point at
+    it with PROTECT — cost lots, the stock ledger, balances and document
+    lines — so a typo, once posted, is permanent: the stock sits under a label
+    nobody will search for, and a recall on that batch misses it. Generics can
+    be merged and items can be retired; a batch has neither escape.
+
+    Two smaller things it also fixes. Posting refuses an existing batch whose
+    expiry differs from the one typed, so picking the batch and filling its
+    expiry turns a hard failure at posting into no failure at all. And
+    `get_or_create` matches the number case-sensitively, so `b001` silently
+    becomes a second batch of the same goods — offering the existing spelling
+    is what stops that.
+    """
+    if "batch_no_entered" not in DOC_CONFIG[doc_type].get("lines", ()):
+        return {}
+    rows = (Batch.objects
+            .annotate(warehouse_qty=Coalesce(Sum(
+                "stockbalance__qty",
+                filter=Q(stockbalance__zone=Zone.WAREHOUSE)), 0))
+            .order_by("item_id", "batch_no"))
+    index: dict[str, list] = {}
+    for batch in rows:
+        index.setdefault(str(batch.item_id), []).append({
+            "no": batch.batch_no,
+            "expiry": batch.expiry_date.isoformat() if batch.expiry_date else "",
+            "qty": batch.warehouse_qty,
+        })
+    return index
+
+
 def _draft_form(request, doc: Document):
     config = _config(doc.doc_type)
     if request.method == "POST":
@@ -292,6 +344,7 @@ def _draft_form(request, doc: Document):
     else:
         form = DocumentForm(instance=doc, doc_type=doc.doc_type)
         formsets = formsets_for(doc)
+    quick_add_item = config.get("quick_add_item", False)
     return render(request, "docs/form.html", {
         "doc": doc,
         "title": config["title"],
@@ -299,35 +352,71 @@ def _draft_form(request, doc: Document):
         "formsets": formsets,
         "totals_preview": _totals_preview_context(config, doc),
         "common_units": COMMON_UNITS,
+        "batch_index": _batch_index(doc.doc_type),
+        "quick_add_item": quick_add_item,
+        # R49: the dialog renders the full ItemForm — D33 still hides the
+        # margin fields from employees.
+        "item_form": (ItemForm(is_owner=request.user.is_owner)
+                      if quick_add_item else None),
+        # D142: and the same copy-from picker the Master item page has.
+        **item_copy_context(quick_add_item),
     })
 
 
-def _reference_form(request, doc: Document):
-    fields = sorted(POST_EDITABLE_FIELDS)
+def editable_post_fields(user) -> set[str]:
+    """R61: which ledger-free fields this user may still change on a posted
+    document. Settings hide boxes here exactly as on entry forms (D106)."""
+    fields = POST_EDITABLE_FIELDS - fields_hidden_by_settings()
+    if not user.is_owner:
+        fields -= OWNER_ONLY_POST_EDITS
+    return fields
+
+
+def _field_context(doc: Document, field: str) -> dict:
+    return {
+        "doc": doc,
+        "field": field,
+        "label": Document._meta.get_field(field).verbose_name,
+        "value": getattr(doc, field),
+    }
+
+
+@login_required
+def document_field_edit(request, pk, field):
+    """R61: change one ledger-free field on a posted document, in place.
+
+    The whitelist here is the same set `Document.save()` enforces (I1), so
+    a field outside it cannot be written even if this view were tricked
+    into naming one — the model refuses underneath.
+    """
+    doc = get_object_or_404(
+        Document.objects.filter(status=Document.Status.POSTED), pk=pk)
+    if field not in POST_EDITABLE_FIELDS - fields_hidden_by_settings():
+        raise Http404
+    if field in OWNER_ONLY_POST_EDITS and not request.user.is_owner:
+        raise PermissionDenied
+    widget = DocumentForm.Meta.widgets.get(field)
+    form_class = modelform_factory(Document, fields=[field],
+                                   widgets={field: widget} if widget else None)
+    context = _field_context(doc, field)
     if request.method == "POST":
-        before = snapshot(doc, fields)
-        form = DocumentReferenceForm(request.POST, instance=doc)
+        before = snapshot(doc, [field])
+        form = form_class(request.POST, instance=doc)
         if form.is_valid():
             saved = form.save()
-            after = snapshot(saved, fields)
-            log_change(
-                actor=request.user,
-                action="DOCUMENT_REFERENCE_UPDATE",
-                entity="Document",
-                entity_id=saved.pk,
-                before=before,
-                after=after,
-            )
-            messages.success(request, _("Reference fields saved."))
-            return redirect("document_detail", pk=saved.pk)
-    else:
-        form = DocumentReferenceForm(instance=doc)
-    return render(request, "docs/form.html", {
-        "doc": doc,
-        "title": _("Reference fields"),
-        "form": form,
-        "formsets": [],
-    })
+            after = snapshot(saved, [field])
+            if before != after:
+                log_change(actor=request.user, action="DOCUMENT_FIELD_UPDATE",
+                           entity="Document", entity_id=saved.pk,
+                           before=before, after=after)
+            return render(request, "docs/_field_value.html",
+                          _field_context(saved, field))
+        return render(request, "docs/_field_edit.html",
+                      context | {"form": form}, status=400)
+    if request.GET.get("display"):          # Cancel: put the value back
+        return render(request, "docs/_field_value.html", context)
+    return render(request, "docs/_field_edit.html",
+                  context | {"form": form_class(instance=doc)})
 
 
 @login_required
@@ -339,8 +428,33 @@ def document_detail(request, pk):
         pk=pk,
     )
     attachments = list(doc.attachments.select_related("uploaded_by", "voided_by"))
+    # D95: voiding this document takes its settling payment with it — the
+    # warning has to say so by name before the owner commits.
+    settled_by = list(
+        Document.objects.filter(allocations_made__target=doc,
+                                status=Document.Status.POSTED)
+        .distinct().order_by("pk")
+    ) if doc.status == Document.Status.POSTED else []
+    # D98: the warning itemises every document the void will drag with it,
+    # by number, so nobody discovers the blast radius afterwards.
+    also_reversed = list(Document.objects.filter(
+        related_document=doc,
+        status=Document.Status.POSTED,
+        doc_type__in=[DocType.CUSTOMER_PAYMENT, DocType.SUPPLIER_PAYMENT,
+                      DocType.ADJUSTMENT, DocType.CUSTOMER_RETURN],
+    ).order_by("pk")) if doc.status == Document.Status.POSTED else []
+    editable = editable_post_fields(request.user) if doc.status == Document.Status.POSTED else set()
     return render(request, "docs/detail.html", {
         "doc": doc,
+        "company": CompanySettings.load(),  # R63: fiscal-machine switch
+        # R61: one pencil per field the document still allows to change.
+        "editable_fields": [_field_context(doc, name)
+                            for name in POST_EDITABLE_ORDER if name in editable],
+        "settled_by_numbers": ", ".join(p.doc_no or "" for p in settled_by),
+        "void_also_reverses": ", ".join(
+            f"{d.doc_no} — {d.get_doc_type_display()}"
+            for d in settled_by + also_reversed
+        ),
         "config": DOC_CONFIG.get(doc.doc_type),
         "expected": draft_expected_totals(doc),
         "settlement": settlement_context(doc),
@@ -375,6 +489,28 @@ def document_print(request, pk):
         "company": settings,
         "doc": doc,
         "layout": layout,
+    })
+
+
+# R53: goods-out types the storeroom picks for; receivings bring goods in.
+PICKING_LIST_TYPES = (DocType.SALE, DocType.PROFORMA, DocType.CONSIGNMENT_ISSUE)
+
+
+@login_required
+def document_picking_list(request, pk):
+    """R53: a draft is printable for the storeroom long before posting gives
+    it a number — as a picking list, never a watermarked invoice. No prices,
+    no totals: it is not a record of a transaction (D8/D18 stay intact)."""
+    doc = get_object_or_404(
+        Document.objects.filter(doc_type__in=PICKING_LIST_TYPES)
+        .exclude(status=Document.Status.VOIDED)
+        .select_related("customer")
+        .prefetch_related("lines__item", "lines__batch"),
+        pk=pk,
+    )
+    return render(request, "docs/print_picking_list.html", {
+        "company": CompanySettings.load(),
+        "doc": doc,
     })
 
 
@@ -452,6 +588,103 @@ def document_void(request, pk):
         return redirect("document_detail", pk=doc.pk)
     messages.success(request, _("Voided %(no)s.") % {"no": voided.doc_no})
     return redirect("document_detail", pk=voided.pk)
+
+
+# D123: fields the posting engine reads that a doc type's form may not show.
+# D84 took `free_qty` off the receiving form because the box confused staff,
+# but posting still computes stock as (qty_entered + free_qty) × factor. A copy
+# driven by the form's list therefore voided 110 units and re-posted 100,
+# moving the lot cost with it. What a form asks for and what a correction must
+# carry are two different questions.
+ENGINE_LINE_FIELDS = ("free_qty",)
+
+
+def _duplicate_as_draft(source: Document, actor, reason: str) -> Document:
+    """An editable copy of `source`, built from the field lists the entry forms
+    use, plus the fields the engine reads whether or not a form shows them
+    (D123) — so nothing the posting math consumes is silently dropped, and
+    nothing computed at posting is carried over.
+
+    DOC_CONFIG is read unfiltered on purpose: a discount or pack factor
+    captured before those boxes were switched off (D89) still belongs to
+    the document being corrected.
+    """
+    config = DOC_CONFIG[source.doc_type]
+    fields = {name: getattr(source, name) for name in config["fields"]}
+    fields["notes"] = _("Corrects %(no)s. %(notes)s") % {
+        "no": source.doc_no, "notes": fields.get("notes") or ""
+    }
+    draft = Document.objects.create(
+        doc_type=source.doc_type, created_by=actor, corrects=source,
+        correction_reason=reason, **fields,
+    )
+    line_fields = list(config["lines"]) + [
+        name for name in ENGINE_LINE_FIELDS if name not in config["lines"]
+    ]
+    for line in source.lines.all():
+        DocumentLine.objects.create(
+            document=draft,
+            **{name: getattr(line, name) for name in line_fields},
+        )
+    if config.get("charges"):
+        for charge in source.charges.all():
+            DocumentCharge.objects.create(
+                document=draft, label=charge.label, amount=charge.amount,
+                is_taxable=charge.is_taxable,
+            )
+    if config.get("payments"):
+        for payment in source.payment_lines.all():
+            PaymentLine.objects.create(
+                document=draft, account=payment.account,
+                method=payment.method, amount=payment.amount,
+            )
+    if config.get("allocations"):
+        for allocation in source.allocations_made.all():
+            PaymentAllocation.objects.create(
+                payment=draft, target=allocation.target,
+                amount=allocation.amount,
+            )
+    return draft
+
+
+@login_required
+@require_POST
+def document_correct(request, pk):
+    """D90/D92: reopen a posted document as an editable draft.
+
+    Nothing is reversed here. The original stays live and the copy carries a
+    link back to it; posting the copy is what voids the original (D92), in
+    one transaction. Walk away from the draft and nothing ever happened.
+    """
+    if not request.user.is_owner:
+        raise PermissionDenied
+    source = get_object_or_404(
+        Document.objects.filter(status=Document.Status.POSTED), pk=pk,
+    )
+    reason = request.POST.get("reason", "").strip()
+    if not reason:
+        messages.error(request, _("A reason is required."))
+        return redirect("document_detail", pk=source.pk)
+    if source.corrections.filter(status=Document.Status.DRAFT).exists():
+        messages.error(request, _(
+            "A correction of %(no)s is already open. Finish or delete that "
+            "draft first."
+        ) % {"no": source.doc_no})
+        return redirect("document_detail", pk=source.pk)
+    try:
+        # Advisory only — the binding check runs again when the draft is
+        # posted, because the goods can move in between. Refusing here just
+        # saves retyping a correction that could never land.
+        get_handler(source.doc_type).check_voidable(source)
+        check_correctable(source)  # R70 — re-checked when the draft posts
+    except PostingError as exc:
+        messages.error(request, str(exc))
+        return redirect("document_detail", pk=source.pk)
+    draft = _duplicate_as_draft(source, request.user, reason)
+    messages.success(request, _(
+        "Fix this copy and post it — that is when %(no)s is voided."
+    ) % {"no": source.doc_no})
+    return redirect("document_edit", pk=draft.pk)
 
 
 @login_required

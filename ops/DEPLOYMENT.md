@@ -96,16 +96,79 @@ back up on its own after a reboot or power blip:
   `%UserProfile%\.wslconfig`:
   ```ini
   [wsl2]
-  memory=4GB
+  memory=3GB
+  processors=2
+  swap=1GB
   ```
   Then `wsl --shutdown` and restart Docker Desktop.
+
+  **This file said `memory=4GB` until 2026-09-08, which did nothing.** WSL2
+  already defaults to about half the machine's RAM, so on an 8 GB box 4 GB was
+  the default restated, not a cap. The client's PC became unusable whenever
+  Docker ran and the owner had taken to killing it. Set it below the default,
+  and cap `processors` too - that is what keeps the desktop responsive. Save it
+  as plain ASCII: WSL ignores the file if it carries a byte-order mark.
+
+---
+
+## 2b. After a power cut - the card for the machine
+
+Auto-login is deliberately **off** (D131), so the system does not restart
+itself. Print this and tape it to the monitor.
+
+> **When the power comes back**
+>
+> 1. Switch the PC on.
+> 2. Sign in as usual.
+> 3. **Wait five minutes.** The whale icon near the clock stops moving when it
+>    is ready. This is normal, not a fault.
+> 4. Open the system as you always do.
+>
+> If it still will not open after ten minutes, photograph the whole screen,
+> including any error box, and send the photo. Do not click any button that
+> says **Reset** or **Factory defaults**.
+
+> **Shutting down at the end of the day**
+>
+> Just shut Windows down normally. Do **not** run `docker compose down` or
+> `docker compose stop` first.
+>
+> Both of those defeat the automatic restart. `down` deletes the containers, and
+> `restart: unless-stopped` cannot bring back something that no longer exists;
+> `stop` marks them as deliberately stopped, which is exactly the case that
+> policy refuses to restart. Either one means the next morning starts with
+> somebody typing a command.
+>
+> Leaving them running is also the safe option. Docker stops the containers as
+> part of its own shutdown, and Postgres receives SIGINT, which is a fast
+> shutdown: it rolls back what is in flight, checkpoints and exits cleanly.
+
+Nothing is lost during a power cut. Anything saved before the lights went out
+is already written down permanently. Only a form left half-typed is gone.
 
 ---
 
 ## 3. Nightly backups
 
-Backups are **not** configured in the app — they run from the host on a
-schedule. See the design in [RUNBOOK.md](RUNBOOK.md#nightly-backup).
+Backups **run from the host on a schedule**, not from the app — the app is in a
+container and cannot see `E:\` or create a scheduled task. See the design in
+[RUNBOOK.md](RUNBOOK.md#nightly-backup).
+
+**D147: four things are now set in the app**, and the script reads them. Settings
+→ Backups holds the primary folder, a second copy folder, the interval in days
+and how many nightly copies to keep. Saving writes them to `schedule.json` in the
+mounted backup folder; the script picks them up on its next run, and the settings
+page shows what it will read and when the last backup actually happened.
+
+Two limits worth knowing before you set them:
+
+- **The interval can only stretch the gap.** The task below fires daily and the
+  script may skip a run, so weekly works. Backing up *more* often than daily
+  needs this task re-registered with a different trigger.
+- **The dump always lands in the mounted folder first** — that is the only path
+  both containers can write — and the configured folders receive verified copies
+  afterwards. So `NARCOS_BACKUP_ROOT` in `.env` still has to be a real folder
+  with room on it, whatever the app is set to.
 
 **Set up the schedule (once):** create a Windows Task Scheduler task:
 - **Trigger**: Daily at **16:00** (staff are still in; the PC is on).
@@ -113,11 +176,28 @@ schedule. See the design in [RUNBOOK.md](RUNBOOK.md#nightly-backup).
   with **Start in** = `C:\narcos`.
 - **Settings**: tick **"Run task as soon as possible after a scheduled start is
   missed"** — so a day the PC was off at 16:00 still gets backed up at next boot.
-- **General**: "Run whether user is logged on or not."
+- **General**: run it as the signed-in user, **not** "whether user is logged
+  on or not". `docker compose` reaches the engine through Docker Desktop, which
+  only exists inside a signed-in session, so a task running in session 0 has
+  nothing to talk to.
 
 **What each run produces** in `C:\narcos\backups\<timestamp>\`:
 `narcos.dump` (verified), `media.tar.gz`, and a copy of `.env`.
-**Retention**: newest 14 nightly + one per month for a year (auto-pruned).
+**Retention**: the newest N nightly (N is *Nightly backups kept*, default 14) plus
+one per month for a year, pruned in every destination. The newest complete backup
+is never pruned, and a folder holding no complete backup is never pruned at all
+(R97).
+
+**Take one right now, outside the schedule:**
+```powershell
+cd C:\narcos
+powershell -ExecutionPolicy Bypass -File ops\backup-now.ps1 -To E:\narcos-rescue
+```
+Only the `db` container has to be healthy. It dumps, proves the dump is
+restorable, copies onto the USB and size-checks the copy, and **deletes
+nothing** — no retention runs. Media and the audit row are best-effort, so a
+broken `app` container still gets you the database. Use this before any repair,
+upgrade, or when the schedule is in doubt.
 
 **Offsite (the human step):** weekly, copy `C:\narcos\backups\` to an external
 USB drive kept off the machine. A backup on the same disk dies with the disk.
@@ -163,6 +243,9 @@ docker compose exec app python manage.py migrate --check   # optional sanity
    ```powershell
    powershell -File ops\docker-restore.ps1 <timestamp> narcos /app/media
    ```
+   The script starts the `app` container itself for the media step and stops
+   with an error if the attachments cannot be unpacked — a restore that prints
+   "Restored" has its files as well as its rows.
 6. Start the app: `docker compose up -d` (migrate is a no-op when versions match).
 7. Re-add the firewall rule and the Task Scheduler backup job (§2, §3).
 8. **Prove it end to end**: log in, open the dashboard, open a document *that
@@ -183,6 +266,18 @@ make sure the owner understands this.
 | Nightly backup didn't run | PC was off at 16:00 and "run missed task" wasn't ticked (§3); or the task's "Start in" isn't `C:\narcos`. |
 | Windows feels sluggish | WSL2 memory not capped — add `.wslconfig` (§2). |
 | `pull` fails | Not logged in to GHCR, or no internet — use the USB `docker load` path. |
+| Docker Desktop hangs on "starting", app won't open | Almost always an unclean shutdown (power cut). Quit Docker Desktop from the tray; if it won't quit, end `Docker Desktop.exe` and `com.docker.backend.exe` in Task Manager. Then `wsl --shutdown` in an **admin** PowerShell, wait 10 s, relaunch Docker Desktop. Confirmed working on the client machine, 2026-09-07. |
+| Docker Desktop: "unexpected error", naming a `.json` and `invalid character '\x00'` | A power cut zero-filled that config file (NTFS commits the size before the contents). Click **Quit**, then `powershell -ExecutionPolicy Bypass -File ops\fix-docker-config.ps1`, then start Docker Desktop. It is a settings file, not your data (R98). |
+| `docker` reports the pipe cannot be found, though Docker Desktop is running | Wrong context. `docker context ls`, then `docker context use desktop-linux`. The `default` context points at `docker_engine`, which Docker Desktop does not serve. |
+| Nothing starts after sign-in | Task Manager, Startup apps: Docker Desktop must say **Enabled**. Windows keeps an on/off switch that silently overrides the Run key entry. |
+| `docker compose ps` empty after a restart | `docker ps -a` and `docker volume ls`. `ps` hides stopped containers. If the containers are gone but the volumes are there, someone ran `compose down`; `docker compose up -d` rebuilds them in seconds and the data is untouched. |
+| Backups stopped appearing | Get the data off first: `ops\copy-data-out.ps1 -To E:\narcos-rescue`. Then check the task in Task Scheduler: its **Last Run Result** is what diagnoses it, and confirm its action path points at where `ops\` really is. A task pointing at `C:\narcos\ops\docker-backup.ps1` when the folder sits elsewhere fails every day, silently (R97). |
+
+> **Never click "Clean / Purge data" or "Reset to factory defaults"** in Docker
+> Desktop's Troubleshoot panel. The database lives in the `pgdata` named volume
+> and both buttons delete named volumes. It is the button an operator reaches
+> for when the whale spins forever, and it destroys the business. Power-cycling
+> the PC is always safer than either of them.
 
 Health check any time:
 ```powershell

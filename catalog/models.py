@@ -97,7 +97,28 @@ class Item(AutoCodeModel):
         ordering = ["code"]
 
     def __str__(self) -> str:
-        return f"{self.code} — {self.name}"
+        # R48: this trade reads by generic name — it leads everywhere an
+        # item is named (dropdowns, refusal messages); brand in brackets.
+        # D134: strength follows the name, because it was printed on every
+        # document and shown on no screen — so two items differing only by
+        # strength were indistinguishable in every picker, and the size got
+        # typed into the name instead. Blank on 58 of 201 real items, so the
+        # separator only appears when there is something to separate.
+        name = (f"{self.generic_name} ({self.name})"
+                if self.generic_name else self.name)
+        if self.strength:
+            return f"{self.code} — {name}, {self.strength}"
+        return f"{self.code} — {name}"
+
+    @property
+    def full_description(self) -> str:
+        """R58: everything the paper needs to identify the medicine —
+        generic (brand), strength, dosage form, base unit, pack."""
+        name = (f"{self.generic_name} ({self.name})"
+                if self.generic_name else self.name)
+        parts = [name, self.strength, self.dosage_form,
+                 self.base_unit, self.pack_description]
+        return ", ".join(part for part in parts if part)
 
 
 class ItemUnit(models.Model):

@@ -28,6 +28,12 @@ RUN NARCOS_SECRET_KEY=build-time-only python manage.py collectstatic --noinput
 
 RUN chmod +x docker-entrypoint.sh
 
+# D150: which build this is. Passed by the release workflow from the git tag.
+# Placed after the expensive layers so a version change rebuilds nothing but
+# this. Defaults to "dev" so a hand-built image never claims to be a release.
+ARG NARCOS_VERSION=dev
+ENV NARCOS_VERSION=${NARCOS_VERSION}
+
 EXPOSE 8080
 ENTRYPOINT ["/usr/bin/tini", "--", "/app/docker-entrypoint.sh"]
 CMD ["waitress-serve", "--listen=0.0.0.0:8080", "narcos.wsgi:application"]

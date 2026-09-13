@@ -81,6 +81,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "core.context_processors.version_stamp",  # D150
             ],
         },
     },
@@ -122,6 +123,18 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATIC_ROOT.mkdir(exist_ok=True)  # whitenoise warns if it doesn't exist
 MEDIA_URL = "media/"
+# D147: where the backup settings are handed to ops/docker-backup.ps1. This is
+# the host's NARCOS_BACKUP_ROOT as the container sees it (compose.yml mounts it
+# at /backups on both services). Overridable so a development machine can point
+# it at a real folder.
+NARCOS_BACKUP_DIR = os.environ.get("NARCOS_BACKUP_DIR", "/backups")
+
 MEDIA_ROOT = BASE_DIR / "media"
+
+# D150: which build this is. The release workflow passes the git tag to the
+# image as a build arg, so a running container knows its own version and every
+# page can show it. A machine built from source reads "dev" rather than
+# claiming to be a release.
+NARCOS_VERSION = os.environ.get("NARCOS_VERSION", "dev")
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

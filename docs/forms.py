@@ -1,12 +1,20 @@
 """Document forms for the implemented posting handlers."""
 
+import calendar
+import re
+from functools import partial
+
 from django import forms
+from django.core.exceptions import ValidationError
 from django.db.models import F, OuterRef, Q, Subquery, Sum
 from django.db.models.functions import Coalesce
 from django.forms import inlineformset_factory
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from catalog.models import Item
+from core.models import CompanySettings
+from docs.checks import add_months
 from docs.handlers_sales import issue_line_value
 from docs.models import DocType, Document, DocumentCharge, DocumentLine
 from docs.tax import round2
@@ -24,6 +32,57 @@ def _selling_price(item: Item):
         if latest_cost:
             return round2(latest_cost * (1 + item.auto_margin_pct / 100))
     return item.maintained_price
+
+
+class ExpiryField(forms.DateField):
+    """D146: a full date, or a month meaning the last day of that month.
+
+    The carton often carries `09/2026` and nothing more, and inventing a day is
+    how a wrong expiry gets typed. A month-only entry resolves to the month end,
+    which is the latest the goods can still be good — the safe direction, since
+    D46 blocks a sale after the date rather than before it.
+
+    **Nothing about storage changes.** The column stays a plain date, the batch
+    stays a plain date, and the tick that produces a month is never stored: it
+    describes how the value was typed, not what it means. That is what keeps
+    every existing batch working exactly as it does today.
+
+    **D148: four month shapes, not one.** Chrome and Edge submit `2026-09` from
+    their month picker. Firefox has no month picker at all — it renders the
+    input as a plain text box — so whatever the operator types by hand has to be
+    understood. Year-first and month-first are told apart by which half has four
+    digits, so none of them is ambiguous.
+    """
+
+    YEAR_FIRST = re.compile(r"^(\d{4})[-/.](\d{1,2})$")
+    MONTH_FIRST = re.compile(r"^(\d{1,2})[-/.](\d{4})$")
+
+    default_error_messages = {
+        "invalid": _("Enter a date as 2026-09-15, or a month as 2026-09."),
+    }
+
+    def to_python(self, value):
+        if isinstance(value, str):
+            text = value.strip()
+            month = self._as_month(text)
+            if month is not None:
+                value = month
+        return super().to_python(value)
+
+    def _as_month(self, text: str):
+        """`2026-09` → `2026-09-30`, or None if this is not a month at all."""
+        match = self.YEAR_FIRST.match(text)
+        if match:
+            year, month = int(match.group(1)), int(match.group(2))
+        else:
+            match = self.MONTH_FIRST.match(text)
+            if not match:
+                return None
+            month, year = int(match.group(1)), int(match.group(2))
+        if not 1 <= month <= 12:
+            raise ValidationError(self.error_messages["invalid"], code="invalid")
+        return "%04d-%02d-%02d" % (year, month,
+                                   calendar.monthrange(year, month)[1])
 
 
 class ItemSelect(forms.Select):
@@ -61,10 +120,53 @@ class BatchSelect(forms.Select):
         return option
 
 
-def _batch_label(batch: Batch) -> str:
+def _batch_label(batch: Batch, near_before=None) -> str:
+    """D59: near-expiry stock is still sellable and posting does not refuse it,
+    so this label is the only place the operator can be warned. Without it the
+    oldest stock goes out by accident instead of on purpose."""
     expiry = batch.expiry_date.isoformat() if batch.expiry_date else _("no expiry")
     on_hand = batch.warehouse_qty or 0
-    return f"{batch.item.code} · {batch.batch_no} · {expiry} · {on_hand}"
+    label = f"{batch.item.code} · {batch.batch_no} · {expiry} · {on_hand}"
+    if near_before and batch.expiry_date and batch.expiry_date <= near_before:
+        label = f"{label} · {_('near expiry')}"
+    return label
+
+
+def fields_hidden_by_settings() -> set[str]:
+    """D89: boxes this business has switched off in settings.
+
+    Hiding only affects data entry. The columns stay on the models and in
+    the posting math, so documents posted before a flag was turned off
+    keep their discounts, machine totals and pack factors.
+    """
+    settings = CompanySettings.load()
+    hidden = set()
+    if not settings.fiscal_machine_present:
+        # R63: the receipt number is printed *by* the machine, so it is as
+        # meaningless as the total without one. Hiding only half of D18/D43
+        # left staff a box they could never fill — and, after R61, a pencil
+        # on posted documents for a number that does not exist.
+        hidden.update({"fiscal_receipt_no", "machine_total"})
+    if not settings.discounts_enabled:
+        hidden.update({"doc_discount", "line_discount"})
+    if not settings.unit_conversion_enabled:
+        hidden.add("factor")
+    return hidden
+
+
+# D124: the doc types that take goods off the warehouse shelf, and so have no
+# use for a batch with nothing in it. PROFORMA is deliberately absent — its
+# handler returns a bare Effects() ("no stock, no money, no AR"), so posting a
+# quote is never refused for stock, and quoting from a shipment that has not
+# landed is ordinary wholesale practice. CUSTOMER_RETURN, ADJUSTMENT,
+# STOCK_COUNT and CONSIGNMENT_SETTLEMENT are absent because each legitimately
+# needs an empty batch: returns bring goods back to one, positive adjustments
+# start from nothing, a count of zero is a real count, and settlement consumes
+# the CONSIGNED zone, where warehouse quantity is the wrong question.
+SELLS_FROM_WAREHOUSE = frozenset({
+    DocType.SALE,
+    DocType.CONSIGNMENT_ISSUE,
+})
 
 
 DOC_CONFIG = {
@@ -72,11 +174,16 @@ DOC_CONFIG = {
         "title": _("Receiving"),
         # due_date = supplier credit terms; feeds AP overdue on the dashboard
         "fields": ["supplier", "supplier_invoice_date", "due_date", "notes"],
+        # D84: free_qty stays in the model/engine (D21) but off the form —
+        # this business never receives bonus goods and the box confused staff.
         "lines": [
             "item", "batch_no_entered", "expiry_entered", "unit_label", "factor",
-            "qty_entered", "unit_cost_entered", "free_qty",
+            "qty_entered", "unit_cost_entered",
         ],
         "payments": True,
+        # R49: unknown items arrive with the goods — the receiving desk may
+        # create one mid-form. Sales staff pick, they don't create.
+        "quick_add_item": True,
     },
     DocType.SALE: {
         "title": _("Sale"),
@@ -271,7 +378,7 @@ class DocumentForm(forms.ModelForm):
 
     def __init__(self, *args, doc_type: str, **kwargs):
         super().__init__(*args, **kwargs)
-        keep = set(DOC_CONFIG[doc_type]["fields"])
+        keep = set(DOC_CONFIG[doc_type]["fields"]) - fields_hidden_by_settings()
         for name in list(self.fields):
             if name not in keep:
                 del self.fields[name]
@@ -287,13 +394,21 @@ class DocumentForm(forms.ModelForm):
                 self.fields[name].widget.attrs["data-search"] = "1"
 
 
-class DocumentReferenceForm(forms.ModelForm):
-    class Meta:
-        model = Document
-        fields = ["fiscal_receipt_no", "machine_total", "withholding_certificate_no"]
-
-
 class DocumentLineForm(forms.ModelForm):
+    # D146: declared rather than generated, so month-only entries parse. The
+    # widget stays a day picker — the tick beside it swaps the input to a month
+    # picker in the browser, and this is what accepts what comes back.
+    expiry_entered = ExpiryField(
+        required=False, label=_("Expiry"),
+        widget=forms.DateInput(attrs={
+            "type": "date",
+            # D148: the hint the browser shows when it has no month picker of
+            # its own. Here rather than in app.js so it can be translated.
+            "data-month-hint": _("2026-09"),
+            "data-month-title": _(
+                "Month and year only — type it as 2026-09. 09/2026 also works."),
+        }),
+    )
     source_zone = forms.ChoiceField(
         choices=[
             (Zone.WAREHOUSE, _("Warehouse")),
@@ -342,10 +457,11 @@ class DocumentLineForm(forms.ModelForm):
         }
 
     def __init__(self, *args, line_fields: list[str], issue=None,
-                 master_priced: bool = False, **kwargs):
+                 master_priced: bool = False, doc_type: str = "", **kwargs):
         super().__init__(*args, **kwargs)
         self._master_priced = master_priced
-        keep = set(line_fields)
+        self._doc_type = doc_type
+        keep = set(line_fields) - fields_hidden_by_settings()
         for name in list(self.fields):
             if name not in keep:
                 del self.fields[name]
@@ -386,13 +502,20 @@ class DocumentLineForm(forms.ModelForm):
             # Latest lot cost feeds the AUTO price prefill (D23)
             latest = (CostLot.objects.filter(item=OuterRef("pk"))
                       .order_by("-received_at", "-pk").values("unit_cost")[:1])
-            self.fields["item"].queryset = Item.objects.annotate(
-                latest_cost=Subquery(latest)
-            )
+            items = Item.objects.annotate(latest_cost=Subquery(latest))
+            # D125: retiring an item meant nothing — `is_active` was written,
+            # audited and shown in Master, and then every picker offered the
+            # item anyway. Same rescue as the batch picker: a draft that
+            # already names a retired item keeps it, or the whole document
+            # stops saving and re-opening it submits blank.
+            keep = Q(is_active=True)
+            if self.instance.item_id:
+                keep |= Q(pk=self.instance.item_id)
+            self.fields["item"].queryset = items.filter(keep)
         if "batch" in self.fields:
             # Label shows item · batch no · expiry · warehouse on-hand, so the
             # picker carries the shelf context (display only; D4 still guards).
-            self.fields["batch"].queryset = (
+            batches = (
                 Batch.objects.select_related("item")
                 .annotate(warehouse_qty=Sum(
                     "stockbalance__qty",
@@ -400,7 +523,34 @@ class DocumentLineForm(forms.ModelForm):
                 ))
                 .order_by("item__code", "expiry_date", "batch_no")
             )
-            self.fields["batch"].label_from_instance = _batch_label
+            if self._doc_type in SELLS_FROM_WAREHOUSE:
+                # D124: an empty batch cannot be sold, so stop offering it —
+                # posting refused it anyway (D4), after the whole line was typed.
+                # The annotation is NULL, not 0, for a batch with no balance
+                # rows at all, and `> 0` excludes both.
+                #
+                # D133: the same argument on the expiry axis. Posting blocks an
+                # expired batch outright (D46, no override) — again only once
+                # the whole line has been typed. D46 is explicit that expired
+                # means *past* its date, so `__gte` keeps the expiry day itself
+                # sellable; and a null expiry (D22: the item has none) must
+                # never read as expired or those items become unsellable.
+                sellable = (Q(expiry_date__gte=timezone.localdate())
+                            | Q(expiry_date__isnull=True))
+                keep = Q(warehouse_qty__gt=0) & sellable
+                if self.instance.batch_id:
+                    # A draft saved before the batch ran dry — or before it
+                    # expired — must still save.
+                    # Without this the whole document fails validation, and
+                    # re-opening it submits blank — silently clearing the batch,
+                    # which only surfaces at posting as "pick a batch (D29)".
+                    keep |= Q(pk=self.instance.batch_id)
+                batches = batches.filter(keep)
+            self.fields["batch"].queryset = batches
+            near_before = add_months(timezone.localdate(),
+                                     CompanySettings.load().near_expiry_months)
+            self.fields["batch"].label_from_instance = partial(
+                _batch_label, near_before=near_before)
         for name in ("item", "batch", "lot"):
             if name in self.fields:
                 self.fields[name].widget.attrs["data-search"] = "1"
@@ -509,10 +659,33 @@ ChargeFormSet = inlineformset_factory(
         "amount": forms.NumberInput(attrs={"placeholder": _("0.00")}),
     },
 )
+class PaymentLineForm(forms.ModelForm):
+    """D86: an unsaved row without an amount is not a payment.
+
+    Field testing: staff typed an amount, changed their mind and cleared
+    it — but the leftover account/method picks made the row count as
+    'changed', so the formset demanded a number and blocked the save.
+    No amount on a never-saved row means the whole row is blank. Saved
+    rows keep validating: real money is removed with ✕, never by
+    clearing a box."""
+
+    class Meta:
+        model = PaymentLine
+        fields = ["account", "method", "amount"]
+        widgets = {"amount": forms.NumberInput(attrs={"placeholder": _("0.00")})}
+
+    def has_changed(self):
+        if self.is_bound and self.instance.pk is None:
+            amount = (self.data.get(self.add_prefix("amount")) or "").strip()
+            if not amount:
+                return False
+        return super().has_changed()
+
+
+# D87: one row by default — payments almost always go into a single
+# account; "+ Add row" covers the split case.
 PaymentLineFormSet = inlineformset_factory(
-    Document, PaymentLine, fields=["account", "method", "amount"],
-    extra=3, can_delete=True,
-    widgets={"amount": forms.NumberInput(attrs={"placeholder": _("0.00")})},
+    Document, PaymentLine, form=PaymentLineForm, extra=1, can_delete=True,
 )
 PaymentAllocationFormSet = inlineformset_factory(
     Document, PaymentAllocation, form=PaymentAllocationForm, fk_name="payment",
@@ -524,8 +697,13 @@ def formsets_for(doc: Document, data=None):
     config = DOC_CONFIG[doc.doc_type]
     formsets = []
     if config.get("lines"):
+        # D89: the owner can hand pricing back to the counter. With the flag
+        # off this stays D80 — the item's price, recomputed server-side.
+        master_priced = (config.get("master_priced", False)
+                         and not CompanySettings.load().sale_price_editable)
         line_kwargs = {"line_fields": config["lines"],
-                       "master_priced": config.get("master_priced", False)}
+                       "master_priced": master_priced,
+                       "doc_type": doc.doc_type}
         if doc.doc_type == DocType.CONSIGNMENT_SETTLEMENT and doc.related_document_id:
             line_kwargs["issue"] = doc.related_document
         formsets.append((

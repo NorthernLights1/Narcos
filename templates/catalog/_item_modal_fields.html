@@ -1,0 +1,13 @@
+{% load i18n %}
+{# R49: the ItemForm fields alone — the dialog in docs/form.html owns the form tag and buttons, so an invalid POST swaps only this block. #}
+{% if form.non_field_errors %}<p class="msg msg-error">{{ form.non_field_errors|striptags }}</p>{% endif %}
+<div class="form-grid">
+  {% for field in form %}
+  <div class="field">
+    {{ field.label_tag }}
+    {{ field }}
+    {% if field.help_text %}<p class="field-help">{{ field.help_text }}</p>{% endif %}
+    {% if field.errors %}<p class="field-error">{{ field.errors|striptags }}</p>{% endif %}
+  </div>
+  {% endfor %}
+</div>

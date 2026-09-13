@@ -1,6 +1,13 @@
 from django import template
+from django.utils.text import capfirst
 
 register = template.Library()
+
+
+@register.filter
+def field_label(model, name):
+    """Column header from the field's verbose_name — never the raw field name."""
+    return capfirst(str(model._meta.get_field(name).verbose_name))
 
 
 @register.filter

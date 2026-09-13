@@ -6,6 +6,10 @@
 # no-op migrate and must not dump every time.
 set -e
 
+# D150: first line in the log says which build this is. The third leg of the
+# photographable-surface rule - screen, log, version.
+echo "Narcos ${NARCOS_VERSION:-dev} starting."
+
 echo "Waiting for PostgreSQL to accept connections..."
 python - <<'PY'
 import os

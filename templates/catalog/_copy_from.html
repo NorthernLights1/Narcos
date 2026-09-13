@@ -1,0 +1,23 @@
+{% load i18n %}
+{% comment %}D142: copy an item you already stock, then edit what differs.
+Lives inside the form tag on both surfaces — the Master item page and the
+receiving dialog — so app.js can scope the fill to `closest("form")` without
+either page needing to name the other's ids.{% endcomment %}
+{% if copy_items %}
+<div class="field field-wide">
+  <label for="item-copy-source">{% translate "Copy from an item you already stock" %}</label>
+  <div class="copy-from">
+    <select id="item-copy-source" data-copy-source data-search="1"
+            data-search-placeholder="{% translate 'type a code, brand or generic' %}">
+      <option value="">{% translate "Search for the item to copy" %}</option>
+      {% for option in copy_items %}
+      <option value="{{ option.pk }}">{{ option }}</option>
+      {% endfor %}
+    </select>
+    <button type="button" class="btn btn-secondary" data-copy-from>{% translate "Copy from" %}</button>
+  </div>
+  <p class="field-help">{% translate "Fills every box below from that item. Then change what differs — usually the brand, the strength and the price. The code is still assigned when you save." %}</p>
+  <p class="field-error" data-copy-error hidden>{% translate "Choose the item to copy from first." %}</p>
+</div>
+{{ copy_data|json_script:"item-copy-data" }}
+{% endif %}

@@ -63,5 +63,8 @@ jobs:
           context: .
           push: true
           platforms: linux/amd64
+          # D150: the image learns its own version from the tag being released.
+          build-args: |
+            NARCOS_VERSION=${{ github.ref_name }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

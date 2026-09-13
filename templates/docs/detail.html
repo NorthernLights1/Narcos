@@ -5,10 +5,15 @@
 <div class="page-head">
   <h1>{{ doc }}</h1>
   <div class="actions">
+    {# R53: the storeroom picks from paper — drafts included, prices excluded. #}
+    {% if doc.status != "VOIDED" %}
+      {% if doc.doc_type == "SALE" or doc.doc_type == "PROFORMA" or doc.doc_type == "CONSIGNMENT_ISSUE" %}
+      <a class="btn" href="{% url 'document_picking_list' doc.pk %}">{% translate "Picking list" %}</a>
+      {% endif %}
+    {% endif %}
     {% if doc.status == "DRAFT" %}
       <a class="btn" href="{% url 'document_edit' doc.pk %}">{% translate "Edit" %}</a>
     {% elif doc.status == "POSTED" %}
-      <a class="btn" href="{% url 'document_edit' doc.pk %}">{% translate "Reference fields" %}</a>
       <a class="btn" href="{% url 'document_print' doc.pk %}">{% translate "Print" %}</a>
       {% if doc.doc_type == "SUPPLIER_PAYMENT" %}
         {% if doc.withheld_amount %}
@@ -41,6 +46,22 @@
   </div>
 </div>
 
+{# D92: a correction is two documents for a while — say so on both of them. #}
+{% if doc.corrects %}
+<p class="msg msg-info pending-correction">
+  {% blocktranslate with no=doc.corrects.doc_no %}This replaces {{ no }}. Posting it voids {{ no }} at that moment — until then {{ no }} still counts. Delete this draft and nothing happens.{% endblocktranslate %}
+  <a href="{% url 'document_detail' doc.corrects.pk %}">{% translate "Open it" %}</a>
+</p>
+{% endif %}
+{% for correction in doc.corrections.all %}
+  {% if correction.status == "DRAFT" %}
+  <p class="msg msg-info pending-correction">
+    {% translate "A correction of this document is open as a draft. This one stays valid until that draft is posted." %}
+    <a href="{% url 'document_detail' correction.pk %}">{% translate "Open the draft" %}</a>
+  </p>
+  {% endif %}
+{% endfor %}
+
 <section class="card">
   <dl class="summary-grid">
     <div><dt>{% translate "Type" %}</dt><dd>{{ doc.get_doc_type_display }}</dd></div>
@@ -50,7 +71,10 @@
     <div><dt>{% translate "Subtotal" %}</dt><dd>{{ doc.subtotal }}</dd></div>
     <div><dt>{% translate "Tax" %}</dt><dd>{{ doc.tax_total }}</dd></div>
     <div><dt>{% translate "Grand total" %}</dt><dd>{{ doc.grand_total }}</dd></div>
+    {# R63: posted documents show this in the "Still editable" card instead. #}
+    {% if doc.status != "POSTED" and company.fiscal_machine_present %}
     <div><dt>{% translate "Fiscal receipt" %}</dt><dd>{{ doc.fiscal_receipt_no|default:"—" }}</dd></div>
+    {% endif %}
     {% if doc.related_document %}
     <div><dt>{% translate "Related document" %}</dt>
       <dd><a href="{% url 'document_detail' doc.related_document.pk %}">{{ doc.related_document }}</a></dd></div>
@@ -60,6 +84,25 @@
   <p class="hint">{% translate "Draft — the document number, date, and totals are computed and frozen when you post." %}</p>
   {% endif %}
 </section>
+
+{% if editable_fields %}
+<section class="card">
+  <div class="card-head">
+    <h2>{% translate "Still editable" %}</h2>
+    <span class="hint">
+      {% translate "These change no stock, money or balance, so they can be corrected here — every edit is audited. Anything else needs Correct or Void." %}
+    </span>
+  </div>
+  <dl class="summary-grid">
+    {% for editable in editable_fields %}
+    <div>
+      <dt>{{ editable.label }}</dt>
+      <dd>{% include "docs/_field_value.html" with doc=doc field=editable.field label=editable.label value=editable.value %}</dd>
+    </div>
+    {% endfor %}
+  </dl>
+</section>
+{% endif %}
 
 {% if settlement %}
 <section class="card">
@@ -187,7 +230,34 @@
       <input id="id_override_reason" name="override_reason">
     </div>
     {% endif %}
-    <button type="submit" class="btn btn-primary">{% translate "Post" %}</button>
+    {% if doc.corrects %}
+    {# The moment the void actually fires — the one that cannot be undone. #}
+    <button type="submit" class="btn btn-primary"
+            data-confirm data-confirm-danger
+            data-confirm-title="{% blocktranslate with no=doc.corrects.doc_no %}This posts and voids {{ no }} — read this first{% endblocktranslate %}"
+            data-confirm-ok="{% blocktranslate with no=doc.corrects.doc_no %}Post and void {{ no }}{% endblocktranslate %}"
+            data-confirm-type="{{ doc.corrects.doc_no }}"
+            data-confirm-type-prompt="{% blocktranslate with no=doc.corrects.doc_no %}Type {{ no }} below to confirm you mean it{% endblocktranslate %}"
+            data-confirm-body="{% blocktranslate with no=doc.corrects.doc_no %}Until now nothing has changed in your books — {{ no }} is still live and this is only a draft. Pressing this does both halves at once.{% endblocktranslate %}|{% translate 'What happens the moment you confirm:' %}"
+            data-confirm-list="{% blocktranslate with no=doc.corrects.doc_no %}{{ no }} is reversed — its goods, money and balances go back.{% endblocktranslate %}|{% blocktranslate with reason=doc.correction_reason %}The reversal is recorded with your reason: “{{ reason }}”.{% endblocktranslate %}|{% translate 'This document is posted in its place and gets its own number.' %}|{% translate 'If either half fails, neither happens — you are never left with a gap.' %}"
+            data-confirm-final="{% translate 'This cannot be undone. Cancel now and nothing changes — the draft keeps waiting and the original stays live.' %}">
+      {% translate "Post" %}
+    </button>
+    {% else %}
+    {% comment %}D130: the machinery for this dialog has existed since D93 and
+    the Post button was the one place still submitting straight through.
+    Posting is irreversible for everyone but the owner, so show what is about
+    to move — in the item's own base unit, where a mistyped quantity and a
+    pack factor both become visible — and make the operator say yes.
+    {% endcomment %}
+    <button type="submit" class="btn btn-primary"
+            data-confirm
+            data-confirm-title="{% translate 'Post this document?' %}"
+            data-confirm-list="{% for line in doc.lines.all %}{{ line.item.code }} {% if line.batch %}· {{ line.batch.batch_no }} {% elif line.batch_no_entered %}· {{ line.batch_no_entered }} {% endif %}· {{ line.base_preview }} {{ line.item.base_unit }}|{% endfor %}{% blocktranslate with total=totals_preview.grand_total|default:doc.grand_total %}Document total: {{ total }}{% endblocktranslate %}"
+            data-confirm-final="{% translate 'A posted document cannot be edited — only the owner can void it, and that is recorded. Check the quantities above before you agree.' %}">
+      {% translate "Post" %}
+    </button>
+    {% endif %}
   </form>
   <form method="post" action="{% url 'document_delete' doc.pk %}">
     {% csrf_token %}
@@ -196,13 +266,39 @@
 </section>
 {% elif doc.status == "POSTED" and user.is_owner %}
 <section class="card">
+  {# D90: one reason, two outcomes — void and stop, or void and get the copy back. #}
   <form method="post" action="{% url 'document_void' doc.pk %}">
     {% csrf_token %}
     <div class="field">
-      <label for="id_reason">{% translate "Void reason" %}</label>
+      <label for="id_reason">{% translate "Reason" %}</label>
       <input id="id_reason" name="reason" required>
+      <p class="field-help">
+        {% translate "Posted documents are never edited. Voiding reverses this one; correcting also reopens it as a draft you can fix and post again." %}
+      </p>
     </div>
-    <button type="submit" class="btn btn-primary">{% translate "Void" %}</button>
+    <div class="actions">
+      <button type="submit" class="btn btn-primary"
+              formaction="{% url 'document_correct' doc.pk %}"
+              data-confirm data-confirm-reason="id_reason"
+              data-confirm-title="{% blocktranslate with no=doc.doc_no %}Correct {{ no }}?{% endblocktranslate %}"
+              data-confirm-ok="{% translate 'Open draft copy' %}"
+              data-confirm-body="{% blocktranslate with no=doc.doc_no %}A draft copy opens for you to fix. Nothing changes in your books yet — {{ no }} stays active until you post that copy.|Posting the copy voids {{ no }} at that moment, with your reason: “{reason}”.{% endblocktranslate %}{% if settled_by_numbers %}|{% blocktranslate with pay=settled_by_numbers %}The payment that settled it ({{ pay }}) is reversed at the same moment, so the money goes back too.{% endblocktranslate %}{% endif %}|{% translate 'If you never post the copy, nothing happens.' %}">
+        {% translate "Correct this document" %}
+      </button>
+      {% comment %}D98: the destructive path spells out every consequence and
+      will not arm until the operator types the document number.{% endcomment %}
+      <button type="submit" class="btn"
+              data-confirm data-confirm-danger data-confirm-reason="id_reason"
+              data-confirm-title="{% blocktranslate with no=doc.doc_no %}Void {{ no }} — read this first{% endblocktranslate %}"
+              data-confirm-ok="{% blocktranslate with no=doc.doc_no %}Void {{ no }} permanently{% endblocktranslate %}"
+              data-confirm-type="{{ doc.doc_no }}"
+              data-confirm-type-prompt="{% blocktranslate with no=doc.doc_no %}Type {{ no }} below to confirm you mean it{% endblocktranslate %}"
+              data-confirm-body="{% blocktranslate with no=doc.doc_no %}You are about to reverse {{ no }} and everything it did. This is not a correction — nothing replaces it. The goods and the money go back to where they were before it was posted.{% endblocktranslate %}|{% translate 'Reversing it will:' %}"
+              data-confirm-list="{% translate 'Move the goods on this document back out of, or back into, stock.' %}|{% translate 'Undo the money it moved and the balance it created.' %}{% if void_also_reverses %}|{% blocktranslate with list=void_also_reverses %}Reverse these linked documents at the same time: {{ list }}{% endblocktranslate %}{% endif %}|{% translate 'Record your reason on the reversal, where the audit trail keeps it.' %}"
+              data-confirm-final="{% translate 'This cannot be undone. If you are fixing a mistake, press Cancel and use “Correct this document” instead — that keeps the paperwork and lets you fix it and post it again.' %}">
+        {% translate "Void only" %}
+      </button>
+    </div>
   </form>
 </section>
 {% endif %}
@@ -218,10 +314,13 @@
         <th>{% translate "Qty" %}</th>
         {% if doc.doc_type == "RECEIVING" %}
           <th class="num">{% translate "Unit cost" %}</th>
-          <th class="num">{% translate "Free" %}</th>
         {% else %}
           <th class="num">{% translate "Price" %}</th>
-          <th class="num">{% translate "Net" %}</th>
+          {% if doc.status == "DRAFT" %}
+            <th class="num">{% translate "Net (preview)" %}</th>
+          {% else %}
+            <th class="num">{% translate "Net" %}</th>
+          {% endif %}
           {% if user.is_owner %}<th class="num">{% translate "COGS" %}</th>{% endif %}
         {% endif %}
       </tr>
@@ -237,10 +336,10 @@
         </td>
         {% if doc.doc_type == "RECEIVING" %}
           <td class="num">{{ line.unit_cost_entered|default:"—" }}</td>
-          <td class="num">{{ line.free_qty }}</td>
         {% else %}
           <td class="num">{{ line.unit_price }}</td>
-          <td class="num">{{ line.line_net }}</td>
+          {# R54: drafts show a computed preview — line_net itself stays 0 until posting freezes it. #}
+          <td class="num">{% if doc.status == "DRAFT" %}{{ line.net_preview }}{% else %}{{ line.line_net }}{% endif %}</td>
           {% if user.is_owner %}<td class="num">{{ line.cogs_total }}</td>{% endif %}
         {% endif %}
       </tr>

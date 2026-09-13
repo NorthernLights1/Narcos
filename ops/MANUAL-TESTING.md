@@ -6,6 +6,241 @@ to do and **what you must see** — if you see something else, that's a bug.
 
 Written for a dev machine (Linux, `.venv`, PostgreSQL on localhost).
 
+> **2026-09-12 round 25 — D147 (backup settings):** this one is **tested on the
+> client's PC, not here** — there is no PowerShell on the dev machine, so the
+> script changes are only read and asserted on as text.
+>
+> 1. **Settings → Backups.** Fill in a primary folder on the same drive and a
+>    second copy folder on a USB stick. Save. The card below must immediately
+>    read back what you typed, with your name and the time.
+> 2. **Check the hand-over file exists**: `schedule.json` in the backup folder,
+>    holding those values.
+> 3. **Run the backup by hand** (`ops\docker-backup.ps1`). The finished stamp
+>    folder must appear in **all three** places — the mounted folder, the
+>    primary, and the USB.
+> 4. **Pull the USB out and run it again.** It must finish, warn in
+>    `backup.log`, and still write the other two. A missing second drive must
+>    never cost you the backup.
+> 5. **Run it twice in a row with the interval set to 2.** The second run must
+>    log `BACKUP SKIPPED` and do nothing.
+> 6. **Set the interval back to 1 before you leave.** Every day added is a day
+>    you can lose.
+
+> **2026-09-12 round 25 — D146:** **hard-refresh** (`?v=20260912c`).
+>
+> - **The tick is now ON by default (D149).** Start a **Receiving**: every blank
+>   expiry box is already a month picker. Press **+ Add row** — the new row is
+>   too. Now **pick an existing batch** by its number: the row must **untick
+>   itself** and show that batch's exact stored day, not the month end. Open a
+>   **saved draft** whose expiry is mid-month: that row must be **unticked** with
+>   its day intact.
+> - **Books closed through (D149).** Settings: the box is a date picker now, not
+>   an empty rectangle. Set a date, save, reopen — the date must still be shown.
+> - **Month and year only — check it in the browser the client actually uses.**
+>   Chrome and Edge show a month picker. **Firefox has none** and falls back to a
+>   text box: there it must show `2026-09` as a grey hint, and typing `09/2026`
+>   or `2026/09` must be accepted just the same.
+> - **Month and year only.** Start a **Receiving**. Under each expiry box there
+>   is a small **Month and year only** tick, **unticked**. Type a full date, tick
+>   it: the box becomes a month picker holding that month. Untick it: **the day
+>   you typed comes back**. Tick it again, change the month, untick: now it shows
+>   that month's **last day**. Save a line with the tick on and `09/2026`: the
+>   saved line must read **2026-09-30**. Press **+ Add row** and check the new
+>   row's tick works the same.
+> - **Existing batches must be untouched.** Receive more of a batch already on
+>   the shelf the normal way — pick the batch, let the expiry fill itself, do
+>   **not** tick the box. It must post exactly as it always has. Then try it with
+>   the tick on against a batch whose expiry is mid-month: it must refuse, and the
+>   message must name the stored date and tell you to untick.
+
+> **2026-09-12 round 24 — D144/D145:** **hard-refresh** (`?v=20260912b`) — the
+> CSS changed again.
+>
+> - **Group by generic (D144).** Reports → Sales by period/customer/item. Set
+>   **Group by** to *Generic*: one row per generic, and **the total at the
+>   bottom must not change**. There is **no quantity column** on the group rows
+>   and that is deliberate — one generic covers several strengths, so the units
+>   are not the same thing. Open a row: the lines appear with their own
+>   quantities and their document links. Open a row with several lines and
+>   check the **Profit column does not move**. The group labels must match the
+>   *Sales by generic* report exactly. Apply a brand filter and the grouping
+>   must follow it. The **CSV** must export the groups, not the lines.
+> - **The report wording (D145).** Reports must now read *Receivables by
+>   customer* and *Payables by supplier*, with **Receivable** and **Payable**
+>   as column headings, and the button top-right must say *Show payables* or
+>   *Show receivables*. Finance must read *Receivables (AR)* and *Payables
+>   (AP)*. No number anywhere should differ from before.
+
+> **2026-09-12 round 24 — D141 to D143:** **hard-refresh** (`?v=20260912a`)
+> before checking these; the CSS and JS both changed. Two of round 23's
+> features are withdrawn below — if you still see them, you are on the old
+> build.
+>
+> - **Sales by period/customer/item (D141).** Reports → the first row of
+>   *Sales & profit*. Every row must name the **generic, the brand and the
+>   strength** beside the code, and the **document number must be a link** that
+>   opens the invoice. Open `SI-000005`: its six rows are six items, and their
+>   revenues add up to the invoice total — the numbers were always per line,
+>   what changed is that you can now see which line. Type `sodium` into
+>   **Generic** and press Apply: only sodium rows remain **and the total at the
+>   bottom drops to match**. Try `SI-000005` in **Document no.** and `normal`
+>   in **Brand**, together and separately. Clear all three and the total must
+>   return to what it was. The **CSV** button must export exactly what is on
+>   screen, filters included.
+> - **The sales log is gone (D141).** Reports must no longer offer *Sales log*,
+>   and `/reports/sales-log/` must return a page-not-found.
+> - **Copy from (D142).** Master → Items → **New**. At the top, search the
+>   picker for an item you already stock and press **Copy from**: every box
+>   below fills, **including the brand and the strength**, and the cursor lands
+>   on the brand with it selected so typing replaces it. Change the strength,
+>   press Save, and you have a sibling. Check the code was assigned fresh and
+>   is not the source's. Then copy from `ITM-0005` (base unit *pcs*, which is
+>   not on the dropdown): the unit must switch to **Other** with `pcs` typed
+>   beside it, not silently fall back to *unit*. Copy from a **Medical supply**
+>   and the VAT-exempt box must stay unticked.
+> - **The same picker on receiving (D142/D143).** Start a **Receiving**. The
+>   **+ New item** button is back beside *Add row*, and there is **no Detailed
+>   tick anywhere**. Press it: the dialog opens with the copy-from picker at
+>   the top. Copy, edit the brand, create — the new item appears in the line
+>   picker and your draft is untouched.
+> - **A sale must offer neither** (R49): no *New item* button, no copy picker.
+
+> **2026-09-11 round 23 — D135 to D139:** **hard-refresh** (`?v=20260911a`)
+> before checking these; the CSS and JS both changed.
+>
+> - **Who owes us / who we have not paid (D135).** Reports → the two new
+>   drill-downs. Open a party row: the transactions behind the balance appear,
+>   each linking to its document, with original, settled and open. The party
+>   total must equal what the statement page closes at for the same date. Four
+>   businesses should be listed at the top as on both sides but unpairable —
+>   Bethel w/s, Girmay Wholesale, Abel w/s, Afewerki Araya. Put a matching tax
+>   number on both records of one of them and it must move into the table and
+>   net.
+> - **Sales log (D138).** Reports → Sales log, owner only. Switch *Group by*
+>   between brand-and-strength and generic: **the revenue, cost and profit
+>   totals must not change.** Open a group and check a line links to its
+>   document. `zitromax` should show a negative gross profit — that is real.
+> - **New item inline on receiving (D139).** Start a **Receiving**. The page
+>   must look exactly as before, with a *New item* card at the bottom and
+>   nothing open. Tick **Detailed** and the full item form appears. Choose a
+>   *Same as* item: generic, form, unit, pack and category fill in; **brand and
+>   strength stay empty**. Create it, and the new item must appear in the line
+>   picker without losing the draft. Reload the page and confirm the form does
+>   **not** flash open before collapsing.
+> - **Filters stay put (D137).** Filter Transactions by type, go to Dashboard,
+>   come back — the filter is still applied. Log out, log back in: still
+>   applied. Clear it and it stays cleared. Log in as a different user and they
+>   must see their own, not yours.
+> - **A drug needs its strength (D136).** Master → Items, open a drug with an
+>   empty strength, change nothing, press Save: it must refuse and say so. Fill
+>   the strength and it saves. A **Medical supply** with no strength must save
+>   untouched.
+
+> **2026-09-11 round 23 — D133/D134:** no CSS or JS changed, so no hard
+> refresh is needed for these two.
+>
+> - **Expired batches are gone from the sale picker (D133).** Start a **Sale**,
+>   pick item `ITM-0109`, and open the batch list: batch `B-03225` expired
+>   2026-08-08 and must **not** be offered, even though it holds 50 units. Now
+>   open an **Adjustment**, a **Stock count**, a **Customer return** and a
+>   **Proforma** for the same item — it must still be there in all four, because
+>   writing it off is how it leaves the building. Then take a draft sale that
+>   names a batch and let that batch expire: the draft must still save and still
+>   show its batch.
+> - **Near-expiry batches say so (D133).** In the same picker, a batch expiring
+>   inside the near-expiry window carries `· near expiry` at the end of its
+>   label. Change **Near-expiry months** in Settings and the set of marked
+>   batches must change with it.
+> - **Strength is on screen at last (D134).** Open any item picker: the label
+>   now reads `code — generic (brand), strength`. Type a strength such as
+>   `500mg` into **Inventory** search and into **Master → Items** search — both
+>   must find it. Master → Items shows a **Strength** column. An item with no
+>   strength must read exactly as before, with no trailing comma.
+> - **Printing is unchanged and must stay that way (D134).** Print any posted
+>   invoice: the line still reads `code — generic (brand), strength, form, unit,
+>   pack`. Nothing about the paper changed in this round.
+
+> **2026-09-06 round 22 — five client requests (D123–D130):** **hard-refresh**
+> (`?v=20260906a`), then check each of these.
+>
+> - **Empty batches are gone from the sale picker (D124).** Sell a batch down
+>   to zero, then start a new **Sale** and open the batch list for that item —
+>   the empty one is not there. Now open a **Customer return**, an
+>   **Adjustment**, a **Stock count** and a **Proforma**: it must still be
+>   there in all four, and a proforma must still quote it. Then take a draft
+>   sale that names a batch, sell that batch dry from another document, and
+>   re-open the draft: it must still save, and must still show its batch.
+> - **Batch numbers suggest themselves on receiving (D128).** Start a
+>   **Receiving**, pick an item you have received before, and type the first
+>   character or two of a batch number. Existing batches appear beneath the
+>   box with expiry and quantity; click one and both the number **and the
+>   expiry** fill in. Type the same number in the wrong case (`b001` for
+>   `B001`) — you must get a warning that a different capitalisation makes a
+>   second batch.
+> - **Retired items disappear from pickers (D125).** Set an item inactive in
+>   Master → Items, then start a Sale: it is no longer offered. A draft that
+>   already names it must still save.
+> - **Two new reports (D126).** Reports → Sales & profit → **Sales by brand**
+>   and **Sales by generic**. Check the average, lowest and highest price
+>   columns against an item you have sold twice at different prices. As an
+>   employee, COGS and Profit must not appear — in the table **or** the CSV.
+> - **Who owes who (D127).** Reports → Receivables & payables → **Who owes
+>   who**. Give one customer and one supplier the same tax number typed
+>   differently (`0012345678` and `001-2345678`) and confirm they pair. They
+>   must still pair after you deactivate the supplier.
+> - **Corrections keep bonus units (D123).** Receive 100 with 10 free, post,
+>   then Correct it. The replacement draft must carry `free_qty = 10` — before
+>   this it voided 110 and re-posted 100.
+> - **Number boxes ignore the wheel (D129).** Open a **Stock count**, click
+>   into a quantity, and scroll the page. The number must not change.
+> - **Posting asks first (D130).** Post any draft. A dialog lists item, batch
+>   and quantity **in base units**, plus the total, and says a posted document
+>   cannot be edited. Cancel must change nothing.
+
+> **2026-08-05 editing in place (D114):** the **Reference fields** button is
+> gone. A posted document now has a **"Still editable"** card: fiscal
+> receipt no, machine total, withholding certificate no, payment due date
+> and notes, each with a small **✎**. Click it, the value becomes a box;
+> Save writes just that field and audits it, Cancel changes nothing. Fields
+> that moved stock or money have no pencil — that is the rule, not an
+> oversight. Payment due date is **owner-only** (it moves AR/AP overdue);
+> the rest stay open to staff. To verify: post any document, edit the
+> fiscal receipt number inline, then check Administration → Audit log for a
+> `DOCUMENT_FIELD_UPDATE` row naming only that field. **Hard-refresh**
+> (`?v=20260805a`).
+
+> **2026-08-04 field feedback round (D109–D112):** document entry pages now
+> use the **full screen width** and the item picker column is wider. All
+> three print layouts show the **full item description** — generic (brand),
+> strength, dosage, base unit, pack — and the generic/picking-list tables
+> are full **grids** like the attachment. On the item form (Master → Items
+> and the receiving dialog): **VAT exempt starts ticked** and follows the
+> category (DRUG on, others off) until you touch the box; **Base unit is a
+> dropdown** of the common units with *"Other — type it below"* revealing a
+> free-text box. To verify: open a new Receiving on a wide monitor (form
+> fills the screen), add an item with category EQUIPMENT (exempt box
+> unticks itself), pick base unit *Other* and type "pack of 25" (saves
+> verbatim), then print any sale — every cell bordered, descriptions full.
+> Item pickers now always open **downward** and overlay the page
+> cleanly (D113). **Hard-refresh** (`?v=20260804b`).
+
+> **2026-08-03 improvement batch (D102–D108):** items now read
+> **generic-first** everywhere — dropdowns, refusal messages, the items list
+> (new *Generic name* column) and the Cash Sales Attachment
+> (`Generic (Brand), Strength, Dosage`). The generic printout gains a
+> **Prepared By** + signature line. "Due date" boxes are labelled **"Payment
+> due date"**. A saved draft's per-line net shows as **"Net (preview)"**
+> instead of 0.00. With *Fiscal machine present* off, the machine-total box
+> is gone from the posted-document **Reference fields** form too. Sales,
+> proforma and consignment-issue documents (drafts included) offer a
+> **Picking list** print — item, batch, shelf/bin, qty, tick boxes, no
+> prices. On a **Receiving**, the Lines card's **+ New item** opens the full
+> item form in a dialog; the created item drops straight into the pickers.
+> To verify: create a receiving, press *+ New item*, save one with only a
+> name+price — it must get an auto code, appear selected on an empty line,
+> and show under Master → Items with an audit row. **Hard-refresh** the
+> browser first (`?v=20260803a`).
+
 > **2026-07-17 deployment (D83):** production now runs as a Docker stack on a
 > Windows 10 host — see [DEPLOYMENT.md](DEPLOYMENT.md). This guide's app
 > walkthrough is unchanged; only *where it runs* differs. To exercise the
@@ -89,6 +324,110 @@ Written for a dev machine (Linux, `.venv`, PostgreSQL on localhost).
 > has one. To verify: print any sale or consignment issue for a party
 > with a TIN — party box shows *name + TIN, no CUS-/SUP- code, no stray
 > text*.
+
+> **2026-07-26 field-testing round 1 (D84–D87):**
+> - **Receiving form has no Free box** any more (no bonus goods in this
+>   trade). Old documents that carried free units keep their numbers.
+> - **Printouts show Subtotal / Tax / Total at the bottom**, after the
+>   goods; the party box (name + TIN) stays at the top.
+> - **Payment lines start as one row** — use **+ Add row** to split
+>   across accounts, ✕ to remove a row.
+> - **Clearing a typed payment amount no longer blocks saving**: a
+>   never-saved row without an amount is ignored even if an account or
+>   method was picked on it. To verify: on a sale, type an amount on a
+>   payment row, pick an account, delete the amount, save — no "enter a
+>   number" complaint, and no payment line is created.
+> - **Rows are removed with the ✕ button** at the end of each row (D88) —
+>   the old tick boxes are gone. On a new row ✕ removes it immediately; on
+>   a row that was already saved the row disappears and the deletion is
+>   written when you save. To verify: add three lines, ✕ the middle one,
+>   fill the rest and post — the posted document has exactly the two lines
+>   you kept, in order.
+
+> **2026-07-28 field-testing round 2 (D89–D91):**
+> - **Settings has four new switches** (D89): *Fiscal machine present*,
+>   *Discounts in use*, *Pack conversion (factor) in use*, *Sale price
+>   editable at the time of sale*. Turning the first three off hides the
+>   machine-total, discount (document + line) and factor boxes; the last
+>   one lets staff type a price on sales/proformas/consignment issues
+>   instead of taking the item's price. All four start at today's
+>   behaviour — **nothing changes until you flip a switch**. Documents
+>   posted earlier keep their discounts/factors and still total the same.
+> - **"Correct this document"** (D90): on any posted document the owner
+>   now sees one **Reason** box with two buttons — *Correct this document*
+>   voids it and immediately hands back a draft copy to fix and post;
+>   *Void only* is the old behaviour. To verify: post a sale with the
+>   wrong quantity, correct it, change the quantity on the draft that
+>   opens, post — the original shows VOIDED, the new one carries the note
+>   "Corrects SI-0000NN". Where a void is refused (a receiving whose stock
+>   was already sold), correcting is refused too and no draft appears.
+> - **Company phone on printouts** (D91): fill *Settings → Phone numbers* —
+>   it now prints under the TIN on every layout, not just the attachment.
+
+> **2026-07-28 correcting is now reversible (D92/D93):**
+> - **Correct no longer voids anything straight away.** Clicking *Correct
+>   this document* opens the draft copy; the original **stays posted and
+>   still counts** until you post that copy. Posting the copy voids the
+>   original at that moment, in one step. **Delete the draft and nothing
+>   ever happened.** Posting a correction is owner-only.
+> - To verify: correct a sale, then *delete the draft* — the original must
+>   still read POSTED. Do it again, fix the quantity (and the cash payment
+>   line to match), post — now the original reads VOIDED with your reason,
+>   and the new document has its own number. Both documents show a
+>   "correction pending" banner while the draft is open.
+> - **The stock case worth trying:** with 10 packs on hand, sell 8, then
+>   correct to 9 and post. It must succeed — the void hands the goods back
+>   inside the same step. If posting fails for any reason, nothing is
+>   voided.
+> - **Confirmation dialogs** now appear on *Correct*, on *Post* for a
+>   correction draft, and on *Void only*. Each states what it will do and
+>   quotes your reason back. Note **Void only** is now the dangerous one —
+>   it reverses with no replacement.
+
+> **2026-08-02 the void takes the money with it (D94–D98):**
+> - **One receipt settles one invoice** (D94). A receipt against two invoices
+>   is refused, telling you to enter one per invoice. Partial payments are
+>   unaffected — one invoice, part of its balance, is still fine.
+> - **Voiding an invoice reverses the receipt that settled it** (D95).
+>   Verify: credit sale 200, receipt 200 (customer owes 0), void the sale.
+>   The customer must land at **0.00**, not −200.00, and the receipt shows
+>   VOIDED with your reason plus "(settled SI-0000NN)".
+> - **Voiding a sale reverses its customer return** (D96). Sell 5 on credit,
+>   take 2 back as a customer return, void the sale: customer at **0.00** and
+>   the warehouse count exactly what it was before the sale. Before this, the
+>   warehouse gained two packs that never existed.
+> - **A settled consignment issue refuses the void in plain words** (D97):
+>   *"CN-0000NN was already settled by CS-0000NN. Void the settlement
+>   first…"* — it used to talk about CONSIGNED stock levels.
+> - **The dangerous dialogs are type-gated** (D98). *Void only* and *posting
+>   a correction* show a red panel listing every consequence and every linked
+>   document that will be reversed, and the confirm button stays greyed out
+>   until you **type the document number**. *Correct this document* stays
+>   calm on purpose — it is reversible.
+
+> **2026-08-03 the last void gaps (D99/D100):**
+> - **A payment cannot be voided once its withholding was remitted** (D99).
+>   Verify (needs *Withholding on purchases* on): receive 1000 on credit, pay
+>   it as 970 cash + 30 withheld, post a WR remittance for the 30. Try to
+>   void the payment — **refused**, naming WR-0000NN. Try to void the
+>   receiving instead: also refused, same reason. Void the remittance first,
+>   then the payment — both succeed and *withholding owed* returns to 0.00.
+>   Before this fix, withholding owed went to **−30.00** with the money
+>   already at the tax office.
+> - **Refusals name the medicine** (D100). Post opening stock of 20 packs,
+>   sell 5, void the opening: the refusal must read *"Not enough stock: AMOX
+>   — Amoxicillin, batch B-1 in Warehouse (have 15, need 20)"* — not "item 10
+>   lot 12". Voiding a receiving whose goods were sold names the documents
+>   that took them (e.g. "have already moved on SI-000012").
+> - **Negative cash is now your choice** (D101). *Settings → Cash and bank may
+>   go negative*: **Allowed** (the default, today's behaviour), **Not when
+>   voiding**, **Never**. To verify: with an empty drawer, post an expense of
+>   4,000. On *Allowed* it posts and **Work → Finance** shows the account in
+>   red with "negative — income or an opening balance has not been recorded".
+>   On *Never* it is refused, naming the account and the shortfall. On *Not
+>   when voiding* the expense posts normally, but voiding the opening-cash
+>   document the money was spent from is refused. **Nothing changes until you
+>   move the setting.**
 
 ---
 

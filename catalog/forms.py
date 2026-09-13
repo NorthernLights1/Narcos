@@ -25,7 +25,20 @@ COMMON_UNITS = [
 ]
 
 
+OTHER_UNIT = "__other__"
+
+
 class ItemForm(forms.ModelForm):
+    # R60: chosen when none of the common units fits — clean() swaps in the text.
+    base_unit_other = forms.CharField(
+        required=False, max_length=50, label=_("Other unit"),
+        widget=forms.TextInput(attrs={"placeholder": _('e.g. "pack of 25"')}),
+    )
+    field_order = [
+        "name", "category", "is_batch_tracked", "has_expiry", "vat_exempt",
+        "base_unit", "base_unit_other",
+    ]
+
     class Meta:
         model = Item
         # No "code" — assigned automatically at save, like document numbers.
@@ -37,11 +50,8 @@ class ItemForm(forms.ModelForm):
             "is_active",
         ]
         widgets = {
-            "base_unit": forms.TextInput(attrs={
-                "list": "unit-options", "placeholder": _("pick or type, e.g. tablet"),
-            }),
             "name": forms.TextInput(attrs={
-                "placeholder": _("e.g. Paracetamol 500mg tablets"),
+                "placeholder": _("Brand only, e.g. Panadol"),
             }),
             "generic_name": forms.TextInput(attrs={"placeholder": _("e.g. paracetamol")}),
             "dosage_form": forms.TextInput(attrs={"placeholder": _("e.g. tablet, syrup, injection")}),
@@ -60,9 +70,40 @@ class ItemForm(forms.ModelForm):
         if not is_owner:
             for name in OWNER_ONLY_ITEM_FIELDS:
                 del self.fields[name]
+        # R60: a visible dropdown of the common units that still accepts a
+        # typed one — "Other" reveals base_unit_other, resolved in clean().
+        units = list(COMMON_UNITS)
+        current = self.instance.base_unit if self.instance.pk else ""
+        if current and current not in units:
+            units.insert(0, current)
+        self.fields["base_unit"].widget = forms.Select(
+            choices=[(unit, unit) for unit in units]
+            + [(OTHER_UNIT, _("Other — type it below"))])
+        if not self.instance.pk:
+            # R59: the default category is DRUG and medicines are VAT-exempt
+            # by law — start ticked; app.js follows the category after that.
+            self.fields["vat_exempt"].initial = True
 
     def clean(self):
         data = super().clean()
+        if data.get("base_unit") == OTHER_UNIT:
+            other = (data.get("base_unit_other") or "").strip()
+            if other:
+                data["base_unit"] = other
+            else:
+                self.add_error("base_unit_other",
+                               _("Type the unit this item is counted in."))
+        # D136: a drug without a strength is not a described drug. The
+        # catalogue's real defect is the size being typed into whichever field
+        # the operator was looking at (06-client-data.md §3), and D134 made
+        # strength visible so filling it is visibly worth doing. Required for
+        # DRUG only — gloves and syringes have no strength, and demanding one
+        # would invite a junk value.
+        if data.get("category") == Item.Category.DRUG \
+                and not (data.get("strength") or "").strip():
+            self.add_error("strength", _(
+                "A drug needs its strength — type it here, e.g. 500 mg or "
+                "100/2ml. Put the size here rather than in the name."))
         if data.get("has_expiry") and not data.get("is_batch_tracked"):
             self.add_error(
                 "has_expiry",

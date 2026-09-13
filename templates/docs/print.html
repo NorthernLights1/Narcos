@@ -10,14 +10,19 @@
     h1 { font-size: 22px; }
     h2 { font-size: 14px; margin: 20px 0 8px; }
     table { border-collapse: collapse; width: 100%; }
-    th, td { border-bottom: 1px solid #d1d5db; padding: 6px; text-align: left; }
+    /* R58: full grid — a separator around every field, not just row lines. */
+    th, td { border: 1px solid #d1d5db; padding: 6px; text-align: left; }
     th:last-child, td:last-child { text-align: right; }
     .muted { color: #6b7280; }
     .top { align-items: start; display: flex; justify-content: space-between; gap: 24px; }
     .label { border: 1px solid #111827; display: inline-block; font-weight: 700; margin-top: 8px; padding: 4px 8px; }
-    .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 18px; }
+    .summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 18px; }
     .box { border: 1px solid #d1d5db; padding: 8px; }
+    .party-box { display: inline-block; margin-top: 18px; min-width: 220px; }
     .total { font-size: 16px; font-weight: 700; }
+    /* R50: a multi-page print must not split the name from its line. */
+    .sig-block { break-inside: avoid; margin-top: 40px; max-width: 280px; }
+    .sig-line { border-bottom: 1px solid #111827; height: 30px; }
     .screen-actions { margin-bottom: 16px; }
     .screen-actions a, .screen-actions button { margin-right: 8px; }
     @media print { .screen-actions { display: none; } }
@@ -50,28 +55,27 @@
       <h1>{{ company.name|default:"Narcos" }}</h1>
       <p class="muted">{{ company.address }}</p>
       <p class="muted">{% translate "TIN" %}: {{ company.tin|default:"-" }}</p>
+      {% if company.phone %}<p class="muted">{% translate "Tel" %}: {{ company.phone }}</p>{% endif %}
       <p class="label">{% translate "Attachment / not a fiscal receipt" %}</p>
     </div>
     <div>
       <h1>{{ doc.doc_no }}</h1>
       <p>{{ doc.get_doc_type_display }}</p>
       <p>{{ doc.document_date }}</p>
+      {# R63: no machine, no receipt number — printing an empty label invited the question every time. #}
+      {% if company.fiscal_machine_present %}
       <p>{% translate "Fiscal receipt" %}: {{ doc.fiscal_receipt_no|default:"-" }}</p>
+      {% endif %}
     </div>
   </div>
 
-  <div class="summary">
-    {# Name + TIN, never internal master codes (CUS-0001…). Keep this comment on one line — Django renders wrapped hash-comments literally. #}
-    <div class="box"><strong>{% translate "Party" %}</strong><br>
-      {% if doc.customer %}{{ doc.customer.name }}
-        {% if doc.customer.tin %}<br><span class="muted">{% translate "TIN" %}: {{ doc.customer.tin }}</span>{% endif %}
-      {% elif doc.supplier %}{{ doc.supplier.name }}
-        {% if doc.supplier.tin %}<br><span class="muted">{% translate "TIN" %}: {{ doc.supplier.tin }}</span>{% endif %}
-      {% else %}{{ doc.payee|default:"-" }}{% endif %}</div>
-    <div class="box"><strong>{% translate "Subtotal" %}</strong><br>{{ doc.subtotal }}</div>
-    <div class="box"><strong>{% translate "Tax" %}</strong><br>{{ doc.tax_total }}</div>
-    <div class="box total"><strong>{% translate "Total" %}</strong><br>{{ doc.grand_total }}</div>
-  </div>
+  {# Name + TIN, never internal master codes (CUS-0001…). Keep this comment on one line — Django renders wrapped hash-comments literally. #}
+  <div class="box party-box"><strong>{% translate "Party" %}</strong><br>
+    {% if doc.customer %}{{ doc.customer.name }}
+      {% if doc.customer.tin %}<br><span class="muted">{% translate "TIN" %}: {{ doc.customer.tin }}</span>{% endif %}
+    {% elif doc.supplier %}{{ doc.supplier.name }}
+      {% if doc.supplier.tin %}<br><span class="muted">{% translate "TIN" %}: {{ doc.supplier.tin }}</span>{% endif %}
+    {% else %}{{ doc.payee|default:"-" }}{% endif %}</div>
 
   {% if doc.lines.exists %}
   <h2>{% translate "Lines" %}</h2>
@@ -89,7 +93,7 @@
     <tbody>
       {% for line in doc.lines.all %}
       <tr>
-        <td>{{ line.item }}</td>
+        <td>{{ line.item.code }} — {{ line.item.full_description }}</td>
         <td>{{ line.batch|default:line.batch_no_entered|default:"-" }}</td>
         <td>{{ line.qty_base|default:line.qty_entered }} {{ line.unit_label }}</td>
         <td>{{ line.unit_price }}</td>
@@ -125,6 +129,13 @@
     {% endif %}
   {% endif %}
 
+  {# D85 (field testing): the money reads at the bottom, after the goods. #}
+  <div class="summary">
+    <div class="box"><strong>{% translate "Subtotal" %}</strong><br>{{ doc.subtotal }}</div>
+    <div class="box"><strong>{% translate "Tax" %}</strong><br>{{ doc.tax_total }}</div>
+    <div class="box total"><strong>{% translate "Total" %}</strong><br>{{ doc.grand_total }}</div>
+  </div>
+
   {% if doc.withholding_certificate_no %}
   <p>{% translate "Withholding certificate" %}: {{ doc.withholding_certificate_no }}</p>
   {% endif %}
@@ -132,5 +143,12 @@
   <h2>{% translate "Notes" %}</h2>
   <p>{{ doc.notes }}</p>
   {% endif %}
+
+  {# R50: prepared = who entered it (created_by), matching the Cash Sales Attachment. #}
+  <div class="sig-block">
+    <b>{% translate "Prepared By" %}:</b>
+    {{ doc.created_by.get_full_name|default:doc.created_by.username }}
+    <div class="sig-line"></div>
+  </div>
 </body>
 </html>

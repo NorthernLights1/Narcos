@@ -12,3 +12,9 @@ tools/
 .agents/
 .claude/
 skills-lock.json
+
+# Round plans: real files here so Obsidian can see them; .claude/plans symlinks in
+/plans/
+
+# agent tooling mirrored for the codex CLI
+.codex/

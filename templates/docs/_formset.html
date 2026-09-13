@@ -2,8 +2,15 @@
 <section class="card formset-card">
   <div class="card-head">
     <h2>{{ title }}</h2>
-    <button type="button" class="btn btn-secondary btn-sm"
-            data-add-row="{{ formset.prefix }}">+ {% translate "Add row" %}</button>
+    <div class="actions">
+      {% if quick_add_item and formset.prefix == "lines" %}
+      {# R49: opens the item dialog — for goods that arrive before their master data. #}
+      <button type="button" class="btn btn-secondary btn-sm"
+              data-open-item-modal>+ {% translate "New item" %}</button>
+      {% endif %}
+      <button type="button" class="btn btn-secondary btn-sm"
+              data-add-row="{{ formset.prefix }}">+ {% translate "Add row" %}</button>
+    </div>
   </div>
   {{ formset.management_form }}
   {% if formset.non_form_errors %}<p class="msg msg-error">{{ formset.non_form_errors|striptags }}</p>{% endif %}
@@ -12,8 +19,8 @@
       <thead>
         <tr>
           {% for field in formset.empty_form.visible_fields %}
-            <th{% if field.name == "DELETE" %} class="col-del" title="{% translate 'Remove' %}"{% endif %}>
-              {% if field.name == "DELETE" %}✕{% else %}{{ field.label }}{% endif %}
+            <th{% if field.name == "DELETE" %} class="col-del"{% endif %}>
+              {% if field.name != "DELETE" %}{{ field.label }}{% endif %}
             </th>
           {% endfor %}
         </tr>
@@ -24,8 +31,17 @@
           {% for field in row.visible_fields %}
           <td{% if field.name == "DELETE" %} class="col-del"{% endif %}>
             {% if forloop.first %}{% for hidden in row.hidden_fields %}{{ hidden }}{% endfor %}{% endif %}
-            {{ field }}
-            {% if field.errors %}<p class="field-error">{{ field.errors|striptags }}</p>{% endif %}
+            {% if field.name == "DELETE" %}
+              {# D88: the checkbox is the mechanism Django needs on submit; the ✕ button is the interface. #}
+              <span class="row-del-box" hidden>{{ field }}</span>
+              <button type="button" class="btn-row-del" data-del-row
+                      title="{% translate 'Remove this row' %}"
+                      aria-label="{% translate 'Remove this row' %}">✕</button>
+            {% else %}
+              {{ field }}
+              {% if field.name == "expiry_entered" %}{% include "docs/_month_only.html" %}{% endif %}
+              {% if field.errors %}<p class="field-error">{{ field.errors|striptags }}</p>{% endif %}
+            {% endif %}
           </td>
           {% endfor %}
         </tr>
@@ -38,7 +54,15 @@
       {% for field in formset.empty_form.visible_fields %}
       <td{% if field.name == "DELETE" %} class="col-del"{% endif %}>
         {% if forloop.first %}{% for hidden in formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}{% endif %}
-        {{ field }}
+        {% if field.name == "DELETE" %}
+          <span class="row-del-box" hidden>{{ field }}</span>
+          <button type="button" class="btn-row-del" data-del-row
+                  title="{% translate 'Remove this row' %}"
+                  aria-label="{% translate 'Remove this row' %}">✕</button>
+        {% else %}
+          {{ field }}
+          {% if field.name == "expiry_entered" %}{% include "docs/_month_only.html" %}{% endif %}
+        {% endif %}
       </td>
       {% endfor %}
     </tr>

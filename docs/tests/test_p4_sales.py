@@ -308,3 +308,28 @@ def test_void_sale_restores_stock_and_money(owner, customer, supplier, drug, cas
     lot = CostLot.objects.get()
     assert warehouse_qty(lot) == 100
     assert account_balance(cash) == D("0.00")
+
+
+# --- R73: a pack factor below 1 is money without goods --------------------
+
+def test_a_zero_pack_factor_is_refused(owner, customer, supplier, drug):
+    """Stock moves `qty_entered × factor`; revenue uses `qty_entered`. At
+    factor 0 the customer is invoiced and nothing leaves the warehouse.
+    Only receiving used to check this — now every document type does."""
+    receive(owner, supplier, drug, 10, "10.00")
+    before = StockBalance.objects.get(zone=Zone.WAREHOUSE).qty
+    sale = Document.objects.create(doc_type=DocType.SALE, created_by=owner,
+                                   customer=customer,
+                                   sale_kind=Document.SaleKind.CREDIT,
+                                   due_date=datetime.date(2026, 12, 31))
+    DocumentLine.objects.create(
+        document=sale, item=drug, batch=Batch.objects.get(item=drug),
+        qty_entered=5, unit_price=D("15.00"), unit_label="carton", factor=0,
+    )
+
+    with pytest.raises(PostingError, match="at least 1"):
+        post(sale, owner)
+
+    sale.refresh_from_db()
+    assert sale.status == Document.Status.DRAFT
+    assert StockBalance.objects.get(zone=Zone.WAREHOUSE).qty == before

@@ -25,7 +25,7 @@ def employee(client):
 
 
 ITEM_POST = {
-    "name": "Amoxicillin 500mg", "category": "DRUG",
+    "name": "Amoxicillin 500mg", "category": "DRUG", "strength": "500mg",
     "is_batch_tracked": "on", "has_expiry": "on", "base_unit": "pack of 10",
     "maintained_price": "150.00", "pricing_mode": "MANUAL", "is_active": "on",
     # units formset management form (no units)

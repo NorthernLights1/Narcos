@@ -177,3 +177,128 @@ def test_returned_goods_resellable_from_new_lot(owner, sold_sale, drug, customer
     sale2 = post(sale2, owner)  # 80 left in lot1 + 5 in the return lot
     assert sale2.lines.get().cogs_total == D("850.00")  # all at 10.00
     assert zone_qty(Zone.WAREHOUSE) == 0
+
+
+# --- R67: a credit note is worth what the invoice charged ------------------
+
+def test_a_return_credits_the_sold_price_not_todays(owner, sold_sale, drug):
+    """The entry form prefills the *current* catalogue price (D80) and the
+    typed price used to win whenever it was non-empty — so a price rise
+    between sale and return refunded more than the customer ever paid."""
+    drug.maintained_price = D("25.00")     # price rose after the sale
+    drug.save()
+
+    cr = post(return_draft(owner, sold_sale, drug, 5, price=D("25.00")), owner)
+
+    line = cr.lines.get()
+    assert line.unit_price == D("15.00")   # what the sale charged
+    assert line.line_net == D("75.00")     # 5 x 15, not 5 x 25
+    assert cr.grand_total == D("75.00")
+
+
+def test_a_return_uses_the_sales_frozen_tax_rate(owner, customer, supplier, cash):
+    """A rate change between sale and return would otherwise credit a
+    different tax than was charged."""
+    from core.models import CompanySettings
+    settings = CompanySettings.load()
+    settings.tax_regime = "VAT"
+    settings.vat_rate = D("15.00")
+    settings.save()
+    item = Item.objects.create(code="STETH", name="Stethoscope", base_unit="unit",
+                               is_batch_tracked=False, has_expiry=False,
+                               vat_exempt=False, maintained_price=D("100.00"))
+    grn = Document.objects.create(doc_type=DocType.RECEIVING, created_by=owner,
+                                  supplier=supplier)
+    DocumentLine.objects.create(document=grn, item=item, qty_entered=10,
+                                unit_cost_entered=D("50.00"), unit_label="unit",
+                                factor=1)
+    post(grn, owner)
+    sale = Document.objects.create(doc_type=DocType.SALE, created_by=owner,
+                                   customer=customer, sale_kind="CASH")
+    DocumentLine.objects.create(document=sale, item=item, qty_entered=2,
+                                unit_price=D("100.00"), unit_label="unit", factor=1)
+    PaymentLine.objects.create(document=sale, account=cash, amount=D("230.00"))
+    sale = post(sale, owner)
+    assert sale.tax_rate_snapshot == D("15.00")
+
+    settings = CompanySettings.load()
+    settings.vat_rate = D("20.00")         # the rate changes afterwards
+    settings.save()
+
+    cr = Document.objects.create(doc_type=DocType.CUSTOMER_RETURN, created_by=owner,
+                                 customer=customer, related_document=sale)
+    DocumentLine.objects.create(document=cr, item=item, qty_entered=2,
+                                unit_price=D("100.00"), target_zone=Zone.WAREHOUSE,
+                                unit_label="unit", factor=1)
+    cr = post(cr, owner)
+
+    assert cr.tax_rate_snapshot == D("15.00")
+    assert cr.grand_total == D("230.00")   # exactly what was charged
+
+
+def test_a_negative_line_discount_is_refused(owner, sold_sale, drug):
+    """A negative discount on a credit note is a surcharge for handing goods
+    back."""
+    cr = return_draft(owner, sold_sale, drug, 5)
+    cr.lines.update(line_discount=D("-50.00"))
+
+    with pytest.raises(PostingError, match="negative"):
+        post(cr, owner)
+
+
+# --- R68: the invoice has to know it was credited -------------------------
+
+@pytest.fixture
+def credit_sale(owner, customer, supplier, drug):
+    """Receive 100 @10, sell 20 @15 on credit — the invoice stays open."""
+    grn = Document.objects.create(doc_type=DocType.RECEIVING, created_by=owner,
+                                  supplier=supplier)
+    DocumentLine.objects.create(document=grn, item=drug, qty_entered=100,
+                                unit_cost_entered=D("10.00"), batch_no_entered="B-1",
+                                expiry_entered=FAR_EXPIRY, unit_label="pack", factor=1)
+    post(grn, owner)
+    sale = Document.objects.create(doc_type=DocType.SALE, created_by=owner,
+                                   customer=customer, sale_kind="CREDIT",
+                                   due_date=datetime.date(2026, 12, 31))
+    DocumentLine.objects.create(document=sale, item=drug, batch=Batch.objects.get(),
+                                qty_entered=20, unit_price=D("15.00"),
+                                unit_label="pack", factor=1)
+    return post(sale, owner)
+
+
+def test_an_unrefunded_return_reduces_the_invoices_open_balance(owner, credit_sale,
+                                                                drug):
+    """The return credits the customer's account but writes no allocation, so
+    the invoice used to read fully open — aging chased money the customer no
+    longer owed."""
+    from docs.handlers_payments import open_balance
+
+    assert open_balance(credit_sale) == D("300.00")
+
+    post(return_draft(owner, credit_sale, drug, 5), owner)
+
+    credit_sale.refresh_from_db()
+    assert open_balance(credit_sale) == D("225.00")   # 300 - 75 credited
+
+
+def test_a_refunded_return_leaves_the_invoice_owing(owner, credit_sale, drug, cash):
+    """Cash went back over the counter, so the invoice itself is still owed."""
+    from docs.handlers_payments import open_balance
+
+    cr = return_draft(owner, credit_sale, drug, 5)
+    PaymentLine.objects.create(document=cr, account=cash, amount=D("75.00"))
+    post(cr, owner)
+
+    credit_sale.refresh_from_db()
+    assert open_balance(credit_sale) == D("300.00")
+
+
+def test_a_referenced_return_of_a_discounted_sale_is_refused(owner, sold_sale, drug):
+    """R67: the sale's document discount sits outside the line values a
+    referenced return is priced from, so a full return would credit the
+    undiscounted total."""
+    Document.objects.filter(pk=sold_sale.pk).update(doc_discount=D("20.00"))
+    sold_sale.refresh_from_db()
+
+    with pytest.raises(PostingError, match="document discount"):
+        post(return_draft(owner, sold_sale, drug, 5), owner)

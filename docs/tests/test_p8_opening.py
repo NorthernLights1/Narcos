@@ -156,3 +156,49 @@ def test_opening_import_view_round_trip(client, owner, drug):
     assert response.status_code == 302
     assert Document.objects.filter(doc_type=DocType.OPENING_STOCK,
                                    status=Document.Status.POSTED).exists()
+
+
+# --- R76: opening cost is per entered unit, the lot holds base units ------
+
+def test_opening_stock_cost_is_per_base_unit(owner):
+    """10 cartons of 12 at 120.00 a carton is 10.00 a tablet, not 120.00.
+    Receiving already divides what was paid by every base unit (D21); this
+    used to store the carton price against 120 tablets — a 12x overvaluation."""
+    item = Item.objects.create(code="PARA", name="Paracetamol",
+                               base_unit="tablet", is_batch_tracked=False,
+                               has_expiry=False)
+    doc = Document.objects.create(doc_type=DocType.OPENING_STOCK, created_by=owner)
+    DocumentLine.objects.create(
+        document=doc, item=item, qty_entered=10, unit_cost_entered=D("120.00"),
+        unit_label="carton", factor=12,
+    )
+
+    doc = post(doc, owner)
+
+    lot = CostLot.objects.get(item=item)
+    assert lot.qty_received == 120
+    assert lot.unit_cost == D("10.00")
+    assert doc.grand_total == D("1200.00")   # what was actually paid
+
+
+def test_opening_consignment_consumption_uses_the_base_unit_cost(owner, customer):
+    """R76: the lot was divided down to base units, so the frozen consumption
+    row beside it must be too — otherwise the same goods carry two costs."""
+    from stock.models import Zone
+    from docs.models import LotConsumption
+    item = Item.objects.create(code="PARA2", name="Paracetamol",
+                               base_unit="tablet", is_batch_tracked=False,
+                               has_expiry=False)
+    doc = Document.objects.create(doc_type=DocType.OPENING_CONSIGNMENT,
+                                  created_by=owner, customer=customer)
+    DocumentLine.objects.create(
+        document=doc, item=item, qty_entered=10, unit_cost_entered=D("120.00"),
+        unit_price=D("20.00"), unit_label="carton", factor=12,
+        target_zone=Zone.CONSIGNED,
+    )
+
+    post(doc, owner)
+
+    lot = CostLot.objects.get(item=item)
+    assert lot.unit_cost == D("10.00")
+    assert LotConsumption.objects.get(lot=lot).unit_cost == D("10.00")

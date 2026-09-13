@@ -1,5 +1,6 @@
 import csv
 import datetime as dt
+from collections import Counter
 from decimal import Decimal
 
 from django.contrib.auth.decorators import login_required
@@ -9,11 +10,12 @@ from django.shortcuts import render
 from django.utils import timezone
 from django.utils.translation import gettext as _
 
-from django.db.models import OuterRef, Subquery
+from django.db.models import Count, OuterRef, Subquery
 
 from catalog.models import Account, Customer, Item, Supplier
 from core.ethiopian_calendar import fiscal_year_bounds
 from core.models import CompanySettings
+from core.preferences import REPORT_FILTERS, restore_filters
 from docs.checks import ExpiryStatus, expiry_status
 from docs.forms import _selling_price
 from docs.handlers_payments import (
@@ -23,7 +25,13 @@ from docs.handlers_payments import (
     withholding_balance,
 )
 from docs.models import DocType, Document, DocumentLine
-from money.models import MoneyLedger, PartyLedger, WithholdingLedger, account_balance
+from money.models import (
+    MoneyLedger,
+    PartyLedger,
+    PaymentAllocation,
+    WithholdingLedger,
+    account_balance,
+)
 from stock.models import CostLot, StockBalance, StockLedger, Zone
 
 
@@ -70,7 +78,7 @@ def _posted_documents(doc_types, start, end):
     rows = (
         Document.objects.filter(doc_type__in=doc_types, status=Document.Status.POSTED)
         .select_related("customer", "supplier", "expense_category")
-        .prefetch_related("lines__item", "lines__batch")
+        .prefetch_related("lines__item", "lines__batch", "charges")
         .order_by("document_date", "pk")
     )
     for doc in rows:
@@ -183,48 +191,205 @@ def _valuation(_start, _end, _user):
     return columns, rows, [_("Total"), "", "", "", "", _money(total)]
 
 
-def _sales_line_rows(start, end, show_cost):
+SALE_SIDE_TYPES = [DocType.SALE, DocType.CONSIGNMENT_SETTLEMENT,
+                   DocType.CUSTOMER_RETURN]
+
+
+def _extra_row(doc, label, amount):
+    """R75: money on the document that belongs to no item.
+
+    `line_net` carries line discounts only. A delivery charge is money the
+    customer paid and a document discount is money they did not, so a report
+    built from lines alone disagrees with the invoice it came from by exactly
+    `charges − doc_discount`. They cost nothing to make, so they carry no COGS
+    and are all profit or all loss. They belong to no brand and no generic,
+    which is why a brand filter drops them (D141).
+    """
+    return {
+        "date": _day(doc.document_date), "doc_no": doc.doc_no,
+        "doc_pk": doc.pk, "customer": doc.customer.name,
+        "code": "", "generic": "", "brand": "", "strength": "",
+        "label": label, "is_extra": True, "qty": None,
+        "revenue": amount, "cogs": _money(Decimal("0.00")), "profit": amount,
+    }
+
+
+def _matches(row, filters) -> bool:
+    """D141: document number, generic and brand, each a case-insensitive
+    fragment. An extras row has no item, so a question about a brand or a
+    generic cannot include it — keeping it would inflate that brand."""
+    doc = (filters.get("doc") or "").strip().casefold()
+    generic = (filters.get("generic") or "").strip().casefold()
+    brand = (filters.get("brand") or "").strip().casefold()
+    if doc and doc not in row["doc_no"].casefold():
+        return False
+    if (generic or brand) and row["is_extra"]:
+        return False
+    if generic and generic not in row["generic"].casefold():
+        return False
+    if brand and brand not in row["brand"].casefold():
+        return False
+    return True
+
+
+def _sale_line_rows(start, end, filters=None):
+    """Every posted sale-side line as its own row, item named in full.
+
+    The row **is** the line: quantity, revenue and cost are that one item's,
+    never the document's. That was always true; D141 is what makes it legible,
+    because a bare item code left the reader unable to tell.
+
+    Quantity is `qty_base`, except on a settlement where only `qty_sold` was
+    actually sold. A return is the same goods coming back, so it signs
+    negative on every number and nets out of the total.
+    """
     rows = []
-    total_revenue = Decimal("0.00")
-    total_cogs = Decimal("0.00")
+    for doc in _posted_documents(SALE_SIDE_TYPES, start, end):
+        sign = Decimal("-1.00") if doc.doc_type == DocType.CUSTOMER_RETURN \
+            else Decimal("1.00")
+        for line in doc.lines.all():
+            qty = (line.qty_sold if doc.doc_type == DocType.CONSIGNMENT_SETTLEMENT
+                   else line.qty_base)
+            revenue = _money(sign * line.line_net)
+            cogs = _money(sign * line.cogs_total)
+            rows.append({
+                "date": _day(doc.document_date), "doc_no": doc.doc_no,
+                "doc_pk": doc.pk, "customer": doc.customer.name,
+                "code": line.item.code, "generic": line.item.generic_name,
+                "brand": line.item.name, "strength": line.item.strength,
+                "label": "", "is_extra": False, "qty": int(sign) * qty,
+                "revenue": revenue, "cogs": cogs,
+                "profit": _money(revenue - cogs),
+            })
+        for charge in doc.charges.all():
+            rows.append(_extra_row(doc, charge.label, _money(sign * charge.amount)))
+        if doc.doc_discount:
+            rows.append(_extra_row(doc, _("Document discount"),
+                                   _money(-sign * doc.doc_discount)))
+
+    kept = [row for row in rows if _matches(row, filters or {})]
+    totals = {"revenue": Decimal("0.00"), "cogs": Decimal("0.00")}
+    for row in kept:
+        totals["revenue"] += row["revenue"]
+        totals["cogs"] += row["cogs"]
+    totals["profit"] = _money(totals["revenue"] - totals["cogs"])
+    totals["revenue"] = _money(totals["revenue"])
+    totals["cogs"] = _money(totals["cogs"])
+    return kept, totals
+
+
+# --- D126: what each product actually sold for ---------------------------
+
+def _achieved_rows(start, end, show_cost, key):
+    """Group posted sales revenue by product, and show the price actually
+    achieved per base unit.
+
+    `line_net` carries line discounts only. Document discounts and delivery
+    charges live on the document (R75), so they are deliberately excluded
+    here: this is a *line-level* achieved price, and it will not reconcile to
+    an invoice carrying a document discount. The column header says so.
+
+    Quantity is `qty_base`, never `qty_entered`. Posting computes revenue as
+    `qty_entered × unit_price` while stock moves `qty_entered × factor`, so
+    dividing by the entered quantity would mix carton prices with single
+    prices the moment a pack factor is in play.
+    """
+    buckets: dict = {}
     for doc in _posted_documents(
         [DocType.SALE, DocType.CONSIGNMENT_SETTLEMENT, DocType.CUSTOMER_RETURN],
         start, end,
     ):
         sign = Decimal("-1.00") if doc.doc_type == DocType.CUSTOMER_RETURN else Decimal("1.00")
-        for line in doc.lines.all():
-            if doc.doc_type == DocType.CONSIGNMENT_SETTLEMENT:
-                qty = line.qty_sold
-            else:
-                qty = line.qty_base
+        for line in doc.lines.select_related("item"):
+            qty = line.qty_sold if doc.doc_type == DocType.CONSIGNMENT_SETTLEMENT \
+                else line.qty_base
+            if not qty:
+                continue
+            group, display = key(line.item)
+            bucket = buckets.setdefault(group, {
+                "qty": 0, "revenue": Decimal("0.00"), "cogs": Decimal("0.00"),
+                "prices": [], "names": Counter(),
+            })
+            bucket["names"][display] += 1
             revenue = _money(sign * line.line_net)
-            cogs = _money(sign * line.cogs_total)
-            total_revenue += revenue
-            total_cogs += cogs
-            row = [
-                _day(doc.document_date), doc.doc_no, doc.customer.name,
-                line.item.code, int(sign) * qty, revenue,
-            ]
-            if show_cost:
-                row.extend([cogs, _money(revenue - cogs)])
-            rows.append(row)
-    return rows, total_revenue, total_cogs
+            bucket["qty"] += int(sign) * qty
+            bucket["revenue"] += revenue
+            bucket["cogs"] += _money(sign * line.cogs_total)
+            # A return is the same price going back out; it should not read as
+            # a separate, negative "achieved price".
+            bucket["prices"].append(_money(abs(line.line_net) / qty))
+
+    rows = []
+    totals = {"qty": 0, "revenue": Decimal("0.00"), "cogs": Decimal("0.00")}
+    for group in sorted(buckets):
+        b = buckets[group]
+        # Most common exact spelling wins, alphabetical tie-break so the same
+        # data always renders the same row. This is the rule the eventual
+        # `Generic` backfill will use, so the report previews its grouping.
+        label = sorted(b["names"].items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+        totals["qty"] += b["qty"]
+        totals["revenue"] += b["revenue"]
+        totals["cogs"] += b["cogs"]
+        prices = b["prices"]
+        average = _money(b["revenue"] / b["qty"]) if b["qty"] else _money(Decimal("0.00"))
+        row = [label, b["qty"], b["revenue"], average, min(prices), max(prices)]
+        if show_cost:
+            row.extend([b["cogs"], _money(b["revenue"] - b["cogs"])])
+        rows.append(row)
+    return rows, totals
 
 
-def _sales(start, end, user):
-    columns = [_("Date"), _("Document"), _("Customer"), _("Item"), _("Qty"),
-               _("Revenue")]
+def _achieved_report(start, end, user, key, heading):
+    columns = [heading, _("Qty (base)"), _("Revenue"),
+               _("Avg price / base unit"), _("Lowest"), _("Highest")]
     if user.is_owner:
         columns.extend([_("COGS"), _("Profit")])
-    rows, revenue, cogs = _sales_line_rows(start, end, user.is_owner)
-    total = [_("Total"), "", "", "", "", _money(revenue)]
+    rows, totals = _achieved_rows(start, end, user.is_owner, key)
+    total = [_("Total"), totals["qty"], _money(totals["revenue"]), "", "", ""]
     if user.is_owner:
-        total.extend([_money(cogs), _money(revenue - cogs)])
+        total.extend([_money(totals["cogs"]),
+                      _money(totals["revenue"] - totals["cogs"])])
     return columns, rows, total
 
 
+def _brand_key(item):
+    label = f"{item.code} — {item.name}"
+    return label, label
+
+
+def fold_generic(value: str):
+    """(key, label) for one generic name.
+
+    Fold case and surrounding space, because those are provably the same
+    generic. A real misspelling is not — `Paracetamoll` stays its own row, and
+    that split is the argument for giving the catalogue a generic of its own.
+    The grand total is unaffected either way; only the split moves.
+
+    D144 made this a function of its own so the grouped sales report and
+    `sales-by-generic` cannot drift apart about what one generic is.
+    """
+    cleaned = " ".join((value or "").split())
+    if not cleaned:
+        unset = _("(no generic set)")
+        return unset, unset
+    return cleaned.casefold(), cleaned
+
+
+def _generic_key(item):
+    return fold_generic(item.generic_name)
+
+
+def _sales_by_brand(start, end, user):
+    return _achieved_report(start, end, user, key=_brand_key, heading=_("Brand"))
+
+
+def _sales_by_generic(start, end, user):
+    return _achieved_report(start, end, user, key=_generic_key, heading=_("Generic"))
+
+
 def _profit(start, end, _user):
-    _rows, revenue, cogs = _sales_line_rows(start, end, True)
+    _rows, totals = _sale_line_rows(start, end)
+    revenue, cogs = totals["revenue"], totals["cogs"]
     expenses = Decimal("0.00")
     for doc in _posted_documents([DocType.EXPENSE], start, end):
         expenses += doc.grand_total
@@ -330,6 +495,86 @@ def _balances_as_of(party_type, model, party_label, end):
         grand += balance
     rows.sort(key=lambda r: r[2], reverse=True)  # biggest balance first
     return columns, rows, [_("Total"), "", _money(grand)]
+
+
+def _normalised_tin(value: str) -> str:
+    """D127: tax numbers are typed by people, so `0012345678`, ` 0012345678 `
+    and `001-2345678` are one number. Fold spaces, hyphens and case before
+    comparing. Blank stays blank and never matches anything — pairing empty
+    strings would marry every business without a tax number to every other.
+    """
+    return "".join((value or "").split()).replace("-", "").replace(".", "").casefold()
+
+
+def _party_totals(party_type, end) -> dict:
+    """Balance per party id on `end`, from the ledger alone."""
+    balances: dict[int, Decimal] = {}
+    for row in PartyLedger.objects.filter(party_type=party_type).select_related("document"):
+        day = _day(row.document.document_date)
+        if day is None or day > end:
+            continue
+        balances[row.party_id] = balances.get(row.party_id, Decimal("0.00")) + row.amount_delta
+    return balances
+
+
+def _both_faces(_start, end, _user):
+    """D127: the net position of a business that is both customer and supplier.
+
+    The statement page already pairs one party with its other face; this is the
+    same question asked across everyone at once, which is what the client
+    actually described. Pairing is still by tax number — an explicit link needs
+    a migration and waits for a look at the real data (R95) — so the report is
+    honest about what it could not pair rather than quietly dropping it.
+
+    **Nothing is netted in the books.** D79 settled that: each side settles
+    with its own payment documents, which is what tax filing needs. The
+    difference here is information on a report, and the sign convention is
+    spelled out in the column name.
+    """
+    columns = [_("Business"), _("Customer"), _("Supplier"),
+               _("Receivable"), _("Payable"), _("Net (+ = due to us)")]
+    receivable = _party_totals(PartyLedger.PartyType.CUSTOMER, end)
+    payable = _party_totals(PartyLedger.PartyType.SUPPLIER, end)
+    customers = {c.pk: c for c in Customer.objects.all()}
+    suppliers = {s.pk: s for s in Supplier.objects.all()}
+
+    # Group both sides by a normalised tax number. Blank never pairs — matching
+    # empty strings would marry every business without a TIN to every other.
+    by_tin: dict[str, dict] = {}
+    for party in customers.values():
+        tin = _normalised_tin(party.tin)
+        if tin:
+            by_tin.setdefault(tin, {"customers": [], "suppliers": []})["customers"].append(party)
+    for party in suppliers.values():
+        tin = _normalised_tin(party.tin)
+        if tin:
+            by_tin.setdefault(tin, {"customers": [], "suppliers": []})["suppliers"].append(party)
+
+    rows = []
+    for tin in sorted(by_tin):
+        pair = by_tin[tin]
+        if not (pair["customers"] and pair["suppliers"]):
+            continue  # only one face on record — the ordinary balance reports cover it
+        ar = sum((receivable.get(c.pk, Decimal("0.00")) for c in pair["customers"]),
+                 Decimal("0.00"))
+        ap = sum((payable.get(s.pk, Decimal("0.00")) for s in pair["suppliers"]),
+                 Decimal("0.00"))
+        if ar == 0 and ap == 0:
+            continue
+        # Every record on each side is named, so an ambiguous tax number shows
+        # as ambiguous instead of silently resolving to whichever sorted first.
+        rows.append([
+            pair["customers"][0].name,
+            ", ".join(c.code for c in pair["customers"]),
+            ", ".join(s.code for s in pair["suppliers"]),
+            _money(ar), _money(ap), _money(ar - ap),
+        ])
+    rows.sort(key=lambda r: abs(r[5]), reverse=True)
+    total_ar = sum((r[3] for r in rows), Decimal("0.00"))
+    total_ap = sum((r[4] for r in rows), Decimal("0.00"))
+    total = [_("Total"), "", "", _money(total_ar), _money(total_ap),
+             _money(total_ar - total_ap)]
+    return columns, rows, total
 
 
 def _ar_balances(_start, end, _user):
@@ -475,8 +720,10 @@ REPORTS = {
                   "owner_only": True, "group": GROUP_STOCK},
     "consignment": {"title": _("Consignment outstanding"), "builder": _consignment,
                     "open_items": True, "group": GROUP_STOCK},
-    "sales": {"title": _("Sales by period/customer/item"), "builder": _sales,
-              "group": GROUP_SALES},
+    "sales-by-brand": {"title": _("Sales by brand, with achieved price"),
+                       "builder": _sales_by_brand, "group": GROUP_SALES},
+    "sales-by-generic": {"title": _("Sales by generic, with achieved price"),
+                         "builder": _sales_by_generic, "group": GROUP_SALES},
     "profit": {"title": _("Profit"), "builder": _profit, "owner_only": True,
                "group": GROUP_SALES},
     "losses": {"title": _("Losses at lot cost"), "builder": _losses,
@@ -489,6 +736,8 @@ REPORTS = {
                     "builder": _ar_balances, "group": GROUP_PARTIES},
     "ap-balances": {"title": _("AP balances by supplier (as of the end date)"),
                     "builder": _ap_balances, "group": GROUP_PARTIES},
+    "both-faces": {"title": _("Net position by business (customer and supplier in one)"),
+                   "builder": _both_faces, "group": GROUP_PARTIES},
     # Tax reports disappear when the configuration makes them permanently
     # empty (owner request: no dead reports) — flip the setting, they return.
     "vat": {"title": _("VAT summary"), "builder": _vat, "group": GROUP_TAX,
@@ -526,6 +775,9 @@ def report_hub(request):
         group = next((g for g in groups if g["label"] == label), None)
         if group is None:
             group = {"label": label, "statement": label == GROUP_PARTIES,
+                     # D141: the sales report has its own view, so it is
+                     # listed here rather than through the slug registry.
+                     "sales_lines": label == GROUP_SALES,
                      "entries": []}
             groups.append(group)
         group["entries"].append((slug, config))
@@ -541,6 +793,8 @@ def report_detail(request, slug):
         raise Http404
     if config.get("owner_only") and not request.user.is_owner:
         raise PermissionDenied
+    # D137: the period this person last chose, restored before it is read.
+    restore_filters(request, f"report:{slug}", REPORT_FILTERS)
     period, start, end = _selected_range(request)
     columns, rows, total = config["builder"](start, end, request.user)
     if request.GET.get("format") == "csv":
@@ -649,7 +903,8 @@ def finance(request):
     stock_cost = stock_warehouse_cost + stock_consigned_cost
 
     month_start = today.replace(day=1)
-    _rows, revenue, cogs = _sales_line_rows(month_start, today, True)
+    _rows, totals = _sale_line_rows(month_start, today)
+    revenue, cogs = totals["revenue"], totals["cogs"]
     expenses = Decimal("0.00")
     for doc in _posted_documents([DocType.EXPENSE], month_start, today):
         expenses += doc.grand_total
@@ -697,10 +952,20 @@ def statement(request):
     # point at the other side's balance so "where do we stand overall" is
     # one glance, while the books stay strictly separate (no netting).
     counterpart = None
-    if party is not None and party.tin.strip():
+    if party is not None and _normalised_tin(party.tin):
+        # D127: the old lookup stripped only the *selected* party's tax number
+        # and compared it exactly, so a stored " 0012345678 " linked one way
+        # and not the other, and `001-2345678` linked neither way. It also
+        # required `is_active`, which hid a deactivated supplier that is still
+        # owed money — deactivating a record does not settle a debt.
         other_model = Supplier if is_customer else Customer
-        other = other_model.objects.filter(
-            tin=party.tin.strip(), is_active=True).first()
+        wanted = _normalised_tin(party.tin)
+        matches = [p for p in other_model.objects.all()
+                   if _normalised_tin(p.tin) == wanted]
+        # Prefer an active record when the tax number is ambiguous, but never
+        # drop the row entirely — `both-faces` names every record on each side.
+        matches.sort(key=lambda p: (not p.is_active, p.code))
+        other = matches[0] if matches else None
         if other is not None:
             counterpart = {
                 "party": other,
@@ -793,3 +1058,371 @@ def _csv_response(slug, columns, rows, total):
     if total:
         writer.writerow(total)
     return response
+
+
+# --- D135: party positions, drilling down to the transactions --------------
+
+PARTY_SIDES = {
+    "receivable": {
+        "party_type": PartyLedger.PartyType.CUSTOMER,
+        "model": Customer,
+        "other_type": PartyLedger.PartyType.SUPPLIER,
+        "other_model": Supplier,
+        # D144: the labels are the plain trade words — receivable and
+        # payable — not "they owe us". The reports are shown to accountants and
+        # to the businesses themselves.
+        "title": _("Receivables by customer"),
+        "party_label": _("Customer"),
+        "other_label": _("Payable"),
+        "own_label": _("Receivable"),
+        "doc_types": AR_TARGET_TYPES,
+        "other_side": "payable",
+        "switch_label": _("Show payables"),
+    },
+    "payable": {
+        "party_type": PartyLedger.PartyType.SUPPLIER,
+        "model": Supplier,
+        "other_type": PartyLedger.PartyType.CUSTOMER,
+        "other_model": Customer,
+        "title": _("Payables by supplier"),
+        "party_label": _("Supplier"),
+        "other_label": _("Receivable"),
+        "own_label": _("Payable"),
+        "doc_types": AP_TARGET_TYPES,
+        "other_side": "receivable",
+        "switch_label": _("Show receivables"),
+    },
+}
+
+
+def _settled_as_of(doc, end):
+    """What had actually been paid off this document **by `end`**.
+
+    `open_balance()` (docs/handlers_payments.py) takes no cutoff — it nets every
+    posted allocation and every unrefunded return, whenever they happened. That
+    is right for "is this still open today" and wrong for "what was owed on the
+    30th": a payment made in August would reduce what the report says was owed
+    in July, while the party ledger above it correctly would not. The two levels
+    then disagree and the reconciling row absorbs the difference instead of
+    revealing it. *(Found by gpt-6-astra, 2026-09-11.)*
+    """
+    settled = Decimal("0.00")
+    allocations = (PaymentAllocation.objects
+                   .filter(target=doc, payment__status=Document.Status.POSTED)
+                   .select_related("payment"))
+    for allocation in allocations:
+        day = _day(allocation.payment.document_date)
+        if day is not None and day <= end:
+            settled += allocation.amount
+    if doc.doc_type in AR_TARGET_TYPES:
+        # R68: a return with no cash refund credits the invoice it came from.
+        credits = (Document.objects
+                   .filter(related_document=doc, doc_type=DocType.CUSTOMER_RETURN,
+                           status=Document.Status.POSTED)
+                   .annotate(refund_lines=Count("payment_lines"))
+                   .filter(refund_lines=0))
+        for credit in credits:
+            day = _day(credit.document_date)
+            if day is not None and day <= end:
+                settled += credit.grand_total
+    return min(settled, doc.grand_total)
+
+
+def _open_documents(doc_types, party_field, end):
+    """Posted documents of these types that still owe something **as of `end`**,
+    grouped by party id. A cash sale never creates debt, so it is excluded the
+    same way aging excludes it (D73)."""
+    by_party: dict[int, list] = {}
+    docs = (
+        Document.objects.filter(doc_type__in=doc_types,
+                                status=Document.Status.POSTED)
+        .select_related("customer", "supplier")
+        .order_by("document_date", "pk")
+    )
+    for doc in docs:
+        if doc.doc_type in (DocType.SALE, DocType.CONSIGNMENT_SETTLEMENT) \
+                and doc.sale_kind != Document.SaleKind.CREDIT:
+            continue
+        day = _day(doc.document_date)
+        if day is None or day > end:
+            continue
+        settled = _settled_as_of(doc, end)
+        balance = doc.grand_total - settled
+        if balance <= 0:
+            continue
+        party_id = getattr(doc, f"{party_field}_id")
+        if party_id is None:
+            continue
+        by_party.setdefault(party_id, []).append({
+            "document": doc,
+            "date": day,
+            "due": doc.due_date,
+            "original": _money(doc.grand_total),
+            "settled": _money(settled),
+            "open": _money(balance),
+        })
+    return by_party
+
+
+def _by_normalised_name(value: str) -> str:
+    """R103: 13 of the client's businesses are on both sides and **none** of
+    them carry a matching tax number, so a name fold is the only way to notice
+    that a pair exists. It is used to *flag* those for data entry, never to net
+    them — netting stays on the tax number, by the owner's decision."""
+    return " ".join((value or "").split()).casefold()
+
+
+@login_required
+def party_positions(request, side):
+    """D135: one screen that starts at the party, expands to the transactions
+    behind the balance, and links to each document.
+
+    **Level one is the ledger balance, not the sum of the open documents.**
+    They are different numbers: an owner may post a customer return with no
+    sale reference, which credits the party ledger and belongs to no invoice
+    (docs/handlers_sales.py). Summing open documents would quietly disagree
+    with the statement, the Finance page and this party's own aging. The
+    difference is shown on its own row instead.
+    """
+    config = PARTY_SIDES.get(side)
+    if config is None:
+        raise Http404
+    restore_filters(request, f"positions:{side}", REPORT_FILTERS)
+    period, start, end = _selected_range(request)
+
+    balances = _party_totals(config["party_type"], end)
+    other_balances = _party_totals(config["other_type"], end)
+    parties = {p.pk: p for p in config["model"].objects.filter(pk__in=balances)}
+    others = {o.pk: o for o in config["other_model"].objects.all()}
+
+    party_field = "customer" if side == "receivable" else "supplier"
+    documents = _open_documents(config["doc_types"], party_field, end)
+
+    # Netting pairs on the tax number only (owner's decision, 2026-09-11).
+    others_by_tin: dict[str, list] = {}
+    others_by_name: dict[str, list] = {}
+    for other in others.values():
+        tin = _normalised_tin(other.tin)
+        if tin:
+            others_by_tin.setdefault(tin, []).append(other)
+        others_by_name.setdefault(_by_normalised_name(other.name), []).append(other)
+
+    rows, unpaired = [], []
+    for pk, balance in balances.items():
+        if balance == 0:
+            continue
+        party = parties[pk]
+        entries = documents.get(pk, [])
+        documents_total = sum((e["open"] for e in entries), Decimal("0.00"))
+
+        counterpart = None
+        tin = _normalised_tin(party.tin)
+        if tin:
+            matches = sorted(others_by_tin.get(tin, []),
+                             key=lambda o: (not o.is_active, o.code))
+            counterpart = matches[0] if matches else None
+
+        counterpart_balance = (other_balances.get(counterpart.pk, Decimal("0.00"))
+                               if counterpart else None)
+        rows.append({
+            "party": party,
+            "balance": _money(balance),
+            "documents": entries,
+            "documents_total": _money(documents_total),
+            # Signed deliberately: negative means the ledger holds movements
+            # the transaction list cannot show, which is information, not noise.
+            "unexplained": _money(balance - documents_total),
+            "counterpart": counterpart,
+            "counterpart_balance": (_money(counterpart_balance)
+                                    if counterpart else None),
+            "net": (_money(balance - counterpart_balance)
+                    if counterpart else None),
+        })
+
+        if counterpart is None:
+            # Same business on both sides, no tax number to prove it. Name it
+            # so an unfinished data-entry job cannot read as "nobody is here".
+            lookalikes = [o for o in others_by_name.get(
+                _by_normalised_name(party.name), [])
+                if other_balances.get(o.pk, Decimal("0.00")) != 0]
+            if lookalikes:
+                unpaired.append({
+                    "name": party.name,
+                    "party": party,
+                    "others": lookalikes,
+                    "own": _money(balance),
+                    "other": _money(sum(
+                        (other_balances.get(o.pk, Decimal("0.00"))
+                         for o in lookalikes), Decimal("0.00"))),
+                })
+
+    rows.sort(key=lambda r: r["balance"], reverse=True)
+    total = sum((r["balance"] for r in rows), Decimal("0.00"))
+    return render(request, "reports/party_positions.html", {
+        "side": side,
+        "config": config,
+        "rows": rows,
+        "unpaired": unpaired,
+        "total": _money(total),
+        "period": period,
+        "start": start,
+        "end": end,
+    })
+
+
+# --- D141: the sales report, item named and document reachable -------------
+
+SALES_COLUMNS = [
+    (_("Date"), "date"), (_("Document"), "doc_no"), (_("Customer"), "customer"),
+    (_("Item"), "code"), (_("Generic"), "generic"), (_("Brand"), "brand"),
+    (_("Strength"), "strength"), (_("Qty"), "qty"), (_("Revenue"), "revenue"),
+]
+SALES_COST_COLUMNS = [(_("COGS"), "cogs"), (_("Profit"), "profit")]
+SALES_FILTERS = REPORT_FILTERS + ("doc", "generic", "brand", "group")
+
+EXTRAS_LABEL = _("Other charges and discounts")
+
+
+def _generic_groups(rows):
+    """D144: the same rows, folded one row per generic, lines kept underneath.
+
+    **Money only.** D132 settled that a generic covers several strengths, so
+    revenue and cost add across it and quantity does not — 100 tablets of
+    500 mg plus 100 of 250 mg is not 200 of anything. `qty` is None on a group
+    and the lines inside keep their own.
+
+    R75's charges and discounts belong to no generic, so they form a last
+    group of their own rather than being dropped, which would leave the grouped
+    view disagreeing with the total above it.
+    """
+    buckets: dict = {}
+    extras = {"label": EXTRAS_LABEL, "lines": [], "revenue": Decimal("0.00"),
+              "cogs": Decimal("0.00"), "qty": None, "is_extra": True}
+    for row in rows:
+        if row["is_extra"]:
+            extras["lines"].append(row)
+            extras["revenue"] += row["revenue"]
+            continue
+        key, label = fold_generic(row["generic"])
+        bucket = buckets.setdefault(key, {
+            "lines": [], "revenue": Decimal("0.00"), "cogs": Decimal("0.00"),
+            "names": Counter(), "qty": None, "is_extra": False,
+        })
+        # Commonest exact spelling wins, alphabetical tie-break, exactly as
+        # `_achieved_rows` picks it — so the two reports label a generic the
+        # same way as well as splitting it the same way.
+        bucket["names"][label] += 1
+        bucket["lines"].append(row)
+        bucket["revenue"] += row["revenue"]
+        bucket["cogs"] += row["cogs"]
+
+    groups = []
+    for key in sorted(buckets):
+        bucket = buckets[key]
+        bucket["label"] = sorted(bucket["names"].items(),
+                                 key=lambda kv: (-kv[1], kv[0]))[0][0]
+        del bucket["names"]
+        bucket["revenue"] = _money(bucket["revenue"])
+        bucket["cogs"] = _money(bucket["cogs"])
+        bucket["profit"] = _money(bucket["revenue"] - bucket["cogs"])
+        groups.append(bucket)
+    if extras["lines"]:
+        extras["revenue"] = _money(extras["revenue"])
+        extras["cogs"] = _money(extras["cogs"])
+        extras["profit"] = extras["revenue"]
+        groups.append(extras)
+    return groups
+
+
+GROUP_COLUMNS = [(_("Generic"), "label"), (_("Lines"), "count"),
+                 (_("Revenue"), "revenue")]
+
+
+def _sales_csv(rows, totals, show_cost):
+    """The same rows the page shows, filters and all. An extras row has no
+    item, so its label goes in the Item column — the place a reader looks to
+    ask what a row is about."""
+    columns = SALES_COLUMNS + (SALES_COST_COLUMNS if show_cost else [])
+    response = _csv_start()
+    writer = csv.writer(response)
+    writer.writerow([str(label) for label, _key in columns])
+    for row in rows:
+        line = dict(row)
+        if row["is_extra"]:
+            line["code"] = row["label"]
+        writer.writerow(["" if line[key] is None else line[key]
+                         for _label, key in columns])
+    footer = ["" for _label, _key in columns]
+    footer[0] = str(_("Total"))
+    footer[8] = totals["revenue"]
+    if show_cost:
+        footer[9], footer[10] = totals["cogs"], totals["profit"]
+    writer.writerow(footer)
+    return response
+
+
+def _groups_csv(groups, totals, show_cost):
+    """D144: grouped on screen, grouped in the file. Quantity is absent by
+    decision (D132), not by omission, so the column is not there to invite the
+    question."""
+    columns = GROUP_COLUMNS + (SALES_COST_COLUMNS if show_cost else [])
+    response = _csv_start()
+    writer = csv.writer(response)
+    writer.writerow([str(label) for label, _key in columns])
+    for group in groups:
+        row = dict(group, count=len(group["lines"]))
+        writer.writerow([row[key] for _label, key in columns])
+    footer = [str(_("Total")), "", totals["revenue"]]
+    if show_cost:
+        footer.extend([totals["cogs"], totals["profit"]])
+    writer.writerow(footer)
+    return response
+
+
+def _csv_start():
+    response = HttpResponse(content_type="text/csv")
+    response["Content-Disposition"] = 'attachment; filename="sales.csv"'
+    return response
+
+
+@login_required
+def sales_report(request):
+    """D141. The client's four asks, in one screen:
+
+    *Linkable document* — the row carries the document's pk, so the number is
+    an anchor. Reading a report and opening the invoice behind a line was two
+    searches; now it is a click.
+
+    *Generic and brand beside the code* — `ITM-0005` named nothing, which is
+    what made the money look like it belonged to the invoice rather than to
+    the line. Strength rides along, because a strength that appears nowhere on
+    screen is the reason it is missing from the catalogue (D134/D136).
+
+    *Per-item money* — already true, unchanged, and now visibly so.
+
+    *Three filters* — document, generic, brand; each a case-insensitive
+    fragment, all three combinable, and the total follows what is on screen.
+    """
+    restore_filters(request, "sales", SALES_FILTERS)
+    period, start, end = _selected_range(request)
+    filters = {key: request.GET.get(key, "") for key in ("doc", "generic", "brand")}
+    rows, totals = _sale_line_rows(start, end, filters)
+    show_cost = request.user.is_owner
+    grouping = "generic" if request.GET.get("group") == "generic" else "lines"
+    groups = _generic_groups(rows) if grouping == "generic" else []
+    if request.GET.get("format") == "csv":
+        return (_groups_csv(groups, totals, show_cost) if grouping == "generic"
+                else _sales_csv(rows, totals, show_cost))
+    return render(request, "reports/sales.html", {
+        "columns": SALES_COLUMNS + (SALES_COST_COLUMNS if show_cost else []),
+        "group_columns": GROUP_COLUMNS + (SALES_COST_COLUMNS if show_cost else []),
+        "rows": rows,
+        "groups": groups,
+        "grouping": grouping,
+        "totals": totals,
+        "show_cost": show_cost,
+        "filters": filters,
+        "period": period,
+        "start": start,
+        "end": end,
+    })

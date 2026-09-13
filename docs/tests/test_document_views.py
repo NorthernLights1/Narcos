@@ -3,7 +3,7 @@ from decimal import Decimal
 import pytest
 from django.urls import reverse
 
-from catalog.models import Customer, Item
+from catalog.models import Customer, Item, Supplier
 from core.models import AuditLog
 from docs.models import Document, DocType, DocumentCharge, DocumentLine
 from docs.posting import post
@@ -52,22 +52,21 @@ def test_expense_draft_create_and_post_from_ui(client, owner, cash, rent):
     assert account_balance(cash) == Decimal("-80.00")
 
 
-def test_posted_reference_edit_is_audited(client, owner, cash, rent):
+def test_posted_field_edit_is_audited(client, owner, cash, rent):
+    """R61: the Reference page became a pencil per field — full coverage
+    lives in test_inline_field_edit.py; this keeps the audit trail asserted
+    from the document side."""
     login(client, owner)
     doc = post(make_expense(owner, cash, rent), owner)
     response = client.post(
-        reverse("document_edit", args=[doc.pk]),
-        {
-            "fiscal_receipt_no": "FS-123",
-            "machine_total": "",
-            "withholding_certificate_no": "",
-        },
+        reverse("document_field_edit", args=[doc.pk, "fiscal_receipt_no"]),
+        {"fiscal_receipt_no": "FS-123"},
     )
-    assert response.status_code == 302
+    assert response.status_code == 200
     doc.refresh_from_db()
     assert doc.fiscal_receipt_no == "FS-123"
     assert AuditLog.objects.filter(
-        action="DOCUMENT_REFERENCE_UPDATE", entity_id=str(doc.pk)
+        action="DOCUMENT_FIELD_UPDATE", entity_id=str(doc.pk)
     ).exists()
 
 
@@ -108,3 +107,28 @@ def test_posted_proforma_converts_to_draft_sale(client, owner):
     assert sale.doc_discount == Decimal("1.00")
     assert sale.lines.get().item == item
     assert sale.charges.get().label == "Delivery"
+
+
+def test_receiving_ui_has_no_free_units(client, owner):
+    """Field testing: the business gets no bonus goods — the Free box only
+    confused staff. D21 math stays in the engine; the UI drops it (D84)."""
+    login(client, owner)
+    form_html = client.get(
+        reverse("document_create", args=[DocType.RECEIVING])
+    ).content.decode()
+    assert "free_qty" not in form_html
+
+    supplier = Supplier.objects.create(code="S-D84", name="Addis Pharma")
+    item = Item.objects.create(code="PARA", name="Paracetamol",
+                               base_unit="pack",
+                               maintained_price=Decimal("5.00"))
+    grn = Document.objects.create(doc_type=DocType.RECEIVING,
+                                  created_by=owner, supplier=supplier)
+    DocumentLine.objects.create(
+        document=grn, item=item, qty_entered=5,
+        unit_cost_entered=Decimal("4.00"), unit_label="pack", factor=1,
+    )
+    detail_html = client.get(
+        reverse("document_detail", args=[grn.pk])
+    ).content.decode()
+    assert ">Free<" not in detail_html
