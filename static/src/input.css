@@ -99,6 +99,10 @@
   }
   .inline-field-form button[type="submit"]:disabled { @apply opacity-60 cursor-wait; }
   #dupe-matches.htmx-request { @apply opacity-50; }
+  /* D150: the version stamp, in the sticky topbar so it is in every photo.
+     slate-400 on ink is 6.4:1 - quiet against the brand, still legible when
+     the screen is photographed under glare. */
+  .version-stamp { @apply text-xs text-slate-400 tracking-wide; }
   .table-wrap { @apply overflow-x-auto; }
   .cell-tight { @apply whitespace-nowrap; }
 

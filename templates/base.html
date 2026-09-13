@@ -6,15 +6,22 @@
   <title>{% block title %}Narcos{% endblock %}</title>
   {# bump ?v= whenever app.css/app.js change so browsers refetch #}
   <link rel="stylesheet" href="{% static 'css/choices.min.css' %}">
-  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=20260913a">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=20260913b">
   <script src="{% static 'js/htmx.min.js' %}" defer></script>
   <script src="{% static 'js/alpine.min.js' %}" defer></script>
   <script src="{% static 'js/choices.min.js' %}"></script>
-  <script src="{% static 'js/app.js' %}?v=20260913a"></script>
+  <script src="{% static 'js/app.js' %}?v=20260913b"></script>
 </head>
 <body>
 <header class="topbar">
   <span class="brand">Narcos</span>
+  {% comment %}D150: which build drew this screen. Support is a phone photo with
+  no remote access to the machine, so the version must be IN the photo - which
+  means the sticky topbar, not a footer below a min-h-screen shell that never
+  appears without scrolling. In the topbar it is on every screen including
+  login, because a machine that cannot get past login still has to be
+  identifiable.{% endcomment %}
+  <span class="version-stamp">{{ narcos_version }}</span>
   {% if user.is_authenticated %}
   <form class="logout" method="post" action="{% url 'logout' %}">
     {% csrf_token %}

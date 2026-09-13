@@ -2797,3 +2797,35 @@ sale in August makes it vanish out of June, so a June report already printed
 stops matching. Enforced in `docs/posting.py`, empty by default, does nothing
 until a date is set. Kept, on the advice that an empty setting costs a row on a
 page and a closed month with no guard costs a filed report.
+
+### D150
+
+**The app says which build it is, on every screen and in the log.** CLAUDE.md
+has required a version stamp since the beginning — "every failure needs a
+photographable surface: a message on screen, a line in the log, and a version
+stamp" — and the first two were built while the third never was. A grep for
+`NARCOS_VERSION`, `APP_VERSION` or any version string across the templates,
+`settings.py`, `compose.yml` and the `Dockerfile` returned nothing.
+
+**What it cost.** The client ran v1.1.0 from 7 August while `build` moved 47
+commits ahead, and nothing on their machine could have told anyone that. The
+question "which version are they on?" had no answer short of opening a
+terminal on a PC with no remote access.
+
+**The value comes from the image, not the source.** `release.yml` passes
+`github.ref_name` to the build as `NARCOS_VERSION`; the `Dockerfile` turns it
+into an environment variable; `settings.py` reads it, defaulting to `dev`. A
+literal in the source would have to be remembered at release time, and a stamp
+nobody remembers to bump is worse than no stamp — it lies. A machine built
+from source reads `dev` and therefore never claims to be a release.
+
+**Where it shows.** A quiet footer on every page, outside the authenticated
+block so the login screen carries it too: a machine that cannot get past login
+still has to be identifiable. It uses the readable slate-600 rather than a
+decorative grey, because the whole point is that it survives being photographed.
+The entrypoint prints the same string as its first line, so the log and the
+screen agree.
+
+**Why the ARG sits late in the Dockerfile.** Above the dependency layers it
+would bust the pip cache on every release. Below them, a version change rebuilds
+one trivial layer.
