@@ -3,11 +3,14 @@
 module.exports = {
   content: ["./templates/**/*.html", "./*/templates/**/*.html", "./static/js/app.js"],
   // Classes composed at render time (badge-{{ doc.status }},
-  // badge-{{ settlement.state }}) that the content scan cannot see:
+  // badge-{{ settlement.state }}) that the content scan cannot see.
+  // htmx-request is applied by htmx itself at runtime (F3 in-flight feedback),
+  // so it is invisible to the scan for the same reason:
   safelist: [
     "badge-DRAFT", "badge-POSTED", "badge-VOIDED",
     "badge-UNPAID", "badge-OPEN", "badge-PARTIAL", "badge-SETTLED", "badge-CLOSED",
     "badge-OUT", "badge-LOW", "badge-OK",
+    "htmx-request",
   ],
   theme: {
     extend: {

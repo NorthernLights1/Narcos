@@ -5,7 +5,8 @@ value back; Cancel asks for the value partial again and changes nothing.
 <span class="inline-field">
   <form class="inline-field-form" method="post"
         hx-post="{% url 'document_field_edit' doc.pk field %}"
-        hx-target="closest .inline-field" hx-swap="outerHTML">
+        hx-target="closest .inline-field" hx-swap="outerHTML"
+        hx-disabled-elt="find button[type='submit']">
     {% csrf_token %}
     {{ form }}
     {% if form.errors %}<p class="field-error">{{ form.errors|striptags }}</p>{% endif %}

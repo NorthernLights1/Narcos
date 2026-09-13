@@ -36,7 +36,7 @@
                value="{{ field.value|default:'' }}" maxlength="200"
                placeholder="{{ field.field.widget.attrs.placeholder|default:'' }}"
                hx-get="{% url 'master_search' kind %}" hx-trigger="keyup changed delay:400ms"
-               hx-target="#dupe-matches" hx-include="this">
+               hx-target="#dupe-matches" hx-include="this" hx-indicator="#dupe-matches">
       {% else %}
         {{ field }}
       {% endif %}

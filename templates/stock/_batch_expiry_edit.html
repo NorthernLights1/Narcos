@@ -5,7 +5,8 @@ this is never scoped to the page it was opened from.{% endcomment %}
 <span class="inline-field">
   <form class="inline-field-form" method="post"
         hx-post="{% url 'batch_expiry_edit' batch.pk %}"
-        hx-target="closest .inline-field" hx-swap="outerHTML">
+        hx-target="closest .inline-field" hx-swap="outerHTML"
+        hx-disabled-elt="find button[type='submit']">
     {% csrf_token %}
     {% comment %}`reviewed_expiry` is what the warnings below were computed
     from. Change the date after reviewing and the server sends you round

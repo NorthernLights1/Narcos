@@ -29,7 +29,7 @@
   }
   .nav-group {
     @apply px-3 pt-4 pb-1 text-xs font-semibold uppercase tracking-wider
-      text-slate-400 first:pt-0;
+      text-slate-500 first:pt-0;
   }
   .page { @apply flex-1 min-w-0 max-w-6xl px-6 py-6; }
   /* R57: document entry uses the whole monitor — the 72rem cap wasted it. */
@@ -51,7 +51,7 @@
   }
   .btn-quiet { @apply bg-transparent text-slate-300 hover:text-white; }
   .btn-sm { @apply px-2.5 py-1 text-xs; }
-  .hint { @apply text-xs text-slate-400; }
+  .hint { @apply text-xs text-slate-600; }
   .cell-hint { @apply block text-xs text-slate-500 mt-1 whitespace-nowrap; }
 
   /* D128: batch-number suggestions on the receiving desk. A typo here can
@@ -66,7 +66,7 @@
   .field { @apply mb-4; }
   .field-wide { @apply sm:col-span-2; }
   .field-error { @apply text-danger text-xs mt-1; }
-  .field-help { @apply text-xs text-slate-400 mt-1; }
+  .field-help { @apply text-xs text-slate-600 mt-1; }
   .form-grid { @apply grid gap-x-6 sm:grid-cols-2; }
 
   /* D142: the copy-from picker — a searchable list and its button on one
@@ -82,9 +82,23 @@
   /* ---- tables ---- */
   /* R61: a field that may still be corrected, and the pencil that opens it. */
   .inline-field { @apply inline-flex items-center gap-1 flex-wrap; }
-  .btn-inline-edit { @apply text-slate-400 hover:text-accent px-1 rounded cursor-pointer leading-none; }
+  .btn-inline-edit { @apply text-slate-500 hover:text-accent px-1 rounded cursor-pointer leading-none; }
   .inline-field-form { @apply inline-flex items-center gap-1 flex-wrap; }
   .inline-field-form input, .inline-field-form textarea { @apply w-48 py-1 px-2 text-sm; }
+
+  /* F3: in-flight feedback for the two inline-edit saves and the master-data
+     typeahead. hx-disabled-elt puts `disabled` on the submit button for the
+     duration of the request, so a second click cannot land; hx-indicator puts
+     .htmx-request on the match list while it is being refetched.
+     Opacity only (no layout, no paint), 150ms, strong ease-out. No
+     prefers-reduced-motion block on purpose: an opacity fade is the kind of
+     motion that rule says to keep, not the kind it says to drop. */
+  .inline-field-form button[type="submit"],
+  #dupe-matches {
+    @apply transition-opacity duration-150 ease-[cubic-bezier(0.23,1,0.32,1)];
+  }
+  .inline-field-form button[type="submit"]:disabled { @apply opacity-60 cursor-wait; }
+  #dupe-matches.htmx-request { @apply opacity-50; }
   .table-wrap { @apply overflow-x-auto; }
   .cell-tight { @apply whitespace-nowrap; }
 
@@ -117,7 +131,7 @@
      stays in the page for Django but is never shown. */
   .btn-row-del {
     @apply mt-1 cursor-pointer rounded px-2 py-1 text-sm leading-none
-           text-slate-400 hover:bg-rose-50 hover:text-rose-700;
+           text-slate-500 hover:bg-rose-50 hover:text-rose-700;
   }
   .total-row th { @apply border-t-2 border-slate-300 text-sm normal-case tracking-normal text-ink; }
   .opening-row td { @apply font-semibold text-slate-600; }
@@ -171,7 +185,7 @@
   .menu-panel a { @apply block rounded px-3 py-1.5 text-sm hover:bg-slate-100; }
   .menu-group {
     @apply px-3 pt-3 pb-1 text-xs font-semibold uppercase tracking-wider
-      text-slate-400 first:pt-1;
+      text-slate-500 first:pt-1;
   }
 
   /* ---- misc ---- */
@@ -207,7 +221,7 @@
 
   /* ---- finance overview ---- */
   .net-position { @apply text-center; }
-  .net-label { @apply text-xs uppercase tracking-wide text-slate-400; }
+  .net-label { @apply text-xs uppercase tracking-wide text-slate-600; }
   .net-amount { @apply text-3xl font-bold tabular-nums text-emerald-700; }
   .net-negative .net-amount { @apply text-rose-700; }
   .finance-big { @apply text-2xl font-semibold tabular-nums; }
@@ -215,11 +229,11 @@
   .finance-total { @apply border-t border-slate-200 pt-1 mt-1 text-sm; }
   .compact-list b.num { @apply float-right tabular-nums; }
   .today { @apply text-slate-500; }
-  .placeholder { @apply text-slate-400 text-sm; }
+  .placeholder { @apply text-slate-600 text-sm; }
   .compact-list { @apply space-y-1 text-sm; }
   .compact-list a { @apply text-accent hover:underline; }
   .summary-grid { @apply grid gap-x-8 gap-y-2 sm:grid-cols-2 lg:grid-cols-4; }
-  .summary-grid dt { @apply text-xs uppercase tracking-wide text-slate-400; }
+  .summary-grid dt { @apply text-xs uppercase tracking-wide text-slate-600; }
   .summary-grid dd { @apply text-sm font-medium; }
 
   /* ---- Choices.js integration ---- */
